@@ -3,90 +3,102 @@ import type { ReactNode } from "react";
 export const fmt = (n: number | null | undefined, d = 0) =>
   n == null ? "—" : n.toLocaleString("fr-FR", { maximumFractionDigits: d, minimumFractionDigits: d });
 
-/** Évolution par rapport à la période précédente. `lowerIsBetter` pour la position Google. */
-export function Delta({ now, before, lowerIsBetter = false, window }: { now: number | null; before: number | null; lowerIsBetter?: boolean; window: string }) {
-  if (now == null || before == null || (!now && !before)) return <span className="text-muted">—</span>;
-  if (!before) return <span className="text-muted">nouveau{window && ` · ${window}`}</span>;
-  const change = lowerIsBetter ? before - now : ((now - before) / before) * 100;
-  const text = lowerIsBetter
-    ? `${change > 0 ? "+" : change < 0 ? "−" : ""}${fmt(Math.abs(change), 1)} place${Math.abs(change) >= 2 ? "s" : ""}`
-    : `${change > 0 ? "+" : change < 0 ? "−" : ""}${fmt(Math.abs(change), 0)} %`;
-  const tone = Math.abs(change) < 0.5 ? "text-muted" : change > 0 ? "text-positive" : "text-negative";
-  return <span><span className={`num font-medium ${tone}`}>{text}</span> <span className="text-muted">{window}</span></span>;
-}
-
-export type Kpi = { id: string; label: string; value: ReactNode; delta?: ReactNode };
-
-/** Bande de chiffres clés, sans boîtes. Ceux dont l'id est choisissable pilotent la série du graphique. */
-export function KpiStrip({ items, selected, selectable = [], onSelect }: {
-  items: Kpi[]; selected?: string; selectable?: string[]; onSelect?: (id: string) => void;
-}) {
+export function Card({ title, action, children, className = "" }: { title?: ReactNode; action?: ReactNode; children: ReactNode; className?: string }) {
   return (
-    <div className="grid grid-cols-2 gap-x-6 gap-y-4 lg:grid-cols-4">
-      {items.map((k) => {
-        const active = selected === k.id;
-        const body = (
-          <>
-            <div className={`text-xs ${active ? "font-medium text-ink" : "text-muted"}`}>{k.label}</div>
-            <div className="num mt-1 text-[28px] leading-9">{k.value}</div>
-            <div className="mt-0.5 text-xs">{k.delta ?? <span className="text-muted">—</span>}</div>
-          </>
-        );
-        return onSelect && selectable.includes(k.id) ? (
-          <button key={k.id} onClick={() => onSelect(k.id)} aria-pressed={active}
-            className={`border-t-2 pt-3 text-left transition-colors ${active ? "border-accent" : "border-rule hover:border-control"}`}>{body}</button>
-        ) : <div key={k.id} className="border-t-2 border-rule pt-3">{body}</div>;
-      })}
-    </div>
-  );
-}
-
-export function Section({ title, sub, action, children }: { title: string; sub?: ReactNode; action?: ReactNode; children: ReactNode }) {
-  return (
-    <section>
-      <div className="mb-3 flex items-end justify-between gap-4">
-        <div className="min-w-0">
-          <h2 className="text-base font-medium">{title}</h2>
-          {sub && <p className="mt-0.5 text-sm text-muted">{sub}</p>}
+    <section className={`min-w-0 rounded-[20px] border border-border bg-surface p-5 sm:p-6 ${className}`}>
+      {(title || action) && (
+        <div className="mb-5 flex min-h-8 flex-wrap items-center justify-between gap-3">
+          {typeof title === "string" ? <h2 className="text-lg font-light">{title}</h2> : title}
+          {action}
         </div>
-        {action}
-      </div>
+      )}
       {children}
     </section>
   );
 }
 
-export function EmptyBox({ children }: { children: ReactNode }) {
-  return <div className="rounded-lg border border-dashed border-control px-3 py-2.5 text-sm text-muted">{children}</div>;
+export function Pill({ tone = "neutral", children }: { tone?: "positive" | "negative" | "neutral"; children: ReactNode }) {
+  const look = tone === "positive" ? "bg-positive-bg text-positive" : tone === "negative" ? "bg-negative-bg text-negative" : "bg-raised text-muted";
+  return <span className={`num inline-flex h-6 shrink-0 items-center rounded-full px-2 text-xs font-medium whitespace-nowrap ${look}`}>{children}</span>;
 }
 
-/** Tableau de parts : le fond arrondi de la ligne est la barre, proportionnelle à la première ligne. */
-export function ShareTable({ title, rows, label, empty, map }: {
-  title: string; rows: { key: string; visitors: number }[]; label: string; empty: string; map?: (k: string) => ReactNode;
+/** Évolution par rapport à la période précédente, en pastille. Vert = bonne nouvelle (pour la position : une baisse). */
+export function Delta({ now, before, lowerIsBetter = false }: { now: number | null; before: number | null; lowerIsBetter?: boolean }) {
+  if (now == null || before == null || (!now && !before)) return null;
+  if (!before) return <Pill>nouveau</Pill>;
+  const change = lowerIsBetter ? before - now : ((now - before) / before) * 100;
+  const sign = change > 0 ? "+" : change < 0 ? "−" : "";
+  const text = lowerIsBetter ? `${sign}${fmt(Math.abs(change), 1)}` : `${sign}${fmt(Math.abs(change), 1)} %`;
+  return <Pill tone={Math.abs(change) < 0.05 ? "neutral" : change > 0 ? "positive" : "negative"}>{text}</Pill>;
+}
+
+export function Segmented<T extends string>({ options, value, onChange, label }: {
+  options: readonly (readonly [T, string])[]; value: T; onChange: (v: T) => void; label: string;
 }) {
+  return (
+    <div role="group" aria-label={label} className="inline-flex shrink-0 rounded-full border border-border bg-raised p-1">
+      {options.map(([v, l]) => (
+        <button key={v} onClick={() => onChange(v)} aria-pressed={value === v}
+          className={`h-7 rounded-full px-3 text-[13px] whitespace-nowrap transition-colors ${value === v ? "bg-active text-ink shadow-[inset_0_0_0_1px_var(--color-control)]" : "text-muted hover:text-ink"}`}>
+          {l}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** Carte de chiffre clé. Cliquable quand elle choisit la série du graphique. */
+export function KpiCard({ label, value, delta, active, onClick, hint }: {
+  label: string; value: ReactNode; delta?: ReactNode; active?: boolean; onClick?: () => void; hint?: string;
+}) {
+  const body = (
+    <>
+      <div className="flex items-center justify-between gap-2 text-[13px] text-muted">
+        <span>{label}</span>
+        {active && <span className="size-2 rounded-full bg-accent" aria-hidden />}
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1">
+        <span className="num text-[28px] leading-9 font-light">{value}</span>
+        {delta}
+      </div>
+      {hint && <div className="mt-1 text-xs text-muted">{hint}</div>}
+    </>
+  );
+  const cls = `min-w-0 rounded-[20px] border bg-surface p-5 text-left transition-colors ${active ? "border-control" : "border-border"}`;
+  return onClick
+    ? <button onClick={onClick} aria-pressed={active} className={`${cls} hover:border-control active:scale-[.99]`}>{body}</button>
+    : <div className={cls}>{body}</div>;
+}
+
+export function EmptyBox({ children }: { children: ReactNode }) {
+  return <div className="rounded-2xl border border-dashed border-control px-4 py-3 text-sm text-muted">{children}</div>;
+}
+
+/** Liste classée : le fond arrondi de chaque ligne est la barre, dans la colonne du libellé uniquement. */
+export function ShareList({ rows, label, empty, map }: {
+  rows: { key: string; visitors: number }[]; label: string; empty: string; map?: (k: string) => ReactNode;
+}) {
+  if (!rows.length) return <EmptyBox>{empty}</EmptyBox>;
   const max = Math.max(...rows.map((r) => r.visitors), 1);
   const total = rows.reduce((n, r) => n + r.visitors, 0);
   return (
-    <Section title={title}>
-      <div className="mb-1 flex justify-between px-3 text-xs text-muted"><span>{label}</span><span>Visiteurs</span></div>
-      {rows.length ? (
-        <ul className="space-y-0.5">
-          {rows.slice(0, 6).map((r) => (
-            <li key={r.key} className="relative flex h-9 items-center justify-between gap-3 px-3">
-              {/* La barre reste dans la colonne du libellé : elle ne passe jamais sous les chiffres */}
-              <span className="absolute inset-y-0 right-[112px] left-0" aria-hidden>
-                <span className="block h-full rounded-md bg-accent-soft" style={{ width: `${(r.visitors / max) * 100}%` }} />
-              </span>
-              <span className="relative truncate">{map ? map(r.key) : r.key}</span>
-              <span className="num relative flex shrink-0 items-baseline gap-3">
-                <span className="w-10 text-right text-xs text-muted">{fmt((r.visitors / total) * 100)} %</span>
-                <span className="w-12 text-right">{fmt(r.visitors)}</span>
-              </span>
-            </li>
-          ))}
-        </ul>
-      ) : <EmptyBox>{empty}</EmptyBox>}
-    </Section>
+    <>
+      <div className="mb-1.5 flex justify-between px-3 text-xs text-muted"><span>{label}</span><span>Visiteurs</span></div>
+      <ul className="space-y-1">
+        {rows.slice(0, 6).map((r, i) => (
+          <li key={r.key} className="relative flex h-9 items-center justify-between gap-3 px-3">
+            <span className="absolute inset-y-0 right-[104px] left-0" aria-hidden>
+              <span className={`block h-full rounded-xl ${i === 0 ? "bg-active" : "bg-raised"}`} style={{ width: `${(r.visitors / max) * 100}%` }} />
+            </span>
+            <span className="relative truncate">{map ? map(r.key) : r.key}</span>
+            <span className="num relative flex shrink-0 items-baseline gap-3">
+              <span className="w-10 text-right text-xs text-muted">{fmt((r.visitors / total) * 100)} %</span>
+              <span className="w-12 text-right">{fmt(r.visitors)}</span>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </>
   );
 }
 
@@ -95,18 +107,18 @@ type Col<T> = { label: string; render: (r: T) => ReactNode; num?: boolean; class
 export function Table<T>({ rows, cols, empty, onRow }: { rows: T[]; cols: Col<T>[]; empty: string; onRow?: (r: T) => void }) {
   if (!rows.length) return <EmptyBox>{empty}</EmptyBox>;
   return (
-    <div className="overflow-x-auto">
+    <div className="-mx-2 overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
           <tr className="text-xs text-muted">
-            {cols.map((c, i) => <th key={i} className={`h-9 font-normal ${c.num ? "pl-4 text-right whitespace-nowrap" : "text-left"} ${c.className ?? ""}`}>{c.label}</th>)}
+            {cols.map((c, i) => <th key={i} className={`h-9 px-2 font-normal ${c.num ? "text-right whitespace-nowrap" : "text-left"} ${c.className ?? ""}`}>{c.label}</th>)}
           </tr>
         </thead>
         <tbody>
           {rows.map((r, i) => (
-            <tr key={i} onClick={onRow && (() => onRow(r))} className={`border-t border-rule ${onRow ? "cursor-pointer hover:bg-raised" : ""}`}>
+            <tr key={i} onClick={onRow && (() => onRow(r))} className={`border-t border-rule ${onRow ? "cursor-pointer transition-colors hover:bg-raised" : ""}`}>
               {cols.map((c, j) => (
-                <td key={j} className={`h-11 ${c.num ? "num pl-4 text-right whitespace-nowrap" : "max-w-0 truncate pr-4"} ${c.className ?? ""}`}>{c.render(r)}</td>
+                <td key={j} className={`h-12 px-2 ${c.num ? "num text-right whitespace-nowrap" : "max-w-0 truncate"} ${c.className ?? ""}`}>{c.render(r)}</td>
               ))}
             </tr>
           ))}
@@ -118,23 +130,34 @@ export function Table<T>({ rows, cols, empty, onRow }: { rows: T[]; cols: Col<T>
 
 export function Button({ children, variant = "primary", ...p }: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" }) {
   const look = variant === "primary"
-    ? "bg-primary text-surface hover:opacity-90"
-    : "border border-control bg-surface text-ink hover:bg-raised";
-  return <button {...p} className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md px-3 text-sm font-medium transition active:scale-[.98] disabled:opacity-50 ${look} ${p.className ?? ""}`}>{children}</button>;
+    ? "bg-accent text-on-accent hover:brightness-95"
+    : "border border-control bg-raised text-ink hover:bg-active";
+  return <button {...p} className={`inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-full px-4 text-sm font-medium transition active:scale-[.98] disabled:opacity-50 ${look} ${p.className ?? ""}`}>{children}</button>;
 }
 
-export const fieldCls = "h-8 rounded-md border border-control bg-surface px-2.5 text-sm text-ink";
-export const inputCls = `w-full ${fieldCls}`;
+export const inputCls = "h-10 w-full rounded-xl border border-control bg-raised px-3 text-sm text-ink placeholder:text-muted";
 
 /** Barre grise à la taille réelle de la valeur attendue (chargement). */
-export const Skeleton = ({ className = "" }: { className?: string }) => <span className={`block rounded bg-raised ${className}`} />;
+export const Skeleton = ({ className = "" }: { className?: string }) => <span className={`block rounded-xl bg-raised ${className}`} />;
 
 export function Mark({ className = "" }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" className={className} aria-hidden>
-      <rect width="24" height="24" rx="6" fill="var(--color-accent)" />
-      <path d="M4 15c2.7-4 5.3-4 8 0s5.3 4 8-1" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" />
-      <path d="M4 10c2.7-3 5.3-3 8 0" fill="none" stroke="#fff" strokeOpacity=".55" strokeWidth="2.2" strokeLinecap="round" />
+      <rect width="24" height="24" rx="7" fill="var(--color-accent)" />
+      <path d="M4 15c2.7-4 5.3-4 8 0s5.3 4 8-1" fill="none" stroke="var(--color-on-accent)" strokeWidth="2.2" strokeLinecap="round" />
+      <path d="M4 10c2.7-3 5.3-3 8 0" fill="none" stroke="var(--color-on-accent)" strokeOpacity=".45" strokeWidth="2.2" strokeLinecap="round" />
     </svg>
   );
 }
+
+/** Icônes de navigation (trait 1,5 px, 16 px). */
+export const Icon = {
+  grid: <path d="M3 3h4v4H3zM9 3h4v4H9zM3 9h4v4H3zM9 9h4v4H9z" />,
+  globe: <><circle cx="8" cy="8" r="5.5" /><path d="M2.5 8h11M8 2.5c1.6 1.7 1.6 9.3 0 11M8 2.5c-1.6 1.7-1.6 9.3 0 11" /></>,
+  plus: <path d="M8 3v10M3 8h10" />,
+  book: <path d="M3 3.5h4a1.5 1.5 0 0 1 1.5 1.5v8A1.5 1.5 0 0 0 7 11.5H3zM13 3.5H9.5A1.5 1.5 0 0 0 8 5v8a1.5 1.5 0 0 1 1.5-1.5H13z" />,
+  out: <path d="M6 13H3.5V3H6M10 5l3 3-3 3M13 8H6" />,
+};
+export const Svg = ({ children }: { children: ReactNode }) => (
+  <svg viewBox="0 0 16 16" className="size-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>{children}</svg>
+);

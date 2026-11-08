@@ -5,7 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="robots" content="noindex" />
     <title>Searchtide</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><path d='M2 22c4-6 8-6 12 0s8 6 16-4' fill='none' stroke='%230d9488' stroke-width='4' stroke-linecap='round'/></svg>" />
+    <script>
+      // Thème choisi avant le premier rendu : pas de flash
+      try { document.documentElement.dataset.theme = localStorage.getItem("st-theme") || "dark"; } catch { document.documentElement.dataset.theme = "dark"; }
+    </script>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><path d='M2 22c4-6 8-6 12 0s8 6 16-4' fill='none' stroke='%23c8f55a' stroke-width='4' stroke-linecap='round'/></svg>" />
   </head>
   <body>
     <div id="root"></div>

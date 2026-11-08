@@ -11,71 +11,126 @@ export function ticks(max: number, count = 4): number[] {
   return Array.from({ length: Math.round(top / step) + 1 }, (_, i) => +(i * step).toFixed(6));
 }
 
-const shortDay = (d: string) => new Date(d + "T00:00:00Z").toLocaleDateString("fr-FR", { day: "numeric", month: "short", timeZone: "UTC" });
+const dayLabel = (d: string, opts: Intl.DateTimeFormatOptions = { day: "numeric", month: "short" }) =>
+  new Date(d + "T00:00:00Z").toLocaleDateString("fr-FR", { ...opts, timeZone: "UTC" });
 
-/** Courbe d'une seule série : segments droits, 4-5 graduations discrètes, info-bulle au survol. */
-export function LineChart({ days, values, label, format = (n: number) => fmt(n) }: {
-  days: string[]; values: number[]; label: string; format?: (n: number) => string;
-}) {
-  const box = useRef<HTMLDivElement>(null);
+function useWidth() {
+  const ref = useRef<HTMLDivElement>(null);
   const [w, setW] = useState(0);
-  const [hover, setHover] = useState<number | null>(null);
   useLayoutEffect(() => {
-    const el = box.current!;
+    const el = ref.current!;
     const ro = new ResizeObserver(() => setW(el.clientWidth));
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
+  return [ref, w] as const;
+}
 
-  const H = 218, top = 8, bottom = 24;
-  const ys = ticks(Math.max(...values, 0));
+/** Barres arrondies : une par jour, ou par semaine au-delà de 62 jours. La dernière (ou celle survolée) prend l'accent. */
+export function BarChart({ days, values, label, height = 300 }: { days: string[]; values: number[]; label: string; height?: number }) {
+  const [ref, w] = useWidth();
+  const [hover, setHover] = useState<number | null>(null);
+
+  // Regroupement par semaine pour les longues périodes (plus lisible que 365 barres)
+  const weekly = values.length > 62;
+  const buckets = weekly
+    ? Array.from({ length: Math.ceil(values.length / 7) }, (_, i) => ({ day: days[i * 7], value: values.slice(i * 7, i * 7 + 7).reduce((a, b) => a + b, 0) }))
+    : days.map((day, i) => ({ day, value: values[i] }));
+  const n = buckets.length;
+  const ys = ticks(Math.max(...buckets.map((b) => b.value), 0));
   const yMax = ys.at(-1)!;
-  const left = Math.max(...ys.map((t) => format(t).length)) * 7 + 12;
-  const plotW = Math.max(w - left, 10), plotH = H - top - bottom;
-  const x = (i: number) => left + (values.length < 2 ? plotW / 2 : (i / (values.length - 1)) * plotW);
+  const top = 12, bottom = 28;
+  const left = Math.max(...ys.map((t) => fmt(t).length)) * 7 + 14;
+  const plotW = Math.max(w - left, 10), plotH = height - top - bottom;
+  const slot = plotW / Math.max(n, 1);
+  const barW = Math.max(2, Math.min(28, slot * 0.56));
+  const cx = (i: number) => left + slot * i + slot / 2;
   const y = (v: number) => top + plotH - (v / yMax) * plotH;
-  const line = values.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join("");
-  // Étiquettes de dates sur un pas régulier qui tombe sur le dernier jour
-  const step = Math.max(1, Math.ceil((values.length - 1) / Math.max(2, Math.min(6, Math.floor(plotW / 110)))));
-  const xLabels = values.map((_, i) => i).filter((i) => (values.length - 1 - i) % step === 0);
+  const focus = hover ?? n - 1;
+  const every = Math.max(1, Math.ceil(n / Math.max(2, Math.floor(plotW / 84))));
 
   function move(e: React.PointerEvent<SVGSVGElement>) {
     const r = e.currentTarget.getBoundingClientRect();
-    const i = Math.round(((e.clientX - r.left - left) / plotW) * (values.length - 1));
-    setHover(Math.min(Math.max(i, 0), values.length - 1));
+    setHover(Math.min(Math.max(Math.floor((e.clientX - r.left - left) / slot), 0), n - 1));
   }
+  const tipLeft = Math.min(Math.max(cx(focus) + barW / 2 + 10, 0), w - 150);
+  const tipFlip = cx(focus) + barW / 2 + 160 > w;
 
   return (
-    <div ref={box} className="relative">
-      {w > 0 && (
-        <svg width={w} height={H} role="img" aria-label={`${label} par jour, du ${shortDay(days[0])} au ${shortDay(days.at(-1)!)}`}
-          onPointerMove={move} onPointerLeave={() => setHover(null)} className="block touch-none">
+    <div ref={ref} className="relative">
+      {w > 0 && n > 0 && (
+        <svg width={w} height={height} role="img" className="block touch-none" onPointerMove={move} onPointerLeave={() => setHover(null)}
+          aria-label={`${label} ${weekly ? "par semaine" : "par jour"}, du ${dayLabel(days[0])} au ${dayLabel(days.at(-1)!)}`}>
           {ys.map((t) => (
             <g key={t}>
-              <line x1={left} x2={w} y1={y(t)} y2={y(t)} stroke="var(--color-rule)" strokeWidth={t === 0 ? 1.5 : 1} />
-              <text x={left - 10} y={y(t) + 4} textAnchor="end" fontSize="12" fill="var(--color-muted)" className="num">{format(t)}</text>
+              <line x1={left} x2={w} y1={y(t)} y2={y(t)} stroke="var(--color-rule)" strokeDasharray={t ? "3 4" : undefined} />
+              <text x={left - 12} y={y(t) + 4} textAnchor="end" fontSize="12" fill="var(--color-muted)" className="num">{fmt(t)}</text>
             </g>
           ))}
-          {xLabels.map((i) => (
-            <text key={i} x={x(i)} y={H - 6} fontSize="12" fill="var(--color-muted)"
-              textAnchor={i === 0 ? "start" : i === values.length - 1 ? "end" : "middle"}>{shortDay(days[i])}</text>
+          {buckets.map((b, i) => {
+            const h = Math.max(y(0) - y(b.value), b.value ? 4 : 2);
+            return (
+              <rect key={i} x={cx(i) - barW / 2} y={y(0) - h} width={barW} height={h} rx={Math.min(barW / 2, 10)}
+                fill="var(--color-accent)" opacity={i === focus ? 1 : 0.28} style={{ transition: "opacity .15s" }} />
+            );
+          })}
+          {buckets.map((b, i) => (n - 1 - i) % every === 0 && (
+            <text key={i} x={cx(i)} y={height - 8} textAnchor="middle" fontSize="12" fill={i === focus ? "var(--color-ink)" : "var(--color-muted)"}>
+              {dayLabel(b.day, n <= 8 ? { weekday: "short" } : undefined)}
+            </text>
           ))}
-          <path d={`${line}L${x(values.length - 1)},${y(0)}L${x(0)},${y(0)}Z`} fill="var(--color-accent)" opacity="0.08" />
-          <path d={line} fill="none" stroke="var(--color-accent)" strokeWidth="2" strokeLinejoin="round" />
-          {hover !== null && (
-            <g>
-              <line x1={x(hover)} x2={x(hover)} y1={top} y2={y(0)} stroke="var(--color-control)" />
-              <circle cx={x(hover)} cy={y(values[hover])} r="4" fill="var(--color-surface)" stroke="var(--color-accent)" strokeWidth="2" />
-            </g>
-          )}
         </svg>
       )}
-      {hover !== null && (
-        <div className="pointer-events-none absolute top-0 rounded-md border border-border bg-surface px-2 py-1 text-xs whitespace-nowrap shadow-sm"
-          style={{ left: Math.min(Math.max(x(hover) - 60, 0), w - 140) }}>
-          <span className="text-muted">{shortDay(days[hover])}</span> <span className="num ml-1 font-medium">{format(values[hover])}</span>
+      {w > 0 && hover !== null && (
+        <div className="pointer-events-none absolute rounded-xl border border-control bg-raised px-3 py-2 text-xs shadow-lg"
+          style={{ left: tipFlip ? Math.max(cx(focus) - barW / 2 - 150, 0) : tipLeft, top: Math.max(y(buckets[focus].value) - 8, 0) }}>
+          <div className="num flex items-center gap-2 text-sm font-medium"><span className="size-2 rounded-full bg-accent" />{fmt(buckets[focus].value)}</div>
+          <div className="mt-0.5 text-muted">{weekly ? `Semaine du ${dayLabel(buckets[focus].day)}` : dayLabel(buckets[focus].day, { weekday: "long", day: "numeric", month: "long" })}</div>
         </div>
       )}
+    </div>
+  );
+}
+
+const PALETTE = ["var(--color-accent)", "var(--color-chart-2)", "var(--color-chart-3)", "var(--color-chart-4)"];
+
+/** Anneau de répartition : 3 parts nommées au plus, le reste regroupé dans « Autres ». */
+export function Donut({ parts, total, totalLabel }: { parts: { label: string; value: number }[]; total: number; totalLabel: string }) {
+  const sorted = parts.filter((p) => p.value > 0).sort((a, b) => b.value - a.value);
+  const shown = sorted.length > 4 ? [...sorted.slice(0, 3), { label: "Autres", value: sorted.slice(3).reduce((n, p) => n + p.value, 0) }] : sorted;
+  const sum = shown.reduce((n, p) => n + p.value, 0) || 1;
+  const R = 70, r = 46, C = 90;
+  let a = -Math.PI / 2;
+  const arcs = shown.map((p, i) => {
+    const span = (p.value / sum) * Math.PI * 2;
+    const gap = shown.length > 1 ? 0.035 : 0;
+    const a0 = a + gap / 2, a1 = a + span - gap / 2;
+    a += span;
+    const pt = (rad: number, ang: number) => `${C + rad * Math.cos(ang)},${C + rad * Math.sin(ang)}`;
+    const large = a1 - a0 > Math.PI ? 1 : 0;
+    const d = span >= Math.PI * 2 - 0.001
+      ? `M${C - R},${C}a${R},${R} 0 1,0 ${2 * R},0a${R},${R} 0 1,0 ${-2 * R},0M${C - r},${C}a${r},${r} 0 1,1 ${2 * r},0a${r},${r} 0 1,1 ${-2 * r},0`
+      : `M${pt(R, a0)}A${R},${R} 0 ${large} 1 ${pt(R, a1)}L${pt(r, a1)}A${r},${r} 0 ${large} 0 ${pt(r, a0)}Z`;
+    return <path key={p.label} d={d} fill={PALETTE[i]} fillRule="evenodd" />;
+  });
+  return (
+    <div>
+      <div className="relative mx-auto w-[180px]">
+        <svg viewBox="0 0 180 180" className="block w-full" role="img" aria-label={shown.map((p) => `${p.label} ${fmt((p.value / sum) * 100)} %`).join(", ")}>{arcs}</svg>
+        <div className="absolute inset-0 grid place-content-center text-center">
+          <div className="num text-2xl font-light">{fmt(total)}</div>
+          <div className="text-xs text-muted">{totalLabel}</div>
+        </div>
+      </div>
+      <ul className="mt-5 space-y-2">
+        {shown.map((p, i) => (
+          <li key={p.label} className="flex items-center gap-2.5 text-sm">
+            <span className="size-2.5 shrink-0 rounded-full" style={{ background: PALETTE[i] }} aria-hidden />
+            <span className="min-w-0 flex-1 truncate">{p.label}</span>
+            <span className="num text-muted">{fmt((p.value / sum) * 100)} %</span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

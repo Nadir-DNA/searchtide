@@ -1,14 +1,13 @@
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { api, AuthError, type Overview as OverviewData, type Search, type Site, type Traffic } from "./api";
-import { LineChart, fillDays } from "./chart";
-import { Button, Delta, EmptyBox, KpiStrip, Mark, Section, ShareTable, Skeleton, Table, fieldCls, fmt, inputCls } from "./ui";
+import { BarChart, Donut, fillDays } from "./chart";
+import { Button, Card, Delta, EmptyBox, Icon, KpiCard, Mark, Segmented, ShareList, Skeleton, Svg, Table, fmt, inputCls } from "./ui";
 
 const CHANNELS: Record<string, string> = {
   direct: "Accès direct", search: "Moteurs de recherche", social: "Réseaux sociaux", ai: "Assistants IA",
-  referral: "Liens depuis d'autres sites", email: "Email", paid: "Publicité",
+  referral: "Autres sites", email: "Email", paid: "Publicité",
 };
-const PERIODS = [[7, "7 derniers jours"], [28, "28 derniers jours"], [90, "3 derniers mois"], [365, "12 derniers mois"]] as const;
-const periodWord = (days: number) => `vs ${days} j précédents`;
+const PERIODS = [["7", "7 j"], ["28", "28 j"], ["90", "3 mois"], ["365", "12 mois"]] as const;
 
 type Me = { gsc: boolean; demo: boolean };
 
@@ -24,6 +23,16 @@ function useRoute() {
     setQ(read());
   };
   return { q, go };
+}
+
+function useTheme() {
+  const [theme, setTheme] = useState(() => document.documentElement.dataset.theme ?? "dark");
+  const set = (t: string) => {
+    document.documentElement.dataset.theme = t;
+    try { localStorage.setItem("st-theme", t); } catch { /* navigation privée : le choix reste pour la session */ }
+    setTheme(t);
+  };
+  return [theme, set] as const;
 }
 
 export function App() {
@@ -42,15 +51,15 @@ function Login() {
   }
   return (
     <main className="grid min-h-screen place-items-center px-4">
-      <form onSubmit={submit} className="w-full max-w-sm rounded-2xl border border-border bg-surface p-8">
-        <div className="mb-6 flex items-center gap-2"><Mark className="size-7" /><span className="text-base font-semibold">Searchtide</span></div>
-        <h1 className="text-[22px] font-semibold">Connexion</h1>
+      <form onSubmit={submit} className="w-full max-w-sm rounded-[24px] border border-border bg-surface p-8">
+        <div className="mb-8 flex items-center gap-2.5"><Mark className="size-8" /><span className="text-lg">Searchtide</span></div>
+        <h1 className="text-[28px] font-light">Connexion</h1>
         <p className="mt-1 mb-6 text-sm text-muted">Le mot de passe est défini par ADMIN_PASSWORD sur votre instance.</p>
-        <label className="block text-sm font-medium">Mot de passe
-          <input name="password" type="password" autoFocus required className={`${inputCls} mt-2 h-10`} />
+        <label className="block text-sm">Mot de passe
+          <input name="password" type="password" autoFocus required className={`${inputCls} mt-2`} />
         </label>
         {error && <p role="alert" className="mt-2 text-sm text-negative">{error}</p>}
-        <Button className="mt-4 h-10 w-full justify-center">Se connecter</Button>
+        <Button className="mt-5 w-full">Se connecter</Button>
       </form>
     </main>
   );
@@ -58,6 +67,7 @@ function Login() {
 
 function Shell({ me, onLogout }: { me: Me; onLogout: () => void }) {
   const { q, go } = useRoute();
+  const [theme, setTheme] = useTheme();
   const [sites, setSites] = useState<Site[] | null>(null);
   const [menu, setMenu] = useState(false);
   const load = useCallback(() => api<Site[]>("/api/sites").then(setSites).catch((e) => e instanceof AuthError && onLogout()), [onLogout]);
@@ -67,69 +77,64 @@ function Shell({ me, onLogout }: { me: Me; onLogout: () => void }) {
   const nav = (next: Record<string, string | undefined>) => { setMenu(false); go(next); };
 
   const sidebar = (
-    <nav aria-label="Navigation" className="flex h-full flex-col gap-1 px-3 pb-4">
-      <NavItem active={!q.site && q.view !== "add"} onClick={() => nav({ site: undefined, tab: undefined, view: undefined })}>Vue d'ensemble</NavItem>
-      <div className="mt-5 mb-1 px-2.5 text-xs text-muted">Sites</div>
+    <nav aria-label="Navigation" className="flex flex-1 flex-col gap-1 px-4 pb-5">
+      <NavItem icon={Icon.grid} active={!q.site && q.view !== "add"} onClick={() => nav({ site: undefined, tab: undefined, view: undefined })}>Vue d'ensemble</NavItem>
+      <div className="mt-6 mb-1.5 px-3 text-xs text-muted">Sites</div>
       {sites?.map((s) => (
-        <NavItem key={s.id} active={s.domain === q.site} onClick={() => nav({ site: s.domain, view: undefined })}>
+        <NavItem key={s.id} icon={Icon.globe} active={s.domain === q.site} onClick={() => nav({ site: s.domain, view: undefined })}>
           <span className="truncate">{s.domain}</span>
-          {s.today > 0 && <span className="ml-auto size-1.5 shrink-0 rounded-full bg-positive" title="Visites aujourd'hui" />}
+          {s.today > 0 && <span className="num ml-auto text-xs text-muted" title="Visiteurs aujourd'hui">{fmt(s.today)}</span>}
         </NavItem>
       ))}
-      {!me.demo && <NavItem active={q.view === "add"} onClick={() => nav({ site: undefined, view: "add" })}><span className="text-muted">+ Ajouter un site</span></NavItem>}
-      <div className="mt-auto space-y-1 pt-4">
-        <a href="https://github.com/Nadir-DNA/searchtide" target="_blank" rel="noreferrer" className="block rounded-md px-2.5 py-1.5 text-sm text-muted hover:bg-active">Documentation</a>
-        {!me.demo && <button onClick={() => api("/api/logout", { method: "POST" }).then(onLogout)} className="block w-full rounded-md px-2.5 py-1.5 text-left text-sm text-muted hover:bg-active">Déconnexion</button>}
+      {!me.demo && <NavItem icon={Icon.plus} active={q.view === "add"} onClick={() => nav({ site: undefined, view: "add" })}>Ajouter un site</NavItem>}
+      <div className="mt-auto space-y-1 pt-6">
+        <a href="https://github.com/Nadir-DNA/searchtide" target="_blank" rel="noreferrer" className="flex h-10 items-center gap-3 rounded-xl px-3 text-sm text-muted hover:text-ink"><Svg>{Icon.book}</Svg>Documentation</a>
+        {!me.demo && <button onClick={() => api("/api/logout", { method: "POST" }).then(onLogout)} className="flex h-10 w-full items-center gap-3 rounded-xl px-3 text-sm text-muted hover:text-ink"><Svg>{Icon.out}</Svg>Déconnexion</button>}
+        <div className="flex items-center justify-between rounded-2xl border border-border bg-surface px-3 py-2 text-sm">
+          <span className="text-muted">Thème</span>
+          <Segmented label="Thème" value={theme} onChange={setTheme} options={[["light", "Clair"], ["dark", "Sombre"]] as const} />
+        </div>
       </div>
     </nav>
   );
 
   return (
     <div className="flex min-h-screen">
-      {/* Cadre : barre latérale + barre du haut sur le même fond teinté, sans trait entre les deux */}
-      <aside className="sticky top-0 hidden h-screen w-[228px] shrink-0 flex-col md:flex">
-        <div className="flex h-12 items-center gap-2 px-5"><Mark className="size-6" /><span className="font-semibold">Searchtide</span></div>
+      <aside className="sticky top-0 hidden h-screen w-[248px] shrink-0 flex-col md:flex">
+        <div className="flex h-20 items-center gap-2.5 px-7"><Mark className="size-7" /><span className="text-lg">Searchtide</span></div>
         {sidebar}
       </aside>
       {menu && (
         <div className="fixed inset-0 z-20 flex flex-col bg-ground md:hidden">
-          <div className="flex h-12 items-center justify-between px-4">
-            <span className="flex items-center gap-2"><Mark className="size-6" /><span className="font-semibold">Searchtide</span></span>
+          <div className="flex h-14 items-center justify-between px-4">
+            <span className="flex items-center gap-2.5"><Mark className="size-7" /><span className="text-lg">Searchtide</span></span>
             <button onClick={() => setMenu(false)} className="h-11 px-2 text-sm">Fermer</button>
           </div>
           {sidebar}
         </div>
       )}
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-12 items-center gap-3 px-4 md:pr-2 md:pl-0">
-          <button onClick={() => setMenu(true)} className="-ml-2 flex h-11 items-center gap-2 px-2 md:hidden" aria-label="Ouvrir le menu">
-            <Mark className="size-6" /><span className="text-sm">Menu</span>
+      <div className="min-w-0 flex-1 px-4 pb-10 md:pr-8 md:pl-2">
+        <div className="flex h-14 items-center md:hidden">
+          <button onClick={() => setMenu(true)} className="-ml-2 flex h-11 items-center gap-2.5 px-2" aria-label="Ouvrir le menu">
+            <Mark className="size-7" /><span>Menu</span>
           </button>
-          <div className="hidden min-w-0 items-center gap-1.5 text-sm text-muted md:flex">
-            <span>Searchtide</span><span aria-hidden>/</span><span className="truncate text-ink">{site?.domain ?? (q.view === "add" ? "Ajouter un site" : "Vue d'ensemble")}</span>
-          </div>
-          {me.demo && <span className="hidden rounded bg-active px-2 py-0.5 text-xs text-muted sm:inline">Démo en lecture seule</span>}
-          <select value={days} onChange={(e) => go({ days: e.target.value })} className={`${fieldCls} ml-auto`} aria-label="Période">
-            {PERIODS.map(([d, l]) => <option key={d} value={d}>{l}</option>)}
-          </select>
-        </header>
-        {/* La feuille : décalée de 8 px des bords droit et bas, angle 16 px, un trait, pas d'ombre */}
-        <main className="min-w-0 flex-1 border-border bg-surface px-4 py-6 md:mr-2 md:mb-2 md:rounded-2xl md:border md:px-8 md:py-7">
-          {sites === null ? null
-            : q.view === "add" ? <AddSite onAdded={(s) => { load(); go({ site: s.domain, tab: "setup", view: undefined }); }} />
-            : site ? <SiteView key={site.id} site={site} me={me} days={days} tab={q.tab ?? "traffic"} go={go} onChange={load} />
-            : <Overview days={days} demo={me.demo} onOpen={(d) => go({ site: d })} onAdd={() => go({ view: "add" })} />}
-        </main>
+          {me.demo && <span className="ml-auto text-xs text-muted">Démo</span>}
+        </div>
+        {sites === null ? null
+          : q.view === "add" ? <AddSite onAdded={(s) => { load(); go({ site: s.domain, tab: "setup", view: undefined }); }} />
+          : site ? <SiteView key={site.id} site={site} me={me} days={days} tab={q.tab ?? "traffic"} go={go} onChange={load} />
+          : <Overview days={days} demo={me.demo} go={go} />}
       </div>
     </div>
   );
 }
 
-function NavItem({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
+function NavItem({ icon, active, onClick, children }: { icon: ReactNode; active: boolean; onClick: () => void; children: ReactNode }) {
   return (
     <button onClick={onClick} aria-current={active ? "page" : undefined}
-      className={`flex h-8 w-full items-center gap-2 rounded-md px-2.5 text-left text-sm transition-colors ${active ? "bg-active font-medium" : "text-ink/80 hover:bg-active/60"}`}>
-      {children}
+      className={`relative flex h-10 w-full items-center gap-3 rounded-xl px-3 text-left text-sm transition-colors ${active ? "bg-surface text-ink" : "text-muted hover:text-ink"}`}>
+      {active && <span className="absolute top-2.5 -left-4 h-5 w-[3px] rounded-r-full bg-accent" aria-hidden />}
+      <Svg>{icon}</Svg>{children}
     </button>
   );
 }
@@ -143,52 +148,78 @@ function useData<T>(url: string) {
   return { ...state, reload };
 }
 
-function TitleRow({ title, sub, action }: { title: ReactNode; sub?: ReactNode; action?: ReactNode }) {
+function Header({ title, sub, days, go, demo, children }: {
+  title: ReactNode; sub?: ReactNode; days?: number; go?: (n: Record<string, string | undefined>) => void; demo?: boolean; children?: ReactNode;
+}) {
   return (
-    <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+    <header className="flex flex-wrap items-center justify-between gap-4 pt-4 pb-6 md:min-h-20 md:pt-6">
       <div className="min-w-0">
-        <h1 className="truncate text-[22px] leading-7 font-semibold">{title}</h1>
+        <div className="flex items-center gap-3">
+          <h1 className="truncate text-2xl leading-9 font-light md:text-[30px] md:leading-10">{title}</h1>
+          {demo && <span className="hidden rounded-full border border-border px-2.5 py-0.5 text-xs text-muted md:inline">Démo en lecture seule</span>}
+        </div>
         {sub && <p className="mt-1 text-sm text-muted">{sub}</p>}
       </div>
-      {action}
-    </div>
+      <div className="flex flex-wrap items-center gap-3">
+        {children}
+        {days && go && <Segmented label="Période" value={String(days)} onChange={(v) => go({ days: v })} options={PERIODS} />}
+      </div>
+    </header>
   );
 }
 
 function ErrorLine({ error, retry }: { error: string; retry: () => void }) {
-  return <EmptyBox>Impossible de charger les données : {error}. <button onClick={retry} className="font-medium text-ink underline">Réessayer</button></EmptyBox>;
+  return <EmptyBox>Impossible de charger les données : {error}. <button onClick={retry} className="text-ink underline">Réessayer</button></EmptyBox>;
+}
+
+function KpiSkeleton() {
+  return <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">{[0, 1, 2, 3].map((i) => <div key={i} className="space-y-3 rounded-[20px] border border-border bg-surface p-5"><Skeleton className="h-4 w-20" /><Skeleton className="h-9 w-28" /></div>)}</div>;
 }
 
 // ── Vue d'ensemble : tous les sites ──
-function Overview({ days, demo, onOpen, onAdd }: { days: number; demo: boolean; onOpen: (d: string) => void; onAdd: () => void }) {
+function Overview({ days, demo, go }: { days: number; demo: boolean; go: (n: Record<string, string | undefined>) => void }) {
   const { data: o, error, reload } = useData<OverviewData>(`/api/overview?days=${days}`);
-  const data = o?.sites;
-  const visitors = data?.reduce((n, s) => n + s.traffic.visitors, 0) ?? 0;
-  const ai = data?.reduce((n, s) => n + s.traffic.ai, 0) ?? 0;
-  const best = data?.slice().sort((a, b) => b.traffic.visitors - a.traffic.visitors)[0];
+  const sites = o?.sites;
+  const sum = (f: (s: NonNullable<typeof sites>[number]) => number) => sites?.reduce((n, s) => n + f(s), 0) ?? 0;
+  const visitors = sum((s) => s.traffic.visitors), prev = sum((s) => s.trafficPrev.visitors);
+  const linked = sites?.filter((s) => s.search) ?? [];
   return (
     <>
-      <TitleRow title="Vue d'ensemble"
-        sub={data?.length ? `${fmt(visitors)} visiteurs sur ${days} jours, dont ${fmt(ai)} venus d'assistants IA${best?.traffic.visitors ? ` · ${best.domain} en tête` : ""}` : undefined}
-        action={!demo && <Button onClick={onAdd}>Ajouter un site</Button>} />
-      {error ? <ErrorLine error={error} retry={reload} /> : !data ? <Skeleton className="h-40" /> : !data.length ? (
+      <Header title="Vue d'ensemble" days={days} go={go} demo={demo}
+        sub={sites?.length ? `${sites.length} site${sites.length > 1 ? "s" : ""} suivi${sites.length > 1 ? "s" : ""} · ${days} derniers jours` : undefined}>
+        {!demo && <Button onClick={() => go({ view: "add" })}>Ajouter un site</Button>}
+      </Header>
+      {error ? <ErrorLine error={error} retry={reload} /> : !o ? <KpiSkeleton /> : !sites!.length ? (
         <EmptyBox>Aucun site pour l'instant. Ajoutez votre premier site pour obtenir le script de suivi.</EmptyBox>
       ) : (
-        <div className="space-y-10">
-        <Section title="Visiteurs par jour, tous sites confondus">
-          <LineChart label="Visiteurs, tous sites" {...fillDays(o!.daily, o!.range.from, o!.range.to, (d) => d.visitors)} />
-        </Section>
-        <Section title="Sites" sub="Cliquez sur un site pour voir son trafic et ses mots-clés Google.">
-        <Table rows={data} onRow={(s) => onOpen(s.domain)} empty="" cols={[
-          { label: "Site", className: "w-1/3", render: (s) => <span className="flex items-center gap-2 font-medium">{s.domain}{s.today > 0 && <span className="text-xs font-normal text-muted">· {fmt(s.today)} aujourd'hui</span>}</span> },
-          { label: "Visiteurs", num: true, render: (s) => fmt(s.traffic.visitors) },
-          { label: "Évolution", num: true, render: (s) => <Delta now={s.traffic.visitors} before={s.trafficPrev.visitors} window="" /> },
-          { label: "Pages vues", num: true, render: (s) => fmt(s.traffic.pageviews) },
-          { label: "Depuis les IA", num: true, render: (s) => fmt(s.traffic.ai) },
-          { label: "Clics Google", num: true, render: (s) => s.search ? fmt(s.search.clicks) : <span className="text-muted">—</span> },
-          { label: "Position moy.", num: true, render: (s) => s.search?.position != null ? fmt(s.search.position, 1) : <span className="text-muted">—</span> },
-        ]} />
-        </Section>
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+            <KpiCard label="Visiteurs" value={fmt(visitors)} delta={<Delta now={visitors} before={prev} />} />
+            <KpiCard label="Pages vues" value={fmt(sum((s) => s.traffic.pageviews))} delta={<Delta now={sum((s) => s.traffic.pageviews)} before={sum((s) => s.trafficPrev.pageviews)} />} />
+            <KpiCard label="Venus d'assistants IA" value={fmt(sum((s) => s.traffic.ai))} delta={<Delta now={sum((s) => s.traffic.ai)} before={sum((s) => s.trafficPrev.ai)} />} />
+            <KpiCard label="Clics Google" value={linked.length ? fmt(linked.reduce((n, s) => n + s.search!.clicks, 0)) : "—"}
+              hint={linked.length ? `${linked.length} site${linked.length > 1 ? "s" : ""} relié${linked.length > 1 ? "s" : ""} à Search Console` : "Aucun site relié à Search Console"} />
+          </div>
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+            <Card title="Visiteurs, tous sites" action={<Delta now={visitors} before={prev} />}>
+              <BarChart label="Visiteurs, tous sites" {...fillDays(o.daily, o.range.from, o.range.to, (d) => d.visitors)} />
+            </Card>
+            <Card title="Répartition par site">
+              {visitors ? <Donut total={visitors} totalLabel="visiteurs" parts={sites!.map((s) => ({ label: s.domain, value: s.traffic.visitors }))} />
+                : <EmptyBox>Aucune visite sur la période.</EmptyBox>}
+            </Card>
+          </div>
+          <Card title="Sites">
+            <Table rows={sites!} onRow={(s) => go({ site: s.domain })} empty="" cols={[
+              { label: "Site", className: "w-1/3", render: (s) => <span className="flex items-center gap-2.5"><span className={`size-2 shrink-0 rounded-full ${s.today ? "bg-accent" : "bg-control"}`} title={s.today ? "Visites aujourd'hui" : "Aucune visite aujourd'hui"} />{s.domain}</span> },
+              { label: "Visiteurs", num: true, render: (s) => fmt(s.traffic.visitors) },
+              { label: "Évolution", num: true, render: (s) => <Delta now={s.traffic.visitors} before={s.trafficPrev.visitors} /> },
+              { label: "Pages vues", num: true, render: (s) => fmt(s.traffic.pageviews) },
+              { label: "Depuis les IA", num: true, render: (s) => fmt(s.traffic.ai) },
+              { label: "Clics Google", num: true, render: (s) => s.search ? fmt(s.search.clicks) : <span className="text-muted">—</span> },
+              { label: "Position moy.", num: true, render: (s) => s.search?.position != null ? fmt(s.search.position, 1) : <span className="text-muted">—</span> },
+            ]} />
+          </Card>
         </div>
       )}
     </>
@@ -204,15 +235,17 @@ function AddSite({ onAdded }: { onAdded: (s: Site) => void }) {
   }
   return (
     <>
-      <TitleRow title="Ajouter un site" sub="Vous obtiendrez ensuite le script à coller dans le site." />
-      <form onSubmit={submit} className="max-w-md">
-        <label className="block text-sm font-medium">Domaine
-          <input name="domain" placeholder="exemple.com" required autoFocus className={`${inputCls} mt-2 h-10`} />
-        </label>
-        <p className="mt-2 text-xs text-muted">Sans https:// ni www. Les sous-domaines sont comptés avec le domaine.</p>
-        {error && <p role="alert" className="mt-2 text-sm text-negative">{error}</p>}
-        <Button className="mt-4">Ajouter le site</Button>
-      </form>
+      <Header title="Ajouter un site" sub="Vous obtiendrez ensuite le script à coller dans le site." />
+      <Card className="max-w-lg">
+        <form onSubmit={submit}>
+          <label className="block text-sm">Domaine
+            <input name="domain" placeholder="exemple.com" required autoFocus className={`${inputCls} mt-2`} />
+          </label>
+          <p className="mt-2 text-xs text-muted">Sans https:// ni www. Les sous-domaines sont comptés avec le domaine.</p>
+          {error && <p role="alert" className="mt-2 text-sm text-negative">{error}</p>}
+          <Button className="mt-5">Ajouter le site</Button>
+        </form>
+      </Card>
     </>
   );
 }
@@ -222,20 +255,12 @@ function SiteView({ site, me, days, tab, go, onChange }: {
   site: Site; me: Me; days: number; tab: string; go: (n: Record<string, string | undefined>) => void; onChange: () => void;
 }) {
   const tabs = [["traffic", "Trafic"], ["search", "Recherche Google"], ["setup", "Installation"]] as const;
-  const { data: t } = useData<Traffic>(`/api/sites/${site.id}/traffic?days=${days}`);
-  const top = t?.pages[0];
-  const finding = t?.totals.visitors
-    ? `${fmt(t.totals.visitors)} visiteurs sur ${days} jours · ${fmt((t.totals.ai / t.totals.visitors) * 100)} % venus d'assistants IA${top ? ` · page la plus vue : ${top.key}` : ""}`
-    : undefined;
   return (
     <>
-      <TitleRow title={site.domain} sub={finding}
-        action={<a href={`https://${site.domain}`} target="_blank" rel="noreferrer" className="text-sm text-muted hover:text-ink">Ouvrir le site ↗</a>} />
-      <div role="tablist" className="-mt-2 mb-7 flex gap-6 border-b border-border">
-        {tabs.map(([k, l]) => (
-          <button key={k} role="tab" aria-selected={tab === k} onClick={() => go({ tab: k === "traffic" ? undefined : k })}
-            className={`-mb-px h-10 border-b-2 text-sm transition-colors ${tab === k ? "border-ink font-medium" : "border-transparent text-muted hover:text-ink"}`}>{l}</button>
-        ))}
+      <Header title={site.domain} days={tab === "setup" ? undefined : days} go={go} demo={me.demo}
+        sub={<a href={`https://${site.domain}`} target="_blank" rel="noreferrer" className="hover:text-ink">Ouvrir le site ↗</a>} />
+      <div className="mb-5 -mt-1 overflow-x-auto">
+        <Segmented label="Sections du site" value={tab as (typeof tabs)[number][0]} onChange={(v) => go({ tab: v === "traffic" ? undefined : v })} options={tabs} />
       </div>
       {tab === "search" ? <SearchView site={site} me={me} days={days} onChange={onChange} onSetup={() => go({ tab: "setup" })} />
         : tab === "setup" ? <SetupView site={site} me={me} onChange={onChange} />
@@ -244,50 +269,57 @@ function SiteView({ site, me, days, tab, go, onChange }: {
   );
 }
 
-function KpiSkeleton() {
-  return <div className="grid grid-cols-2 gap-6 lg:grid-cols-4">{[0, 1, 2, 3].map((i) => <div key={i} className="space-y-2 pt-3"><Skeleton className="h-3 w-20" /><Skeleton className="h-8 w-24" /></div>)}</div>;
-}
+const regionNames = new Intl.DisplayNames(["fr"], { type: "region" });
+const countryName = (code: string) => { try { return regionNames.of(code) ?? code; } catch { return code; } };
 
 function TrafficView({ site, days, onSetup }: { site: Site; days: number; onSetup: () => void }) {
   const { data: t, error, reload } = useData<Traffic>(`/api/sites/${site.id}/traffic?days=${days}`);
   const [metric, setMetric] = useState<"visitors" | "pageviews">("visitors");
+  const [tech, setTech] = useState<"devices" | "browsers">("devices");
   if (error) return <ErrorLine error={error} retry={reload} />;
   if (!t) return <KpiSkeleton />;
   if (!t.totals.pageviews && !t.previous.pageviews) {
     return (
       <EmptyBox>
         Aucune visite sur cette période. Si vous venez d'ajouter le site, collez le script de suivi puis ouvrez une page du site.{" "}
-        <button onClick={onSetup} className="font-medium text-ink underline">Voir le script</button>
+        <button onClick={onSetup} className="text-ink underline">Voir le script</button>
       </EmptyBox>
     );
   }
-  const w = periodWord(days);
   const chart = fillDays(t.daily, t.range.from, t.range.to, (d) => d[metric]);
+  const metricName = metric === "visitors" ? "Visiteurs" : "Pages vues";
   return (
-    <div className="space-y-10">
-      <KpiStrip selected={metric} selectable={["visitors", "pageviews"]} onSelect={(id) => setMetric(id as typeof metric)} items={[
-        { id: "visitors", label: "Visiteurs", value: fmt(t.totals.visitors), delta: <Delta now={t.totals.visitors} before={t.previous.visitors} window={w} /> },
-        { id: "pageviews", label: "Pages vues", value: fmt(t.totals.pageviews), delta: <Delta now={t.totals.pageviews} before={t.previous.pageviews} window={w} /> },
-        { id: "ppv", label: "Pages par visiteur", value: t.totals.visitors ? fmt(t.totals.pageviews / t.totals.visitors, 1) : "—" },
-        { id: "ai", label: "Venus d'assistants IA", value: fmt(t.totals.ai), delta: <Delta now={t.totals.ai} before={t.previous.ai} window={w} /> },
-      ]} />
-      <LineChart days={chart.days} values={chart.values} label={metric === "visitors" ? "Visiteurs" : "Pages vues"} />
-      <div className="grid gap-x-10 gap-y-10 lg:grid-cols-2">
-        <ShareTable title="Pages" label="Page" rows={t.pages} empty="Aucune page vue sur cette période." />
-        <ShareTable title="Provenance" label="Canal" rows={t.channels} map={(k) => CHANNELS[k] ?? k} empty="Aucune visite sur cette période." />
-        <ShareTable title="Sites référents" label="Site" rows={t.referrers} empty="Aucun lien depuis un autre site sur cette période." />
-        <ShareTable title="Assistants IA" label="Assistant" rows={t.aiReferrers} empty="Personne n'est arrivé depuis ChatGPT, Perplexity, Claude ou Gemini sur cette période." />
-        <ShareTable title="Pays" label="Pays" rows={t.countries} map={countryName} empty="Pays inconnus : placez l'instance derrière Cloudflare pour les obtenir." />
-        <ShareTable title="Appareils" label="Appareil" rows={t.devices} empty="Aucune donnée." />
-        <ShareTable title="Navigateurs" label="Navigateur" rows={t.browsers} empty="Aucune donnée." />
-        <ShareTable title="Campagnes" label="utm_campaign" rows={t.campaigns} empty="Aucune visite avec un paramètre utm_campaign." />
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <KpiCard label="Visiteurs" value={fmt(t.totals.visitors)} delta={<Delta now={t.totals.visitors} before={t.previous.visitors} />} active={metric === "visitors"} onClick={() => setMetric("visitors")} />
+        <KpiCard label="Pages vues" value={fmt(t.totals.pageviews)} delta={<Delta now={t.totals.pageviews} before={t.previous.pageviews} />} active={metric === "pageviews"} onClick={() => setMetric("pageviews")} />
+        <KpiCard label="Pages par visiteur" value={t.totals.visitors ? fmt(t.totals.pageviews / t.totals.visitors, 1) : "—"} />
+        <KpiCard label="Venus d'assistants IA" value={fmt(t.totals.ai)} delta={<Delta now={t.totals.ai} before={t.previous.ai} />}
+          hint={t.totals.visitors ? `${fmt((t.totals.ai / t.totals.visitors) * 100)} % des visiteurs` : undefined} />
+      </div>
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+        <Card title={metricName} action={
+          <Segmented label="Série" value={metric} onChange={setMetric} options={[["visitors", "Visiteurs"], ["pageviews", "Pages vues"]] as const} />
+        }>
+          <BarChart label={metricName} days={chart.days} values={chart.values} />
+        </Card>
+        <Card title="Provenance">
+          <Donut total={t.totals.visitors} totalLabel="visiteurs" parts={t.channels.map((c) => ({ label: CHANNELS[c.key] ?? c.key, value: c.visitors }))} />
+        </Card>
+      </div>
+      <div className="grid gap-4 lg:grid-cols-3">
+        <Card title="Pages"><ShareList label="Page" rows={t.pages} empty="Aucune page vue sur cette période." /></Card>
+        <Card title="Sites référents"><ShareList label="Site" rows={t.referrers} empty="Aucun lien depuis un autre site sur cette période." /></Card>
+        <Card title="Assistants IA"><ShareList label="Assistant" rows={t.aiReferrers} empty="Personne n'est arrivé depuis ChatGPT, Perplexity, Claude ou Gemini sur cette période." /></Card>
+        <Card title="Pays"><ShareList label="Pays" rows={t.countries} map={countryName} empty="Pays inconnus : placez l'instance derrière Cloudflare pour les obtenir." /></Card>
+        <Card title="Appareils" action={<Segmented label="Détail" value={tech} onChange={setTech} options={[["devices", "Type"], ["browsers", "Navigateur"]] as const} />}>
+          <ShareList label={tech === "devices" ? "Appareil" : "Navigateur"} rows={t[tech]} empty="Aucune donnée." />
+        </Card>
+        <Card title="Campagnes"><ShareList label="utm_campaign" rows={t.campaigns} empty="Aucune visite avec un paramètre utm_campaign sur cette période." /></Card>
       </div>
     </div>
   );
 }
-
-const regionNames = new Intl.DisplayNames(["fr"], { type: "region" });
-const countryName = (code: string) => { try { return regionNames.of(code) ?? code; } catch { return code; } };
 
 function SearchView({ site, me, days, onChange, onSetup }: { site: Site; me: Me; days: number; onChange: () => void; onSetup: () => void }) {
   const linked = me.gsc && !!site.gsc_property;
@@ -305,66 +337,71 @@ function SearchView({ site, me, days, onChange, onSetup }: { site: Site; me: Me;
     return (
       <EmptyBox>
         Ce site n'est pas encore relié à Google Search Console : c'est elle qui donne les mots-clés, les clics et la position de chaque page.{" "}
-        <button onClick={onSetup} className="font-medium text-ink underline">Relier Search Console</button>
+        <button onClick={onSetup} className="text-ink underline">Relier Search Console</button>
       </EmptyBox>
     );
   }
   if (error) return <ErrorLine error={error} retry={reload} />;
   if (!s) return <KpiSkeleton />;
-  const w = periodWord(days);
   // Google publie avec 2-3 jours de retard : l'axe s'arrête au dernier jour publié au lieu de tomber à zéro
   const chart = fillDays(s.daily, s.range.from, s.daily.at(-1)?.day ?? s.range.to, (d) => d[metric]);
+  const buckets = [["Top 3", 0, 3.5], ["4 à 10", 3.5, 10.5], ["11 à 20", 10.5, 20.5], ["Au-delà", 20.5, Infinity]] as const;
+  const queryCols = (label: string) => [
+    { label, className: "w-1/2", render: (r: Search["queries"][number]) => r.query },
+    { label: "Clics", num: true, render: (r: Search["queries"][number]) => fmt(r.clicks) },
+    { label: "Impr.", num: true, render: (r: Search["queries"][number]) => fmt(r.impressions) },
+    { label: "Position", num: true, render: (r: Search["queries"][number]) => fmt(r.position, 1) },
+  ];
   return (
-    <div className="space-y-10">
-      <div className="-mt-3 flex flex-wrap items-center gap-3 text-sm text-muted">
-        <span className={`size-1.5 rounded-full ${site.sync_error ? "bg-negative" : "bg-positive"}`} aria-hidden />
-        <span>{site.synced_at ? `Données Google importées le ${new Date(site.synced_at).toLocaleString("fr-FR", { dateStyle: "medium", timeStyle: "short" })}` : "Pas encore importé"} · Google publie avec 2 à 3 jours de retard</span>
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-3 text-sm text-muted">
+        <span className={`size-2 rounded-full ${site.sync_error ? "bg-negative" : "bg-accent"}`} aria-hidden />
+        <span>{site.synced_at ? `Importé le ${new Date(site.synced_at).toLocaleString("fr-FR", { dateStyle: "medium", timeStyle: "short" })}` : "Pas encore importé"} · Google publie avec 2 à 3 jours de retard</span>
         {!me.demo && <Button variant="secondary" onClick={sync} disabled={syncing} className="ml-auto">{syncing ? "Import en cours…" : "Importer maintenant"}</Button>}
       </div>
-      {(syncError || site.sync_error) && <p role="alert" className="-mt-6 text-sm text-negative">{syncError || site.sync_error}</p>}
-      <KpiStrip selected={metric} selectable={["clicks", "impressions"]} onSelect={(id) => setMetric(id as typeof metric)} items={[
-        { id: "clicks", label: "Clics", value: fmt(s.totals.clicks), delta: <Delta now={s.totals.clicks} before={s.previous.clicks} window={w} /> },
-        { id: "impressions", label: "Impressions", value: fmt(s.totals.impressions), delta: <Delta now={s.totals.impressions} before={s.previous.impressions} window={w} /> },
-        { id: "ctr", label: "Taux de clic", value: s.totals.ctr != null ? `${fmt(s.totals.ctr, 1)} %` : "—" },
-        { id: "position", label: "Position moyenne", value: fmt(s.totals.position, 1), delta: <Delta now={s.totals.position} before={s.previous.position} lowerIsBetter window={w} /> },
-      ]} />
-      <LineChart days={chart.days} values={chart.values} label={metric === "clicks" ? "Clics" : "Impressions"} />
-      <Section title="À travailler en priorité" sub="Mots-clés en position 4 à 20 qui ont déjà des impressions : un effort sur la page peut les faire passer en première page.">
-        <Table rows={s.opportunities.slice(0, 8)} empty="Aucun mot-clé entre la 4e et la 20e position sur cette période." cols={[
-          { label: "Mot-clé", className: "w-1/2", render: (r) => r.query },
-          { label: "Impressions", num: true, render: (r) => fmt(r.impressions) },
-          { label: "Clics", num: true, render: (r) => fmt(r.clicks) },
-          { label: "Position", num: true, render: (r) => fmt(r.position, 1) },
-        ]} />
-      </Section>
-      <div className="grid gap-x-10 gap-y-10 lg:grid-cols-2">
-        <Section title="Mots-clés">
-          <Table rows={s.queries.slice(0, 8)} empty="Aucun mot-clé sur cette période." cols={[
-            { label: "Mot-clé", className: "w-1/2", render: (r) => r.query },
-            { label: "Clics", num: true, render: (r) => fmt(r.clicks) },
-            { label: "Impr.", num: true, render: (r) => fmt(r.impressions) },
-            { label: "Position", num: true, render: (r) => fmt(r.position, 1) },
-          ]} />
-        </Section>
-        <Section title="Pages">
+      {(syncError || site.sync_error) && <p role="alert" className="text-sm text-negative">{syncError || site.sync_error}</p>}
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <KpiCard label="Clics" value={fmt(s.totals.clicks)} delta={<Delta now={s.totals.clicks} before={s.previous.clicks} />} active={metric === "clicks"} onClick={() => setMetric("clicks")} />
+        <KpiCard label="Impressions" value={fmt(s.totals.impressions)} delta={<Delta now={s.totals.impressions} before={s.previous.impressions} />} active={metric === "impressions"} onClick={() => setMetric("impressions")} />
+        <KpiCard label="Taux de clic" value={s.totals.ctr != null ? `${fmt(s.totals.ctr, 1)} %` : "—"} />
+        <KpiCard label="Position moyenne" value={fmt(s.totals.position, 1)} delta={<Delta now={s.totals.position} before={s.previous.position} lowerIsBetter />} hint="Plus c'est bas, mieux c'est" />
+      </div>
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+        <Card title={metric === "clicks" ? "Clics" : "Impressions"} action={
+          <Segmented label="Série" value={metric} onChange={setMetric} options={[["clicks", "Clics"], ["impressions", "Impressions"]] as const} />
+        }>
+          <BarChart label={metric === "clicks" ? "Clics" : "Impressions"} days={chart.days} values={chart.values} />
+        </Card>
+        <Card title="Positions des mots-clés">
+          <Donut total={s.queries.length} totalLabel="mots-clés" parts={buckets.map(([label, lo, hi]) => ({ label, value: s.queries.filter((q) => q.position > lo && q.position <= hi).length })).filter((p) => p.value)} />
+        </Card>
+      </div>
+      <Card title="À travailler en priorité" action={<span className="text-sm text-muted">Position 4 à 20, déjà des impressions</span>}>
+        <Table rows={s.opportunities.slice(0, 8)} empty="Aucun mot-clé entre la 4e et la 20e position sur cette période." cols={queryCols("Mot-clé")} />
+      </Card>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card title="Mots-clés"><Table rows={s.queries.slice(0, 8)} empty="Aucun mot-clé sur cette période." cols={queryCols("Mot-clé")} /></Card>
+        <Card title="Pages">
           <Table rows={s.pages.slice(0, 8)} empty="Aucune page sur cette période." cols={[
             { label: "Page", className: "w-1/2", render: (r) => r.page.replace(/^https?:\/\/[^/]+/, "") || "/" },
             { label: "Clics", num: true, render: (r) => fmt(r.clicks) },
             { label: "Impr.", num: true, render: (r) => fmt(r.impressions) },
             { label: "Position", num: true, render: (r) => fmt(r.position, 1) },
           ]} />
-        </Section>
+        </Card>
       </div>
     </div>
   );
 }
 
-function SettingRow({ title, sub, children }: { title: string; sub: ReactNode; children: ReactNode }) {
+function SettingCard({ title, sub, children }: { title: string; sub: ReactNode; children: ReactNode }) {
   return (
-    <div className="grid gap-4 border-t border-border py-8 first:border-t-0 first:pt-0 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:gap-10">
-      <div><h2 className="text-base font-medium">{title}</h2><p className="mt-1 text-sm text-muted">{sub}</p></div>
-      <div className="min-w-0 rounded-2xl bg-raised p-4">{children}</div>
-    </div>
+    <Card>
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:gap-10">
+        <div><h2 className="text-lg font-light">{title}</h2><p className="mt-1 text-sm text-muted">{sub}</p></div>
+        <div className="min-w-0">{children}</div>
+      </div>
+    </Card>
   );
 }
 
@@ -372,7 +409,7 @@ function Copyable({ text }: { text: string }) {
   const [done, setDone] = useState(false);
   return (
     <div className="flex items-start gap-2">
-      <pre className="min-w-0 flex-1 overflow-x-auto rounded-lg border border-border bg-surface px-3 py-2.5 font-mono text-xs leading-5"><code>{text}</code></pre>
+      <pre className="min-w-0 flex-1 overflow-x-auto rounded-xl border border-border bg-raised px-3 py-2.5 font-mono text-xs leading-5"><code>{text}</code></pre>
       <Button variant="secondary" onClick={() => navigator.clipboard.writeText(text).then(() => { setDone(true); setTimeout(() => setDone(false), 1500); })}>
         {done ? "Copié" : "Copier"}
       </Button>
@@ -394,32 +431,32 @@ function SetupView({ site, me, onChange }: { site: Site; me: Me; onChange: () =>
     location.search = "";
   }
   return (
-    <div>
-      <SettingRow title="Script de suivi" sub={<>À coller dans le &lt;head&gt; de chaque page. Sans cookie : aucune bannière de consentement n'est nécessaire.</>}>
+    <div className="space-y-4">
+      <SettingCard title="Script de suivi" sub={<>À coller dans le &lt;head&gt; de chaque page. Sans cookie : aucune bannière de consentement n'est nécessaire.</>}>
         <Copyable text={`<script defer src="${location.origin}/script.js" data-site="${site.domain}"></script>`} />
         <p className="mt-3 text-xs text-muted">Pour compter une action : <code className="font-mono">searchtide("inscription")</code> en JavaScript, ou l'attribut <code className="font-mono">data-searchtide="clic-cta"</code> sur un bouton.</p>
-      </SettingRow>
-      <SettingRow title="Google Search Console" sub="Mots-clés, clics, impressions et position de chaque page. Importés automatiquement toutes les 6 heures.">
+      </SettingCard>
+      <SettingCard title="Google Search Console" sub="Mots-clés, clics, impressions et position de chaque page. Importés automatiquement toutes les 6 heures.">
         {!me.gsc ? (
           <p className="text-sm">Non configuré sur cette instance : renseignez <code className="font-mono text-xs">GOOGLE_SERVICE_ACCOUNT_JSON</code> puis redémarrez (voir la documentation).</p>
         ) : error ? <p role="alert" className="text-sm text-negative">{error}</p> : (
-          <label className="block text-sm font-medium">Propriété Search Console
-            <select className={`${inputCls} mt-2 h-10`} value={site.gsc_property ?? ""} disabled={me.demo} onChange={(e) => link(e.target.value)}>
+          <label className="block text-sm">Propriété Search Console
+            <select className={`${inputCls} mt-2`} value={site.gsc_property ?? ""} disabled={me.demo} onChange={(e) => link(e.target.value)}>
               <option value="">Non reliée</option>
               {site.gsc_property && !props?.includes(site.gsc_property) && <option value={site.gsc_property}>{site.gsc_property}</option>}
               {props?.map((p) => <option key={p} value={p}>{p}</option>)}
             </select>
-            {props?.length === 0 && <span className="mt-2 block text-xs font-normal text-muted">Aucune propriété visible : ajoutez l'email du compte de service comme utilisateur du site dans Search Console.</span>}
+            {props?.length === 0 && <span className="mt-2 block text-xs text-muted">Aucune propriété visible : ajoutez l'email du compte de service comme utilisateur du site dans Search Console.</span>}
           </label>
         )}
-      </SettingRow>
-      <SettingRow title="Agents IA" sub="Vos agents (Claude, Cursor…) lisent les statistiques par le serveur MCP de l'instance, avec la clé API_KEY.">
+      </SettingCard>
+      <SettingCard title="Agents IA" sub="Vos agents (Claude, Cursor…) lisent les statistiques par le serveur MCP de l'instance, avec la clé API_KEY.">
         <Copyable text={`claude mcp add --transport http searchtide ${location.origin}/mcp --header "Authorization: Bearer VOTRE_CLE"`} />
-      </SettingRow>
+      </SettingCard>
       {!me.demo && (
-        <SettingRow title="Supprimer le site" sub="Efface le site et toutes ses statistiques. Définitif.">
-          <button onClick={remove} className="h-8 rounded-md border border-negative/40 px-3 text-sm font-medium text-negative hover:bg-negative/5">Supprimer {site.domain}</button>
-        </SettingRow>
+        <SettingCard title="Supprimer le site" sub="Efface le site et toutes ses statistiques. Définitif.">
+          <button onClick={remove} className="h-9 rounded-full border border-negative/40 px-4 text-sm font-medium text-negative hover:bg-negative-bg">Supprimer {site.domain}</button>
+        </SettingCard>
       )}
     </div>
   );

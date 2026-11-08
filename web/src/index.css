@@ -1,47 +1,54 @@
 @import "tailwindcss";
 
-/* Style « feuille encadrée » : un cadre teinté (barre latérale + barre du haut) et le contenu sur une feuille blanche.
-   Le cadre prend une teinte d'eau (« tide ») ; la seule couleur forte est la série principale des graphiques. */
+/* Sombre par défaut : cartes arrondies sur un fond presque noir, un seul accent citron pour les données.
+   Le thème clair reprend les mêmes rôles (data-theme="light" sur <html>). */
 @theme {
   --font-sans: "IBM Plex Sans", Inter, system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
 
-  --color-ground: #f1f5f6;
+  --color-ground: #0c0d0e;
+  --color-surface: #151719;
+  --color-raised: #1d2023;
+  --color-active: #26292d;
+  --color-border: #22262a;
+  --color-rule: #1f2326;
+  --color-control: #363b40;
+  --color-ink: #f3f4f5;
+  --color-muted: #9ba2a7;
+  --color-accent: #c8f55a;
+  --color-on-accent: #0c0d0e;
+  --color-chart-2: #7cc4e8;
+  --color-chart-3: #e3bf7a;
+  --color-chart-4: #5f676d;
+  --color-positive: #6ee7a0;
+  --color-positive-bg: #15301f;
+  --color-negative: #ff8a8f;
+  --color-negative-bg: #36191c;
+}
+
+:root[data-theme="light"] {
+  --color-ground: #edf0f2;
   --color-surface: #ffffff;
-  --color-raised: #f3f6f7;
-  --color-active: #e4eaec;
-  --color-border: #e3e8ea;
-  --color-rule: #eef1f2;
-  --color-control: #cdd3d6;
-  --color-ink: #131416;
-  --color-muted: #5b6164;
-  --color-accent: #1b6c80;
-  --color-accent-soft: #e3eff2;
+  --color-raised: #f3f5f7;
+  --color-active: #e7eaed;
+  --color-border: #e1e5e8;
+  --color-rule: #edf0f2;
+  --color-control: #cdd3d8;
+  --color-ink: #111315;
+  --color-muted: #5b6267;
+  --color-accent: #a3e635;
+  --color-on-accent: #111315;
+  --color-chart-2: #3b9fd1;
+  --color-chart-3: #c9952f;
+  --color-chart-4: #aab2b8;
   --color-positive: #1e7b4f;
-  --color-negative: #c4242a;
-  --color-primary: #1d1f20;
+  --color-positive-bg: #dcfae5;
+  --color-negative: #b4232a;
+  --color-negative-bg: #ffe9e6;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --color-ground: #0b0d0e;
-    --color-surface: #131617;
-    --color-raised: #1b1f20;
-    --color-active: #23292b;
-    --color-border: #262c2e;
-    --color-rule: #1e2325;
-    --color-control: #3d4447;
-    --color-ink: #f2f4f5;
-    --color-muted: #a3abae;
-    --color-accent: #4fb3c9;
-    --color-accent-soft: #15333a;
-    --color-positive: #3fc07a;
-    --color-negative: #f0707a;
-    --color-primary: #f2f4f5;
-  }
-}
-
-html { color-scheme: light dark; }
+html { color-scheme: dark; }
+html[data-theme="light"] { color-scheme: light; }
 body {
   background: var(--color-ground);
   color: var(--color-ink);
@@ -51,4 +58,4 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 .num { font-variant-numeric: tabular-nums; }
-:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; border-radius: 4px; }
+:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; border-radius: 6px; }
