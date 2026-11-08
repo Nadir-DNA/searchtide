@@ -46,6 +46,18 @@ test("opportunités Search Console", () => {
   assert.deepEqual(o.map((r) => [r.query, r.position, r.impressions]), [["salon casablanca", 9.6, 500]]);
 });
 
+test("totaux Search Console complets malgré les requêtes masquées", async () => {
+  const { searchStats } = await import("./stats.ts");
+  const ins = db.prepare("INSERT INTO gsc_rows VALUES ('s1', ?, ?, ?, ?, ?, ?)");
+  ins.run("2026-11-02", "", "", 1, 6, 5); // totaux du jour (requêtes rares incluses)
+  ins.run("2026-11-02", "", "/a", 1, 6, 5); // par page
+  ins.run("2026-11-02", "visible", "/a", 0, 2, 7); // seule requête non masquée
+  const s = searchStats("s1", { from: "2026-11-02", to: "2026-11-02" });
+  assert.equal(s.totals.impressions, 6);
+  assert.deepEqual(s.pages.map((p) => [p.page, p.impressions]), [["/a", 6]]);
+  assert.deepEqual(s.queries.map((q) => q.query), ["visible"]);
+});
+
 test("période précédente", async () => {
   const { previous } = await import("./stats.ts");
   assert.deepEqual(previous({ from: "2026-11-01", to: "2026-11-28" }), { from: "2026-10-04", to: "2026-10-31" });

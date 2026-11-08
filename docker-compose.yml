@@ -7,7 +7,18 @@ services:
     env_file: .env
     volumes:
       - searchtide_data:/data
-      # Clé du compte de service Google (optionnelle) : décommenter et pointer GOOGLE_SERVICE_ACCOUNT_JSON sur /secrets/google.json
-      # - ./google.json:/secrets/google.json:ro
+      # Clé Google (optionnelle) : la monter dans un docker-compose.override.yml, voir le README
+
+  # Optionnel : publie l'instance via un tunnel Cloudflare (TUNNEL_TOKEN dans .env).
+  # Lancer avec : docker compose --profile tunnel up -d
+  tunnel:
+    image: cloudflare/cloudflared:2026.8.3
+    profiles: [tunnel]
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:-}
+    depends_on: [searchtide]
+    restart: unless-stopped
+
 volumes:
   searchtide_data:

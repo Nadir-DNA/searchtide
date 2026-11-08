@@ -6,3 +6,4 @@ data/
 *.db-*
 google*.json
 .taste-skill/
+docker-compose.override.yml

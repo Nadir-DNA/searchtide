@@ -55,6 +55,16 @@ ou `x-country`. Placez l'instance derrière Cloudflare (gratuit) pour les obteni
 4. Renseignez `GOOGLE_SERVICE_ACCOUNT_JSON` avec le chemin du fichier, redémarrez, puis choisissez la
    propriété de chaque site dans l'onglet **Installation**. Le premier import récupère 16 mois d'historique.
 
+   Avec Docker, placez la clé dans `google.json`, mettez `GOOGLE_SERVICE_ACCOUNT_JSON=/secrets/google.json`
+   dans `.env` et créez un `docker-compose.override.yml` :
+
+   ```yaml
+   services:
+     searchtide:
+       volumes:
+         - ./google.json:/secrets/google.json:ro
+   ```
+
 ## Agents IA (MCP)
 
 Définissez `API_KEY`, puis ajoutez le serveur à votre agent. Avec Claude Code :

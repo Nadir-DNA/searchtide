@@ -49,7 +49,7 @@ const CTR = "ROUND(100.0 * SUM(clicks) / NULLIF(SUM(impressions), 0), 2)";
 
 const searchTotals = (siteId: string, r: Range) => ({ ...all(`SELECT COALESCE(SUM(clicks), 0) AS clicks,
   COALESCE(SUM(impressions), 0) AS impressions, ${CTR} AS ctr, ${POS} AS position
-  FROM gsc_rows WHERE site_id = ? AND day BETWEEN ? AND ?`, siteId, r.from, r.to)[0] });
+  FROM gsc_rows WHERE site_id = ? AND day BETWEEN ? AND ? AND query = '' AND page = ''`, siteId, r.from, r.to)[0] });
 
 /** Statistiques Search Console d'un site sur une période. */
 export function searchStats(siteId: string, r: Range, limit = 50) {
@@ -60,18 +60,18 @@ export function searchStats(siteId: string, r: Range, limit = 50) {
     totals: searchTotals(siteId, r),
     previous: searchTotals(siteId, p),
     daily: all(`SELECT day, SUM(clicks) AS clicks, SUM(impressions) AS impressions, ${POS} AS position
-      FROM gsc_rows WHERE ${w} GROUP BY day ORDER BY day`, siteId, r.from, r.to),
+      FROM gsc_rows WHERE ${w} AND query = '' AND page = '' GROUP BY day ORDER BY day`, siteId, r.from, r.to),
     queries: all(`SELECT query, SUM(clicks) AS clicks, SUM(impressions) AS impressions, ${CTR} AS ctr, ${POS} AS position
-      FROM gsc_rows WHERE ${w} GROUP BY query ORDER BY clicks DESC, impressions DESC LIMIT ${limit}`, siteId, r.from, r.to),
+      FROM gsc_rows WHERE ${w} AND query <> '' GROUP BY query ORDER BY clicks DESC, impressions DESC LIMIT ${limit}`, siteId, r.from, r.to),
     pages: all(`SELECT page, SUM(clicks) AS clicks, SUM(impressions) AS impressions, ${CTR} AS ctr, ${POS} AS position
-      FROM gsc_rows WHERE ${w} GROUP BY page ORDER BY clicks DESC, impressions DESC LIMIT ${limit}`, siteId, r.from, r.to),
+      FROM gsc_rows WHERE ${w} AND query = '' AND page <> '' GROUP BY page ORDER BY clicks DESC, impressions DESC LIMIT ${limit}`, siteId, r.from, r.to),
   };
 }
 
 /** Mots-clés en position 4 à 20 avec des impressions : les plus faciles à faire monter en première page. */
 export function strikingDistance(siteId: string, r: Range, limit = 30) {
   return all(`SELECT query, SUM(clicks) AS clicks, SUM(impressions) AS impressions, ${POS} AS position
-    FROM gsc_rows WHERE site_id = ? AND day BETWEEN ? AND ? GROUP BY query
+    FROM gsc_rows WHERE site_id = ? AND day BETWEEN ? AND ? AND query <> '' GROUP BY query
     HAVING position BETWEEN 4 AND 20 ORDER BY impressions DESC LIMIT ${limit}`, siteId, r.from, r.to);
 }
 
