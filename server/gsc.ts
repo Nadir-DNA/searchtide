@@ -91,8 +91,9 @@ export async function syncSite(site: Site, days?: number): Promise<{ rows: numbe
     return { rows };
   } catch (e) {
     if (db.isTransaction) db.exec("ROLLBACK");
-    saveSync.run(site.id, Date.now(), null, (e as Error).message);
-    throw e;
+    const msg = `Échec de l'import Google : ${(e as Error).message}`;
+    saveSync.run(site.id, Date.now(), null, msg);
+    throw new Error(msg);
   }
 }
 

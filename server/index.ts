@@ -7,13 +7,15 @@ import { readFileSync } from "node:fs";
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import { db, type Site } from "./db.ts";
 import { collect } from "./collect.ts";
-import { lastDays, searchStats, strikingDistance, trafficStats, type Range } from "./stats.ts";
+import { lastDays, overview, searchStats, strikingDistance, trafficStats, type Range } from "./stats.ts";
 import { gscConfigured, listProperties, syncAll, syncSite } from "./gsc.ts";
 import { handleMcp } from "./mcp.ts";
 
 const SECRET = process.env.SECRET ?? "dev-secret";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? "";
 const API_KEY = process.env.API_KEY ?? "";
+// Démo publique : lecture ouverte à tous, écriture toujours protégée
+const DEMO = process.env.DEMO === "1";
 if (process.env.NODE_ENV === "production" && (SECRET === "dev-secret" || !ADMIN_PASSWORD)) {
   throw new Error("SECRET et ADMIN_PASSWORD sont obligatoires en production");
 }
@@ -51,6 +53,7 @@ async function auth(c: Context, next: Next) {
   const bearer = c.req.header("authorization")?.replace(/^Bearer /, "");
   if (API_KEY && bearer && same(bearer, API_KEY)) return next();
   if ((await getSignedCookie(c, SECRET, "st_session")) === "admin") return next();
+  if (DEMO && c.req.method === "GET") return next();
   return c.json({ error: "Non authentifié" }, 401);
 }
 app.use("/api/*", auth);
@@ -66,7 +69,8 @@ const rangeOf = (c: Context): Range => {
   return ok(from) && ok(to) ? { from: from!, to: to! } : lastDays(Math.min(Math.max(Number(days) || 28, 1), 500));
 };
 
-app.get("/api/me", (c) => c.json({ ok: true, gsc: gscConfigured() }));
+app.get("/api/me", (c) => c.json({ ok: true, gsc: gscConfigured(), demo: DEMO }));
+app.get("/api/overview", (c) => c.json(overview(rangeOf(c))));
 
 app.get("/api/sites", (c) => c.json(db.prepare(`SELECT s.*, g.synced_at, g.last_day, g.error AS sync_error,
   (SELECT COUNT(*) FROM events e WHERE e.site_id = s.id AND e.day = date('now')) AS today

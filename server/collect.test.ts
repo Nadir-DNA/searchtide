@@ -30,7 +30,8 @@ test("collecte et statistiques", () => {
   assert.equal(collect({ site: "inconnu.com", url: "https://inconnu.com/" }, "3.3.3.3", UA, null, t), false);
 
   const s = trafficStats("s1", { from: "2026-11-01", to: "2026-11-01" });
-  assert.deepEqual({ ...s.totals }, { visitors: 1, pageviews: 2 });
+  assert.deepEqual(s.totals, { visitors: 1, pageviews: 2, ai: 1 });
+  assert.deepEqual(s.previous, { visitors: 0, pageviews: 0, ai: 0 });
   assert.equal(s.aiReferrers[0].key, "chatgpt.com");
   assert.equal(s.campaigns[0].key, "lancement");
   assert.equal(s.channels.find((c) => c.key === "direct")?.pageviews, 1, "navigation interne = direct");
@@ -43,4 +44,9 @@ test("opportunités Search Console", () => {
   ins.run("2026-11-01", "marque", "/", 50, 60, 1.1);
   const o = strikingDistance("s1", { from: "2026-11-01", to: "2026-11-01" });
   assert.deepEqual(o.map((r) => [r.query, r.position, r.impressions]), [["salon casablanca", 9.6, 500]]);
+});
+
+test("période précédente", async () => {
+  const { previous } = await import("./stats.ts");
+  assert.deepEqual(previous({ from: "2026-11-01", to: "2026-11-28" }), { from: "2026-10-04", to: "2026-10-31" });
 });
