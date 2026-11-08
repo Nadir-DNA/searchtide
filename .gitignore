@@ -1,0 +1,7 @@
+node_modules/
+web/dist/
+data/
+.env
+*.db
+*.db-*
+google*.json

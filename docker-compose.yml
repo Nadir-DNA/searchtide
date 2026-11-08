@@ -1,0 +1,13 @@
+services:
+  searchtide:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3030:3030"
+    env_file: .env
+    volumes:
+      - searchtide_data:/data
+      # Clé du compte de service Google (optionnelle) : décommenter et pointer GOOGLE_SERVICE_ACCOUNT_JSON sur /secrets/google.json
+      # - ./google.json:/secrets/google.json:ro
+volumes:
+  searchtide_data:

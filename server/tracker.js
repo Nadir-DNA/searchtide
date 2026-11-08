@@ -1,0 +1,35 @@
+// Script de suivi Searchtide : <script defer src="https://VOTRE-INSTANCE/script.js" data-site="exemple.com"></script>
+(function () {
+  var s = document.currentScript;
+  if (!s || navigator.webdriver) return;
+  var site = s.getAttribute("data-site") || location.hostname.replace(/^www\./, "");
+  var endpoint = new URL("/api/collect", s.src).href;
+  var last;
+
+  function send(name) {
+    var body = JSON.stringify({ site: site, url: location.href, referrer: document.referrer, lang: navigator.language, name: name });
+    if (!(navigator.sendBeacon && navigator.sendBeacon(endpoint, body))) {
+      fetch(endpoint, { method: "POST", body: body, keepalive: true });
+    }
+  }
+
+  function pageview() {
+    if (last === location.pathname) return;
+    last = location.pathname;
+    send();
+  }
+
+  // Applications monopages : suivre les changements d'URL
+  var push = history.pushState;
+  history.pushState = function () { push.apply(this, arguments); pageview(); };
+  addEventListener("popstate", pageview);
+
+  // Événements personnalisés : searchtide("inscription") ou <a data-searchtide="clic-cta">
+  window.searchtide = send;
+  document.addEventListener("click", function (e) {
+    var el = e.target.closest && e.target.closest("[data-searchtide]");
+    if (el) send(el.getAttribute("data-searchtide"));
+  });
+
+  pageview();
+})();
