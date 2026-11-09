@@ -75,7 +75,7 @@ export function Onboarding({ go }: { go: Go }) {
   async function createAgent(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     try {
-      const k = await api<{ name: string; key: string }>("/api/agents", { method: "POST", json: { name: agentName.trim() || "Mon agent", read_only: false } });
+      const k = await api<{ name: string; key: string }>("/api/agents", { method: "POST", json: { name: agentName.trim() || "Mon agent", read_only: true } });
       setAgentKey(k); setAgentName(""); setAgentError(""); load();
     } catch (err) { setAgentError((err as Error).message); }
   }
@@ -160,7 +160,7 @@ export function Onboarding({ go }: { go: Go }) {
                 <div className="space-y-2">
                   <p className="text-sm">Clé de « {agentKey.name} » : copiez la commande maintenant, la clé ne sera plus jamais affichée.</p>
                   <Copiable text={`claude mcp add --transport http searchtide ${location.origin}/mcp --header "Authorization: Bearer ${agentKey.key}"`} />
-                  <p className="text-xs text-muted">Une clé par agent, révocable dans « Agents IA », qui journalise chacun de ses appels.</p>
+                  <p className="text-xs text-muted">Clé en lecture seule par défaut, révocable dans « Agents IA » ; chacun de ses appels est journalisé.</p>
                 </div>
               ) : (
                 <form onSubmit={createAgent} className="space-y-2">

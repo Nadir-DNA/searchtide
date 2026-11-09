@@ -7,7 +7,7 @@ import { Button, Card, Pill, Table, inputCls } from "./ui";
 type Key = { id: string; name: string; read_only: number; created_at: number; last_used: number | null };
 type Log = { ts: number; agent: string; tool: string; args: string | null; ok: number; error: string | null };
 const when = (t: number | null) => t ? new Date(t).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" }) : "jamais";
-const AGENTS = ["Claude Code", "Codex", "OpenCode", "Hermes"] as const;
+const AGENTS = ["Claude Code", "Codex", "OpenCode", "Hermes", "Générique"] as const;
 
 /** Configuration à coller pour chaque agent : le serveur MCP de Searchtide avec la clé dans l'en-tête Authorization. */
 export function setupFor(agent: string, url: string, key: string) {
@@ -16,7 +16,8 @@ export function setupFor(agent: string, url: string, key: string) {
   if (agent === "Codex") return { where: "Dans ~/.codex/config.toml", code: `[mcp_servers.${id}]\nurl = "${url}"\nhttp_headers = { Authorization = "Bearer ${key}" }` };
   if (agent === "OpenCode") return { where: "Dans ~/.config/opencode/opencode.json, clé \"mcp\"", code: JSON.stringify({ mcp: { [id]: { type: "remote", url, enabled: true, headers: { Authorization: `Bearer ${key}` } } } }, null, 2) };
   if (agent === "Hermes") return { where: "Dans ~/.hermes/config.yaml, sous mcp_servers:", code: `  ${id}:\n    url: ${url}\n    headers:\n      Authorization: "Bearer ${key}"\n    enabled: true` };
-  return { where: "Tout client MCP (HTTP « streamable »)", code: `URL : ${url}\nEn-tête : Authorization: Bearer ${key}` };
+  // Client quelconque : transport Streamable HTTP, URL et en-tête ; exemple au format « mcpServers » courant
+  return { where: "Tout client MCP « Streamable HTTP » : URL et en-tête Authorization", code: `URL : ${url}\nEn-tête : Authorization: Bearer ${key}\n\n${JSON.stringify({ mcpServers: { [id]: { type: "http", url, headers: { Authorization: `Bearer ${key}` } } } }, null, 2)}` };
 }
 
 export function AgentsView() {
@@ -40,7 +41,7 @@ export function AgentsView() {
 
   return (
     <>
-      <Header title="Agents IA" sub="Chaque agent a sa clé : il lit tout Searchtide, range les pages et laisse des notes, et chacun de ses appels est journalisé." />
+      <Header title="Agents IA" sub="Chaque agent a sa clé (lecture seule par défaut) : il lit les projets, indicateurs, scores et le portefeuille via le MCP, et chacun de ses appels est journalisé." />
       <div className="space-y-4">
         <div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
           <Card title="Clés des agents">
@@ -57,7 +58,7 @@ export function AgentsView() {
                 <input name="name" required list="agent-names" placeholder="Claude Code, Codex, OpenCode, Hermes…" className={`${inputCls} mt-1`} />
                 <datalist id="agent-names">{AGENTS.map((a) => <option key={a} value={a} />)}</datalist>
               </label>
-              <label className="flex items-center gap-2"><input type="checkbox" name="read_only" className="size-4" />Lecture seule (ne peut rien modifier)</label>
+              <label className="flex items-center gap-2"><input type="checkbox" name="read_only" defaultChecked className="size-4" />Lecture seule (recommandé ; décochez pour autoriser les écritures)</label>
               {error && <p role="alert" className="text-negative">{error}</p>}
               <Button>Créer la clé</Button>
             </form>
@@ -98,7 +99,7 @@ function Setup({ name, url, k, onClose }: { name: string; url: string; k: string
         <pre className="min-w-0 flex-1 overflow-x-auto rounded-xl border border-border bg-raised px-3 py-2.5 font-mono text-xs leading-5"><code>{s.code}</code></pre>
         <Button variant="secondary" onClick={() => navigator.clipboard.writeText(s.code).then(() => { setDone(true); setTimeout(() => setDone(false), 1500); })}>{done ? "Copié" : "Copier"}</Button>
       </div>
-      <p className="mt-3 text-xs text-muted">Ensuite, demandez à l'agent : « Utilise Searchtide : fais-moi le point sur mes projets et range ma page d'accueil. » {!url.startsWith("https") && "Adresse locale : utilisez l'adresse publique pour un agent hors de ce PC."}</p>
+      <p className="mt-3 text-xs text-muted">Ensuite, demandez à l'agent : « Utilise Searchtide : fais-moi le point sur mes projets, mes indicateurs et mes scores. » {!url.startsWith("https") && "Adresse locale : utilisez l'adresse publique pour un agent hors de ce PC."}</p>
     </Card>
   );
 }

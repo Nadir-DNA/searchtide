@@ -88,16 +88,23 @@ ou `x-country`. Placez l'instance derrière Cloudflare (gratuit) pour les obteni
 
 ## Agents IA (MCP)
 
-Définissez `API_KEY`, puis ajoutez le serveur à votre agent. Avec Claude Code :
+Chaque agent reçoit **sa propre clé** dans **Agents IA** (révocable, journalisée). La clé est en **lecture seule par défaut** : décochez « Lecture seule » pour autoriser les écritures. Le serveur MCP parle **Streamable HTTP** sur `/mcp`, avec la clé dans l'en-tête `Authorization`.
 
 ```bash
-claude mcp add --transport http searchtide http://localhost:3030/mcp --header "Authorization: Bearer VOTRE_CLE"
+# Claude Code
+claude mcp add --scope user --transport http searchtide http://localhost:3030/mcp --header "Authorization: Bearer VOTRE_CLE"
 ```
 
-Outils disponibles : `list_sites`, `traffic_stats`, `search_stats`, `seo_opportunities`, `sync_search_console`.
+Tout autre client MCP « Streamable HTTP » (Codex, OpenCode, Hermes, SDK…) utilise la même URL et le même en-tête :
 
-L'API REST accepte la même clé : `GET /api/sites`, `GET /api/sites/{domaine}/traffic?days=28`,
-`GET /api/sites/{domaine}/search?days=28`, `POST /api/sites/{domaine}/sync`.
+```json
+{ "mcpServers": { "searchtide": { "type": "http", "url": "http://localhost:3030/mcp", "headers": { "Authorization": "Bearer VOTRE_CLE" } } } }
+```
+
+**Lecture** : sites, trafic, Search Console et opportunités SEO (`list_sites`, `traffic_stats`, `search_stats`, `seo_opportunities`), projets et indicateurs (`projects_kpis`), scores de santé et portefeuille (`portfolio_overview`, `alerts`), connexions sans secret (`connections_list`), pages (`dashboard_*`), CRM et publications en lecture (`crm_*`, `pubs_list`), journal des agents (`agent_activity`).
+**Écriture** (clé non lecture seule uniquement) : `indicator_record`, `sync_search_console`, `crm_save_contact`, `crm_log`, `pubs_save`, `dashboard_create/update/delete`, `widget_add/update/move/remove`.
+
+Aucune clé secrète ni réglage de connexion n'est renvoyé par les outils ; la démonstration anonyme n'a pas accès au MCP. L'API REST accepte la même clé : `GET /api/sites`, `GET /api/sites/{domaine}/traffic?days=28`, `GET /api/sites/{domaine}/search?days=28`, `POST /api/sites/{domaine}/sync`.
 
 ## Feuille de route
 

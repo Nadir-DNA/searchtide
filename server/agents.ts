@@ -58,7 +58,8 @@ export function registerAgents(app: Hono) {
   app.get("/api/agents", (c) => c.json(db.prepare("SELECT id, name, read_only, created_at, last_used FROM agent_keys ORDER BY created_at").all()));
   app.post("/api/agents", async (c) => {
     const b = await c.req.json().catch(() => ({}));
-    try { return c.json(createAgentKey(String(b.name ?? ""), !!b.read_only), 201); } catch (e) { return c.json({ error: (e as Error).message }, 400); }
+    const readOnly = b.read_only === undefined ? true : !!b.read_only;   // lecture seule par défaut (Nadir, tour 3)
+    try { return c.json(createAgentKey(String(b.name ?? ""), readOnly), 201); } catch (e) { return c.json({ error: (e as Error).message }, 400); }
   });
   app.delete("/api/agents/:id", (c) => db.prepare("DELETE FROM agent_keys WHERE id = ?").run(c.req.param("id")).changes ? c.json({ ok: true }) : c.json({ error: "Clé introuvable" }, 404));
   app.get("/api/agents/log", (c) => c.json(agentLog(Math.min(Number(c.req.query("limit")) || 50, 500), c.req.query("agent") || undefined)));

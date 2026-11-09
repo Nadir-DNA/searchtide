@@ -126,6 +126,7 @@ app.all("/mcp", (c) => {
   const bearer = c.req.header("authorization")?.replace(/^Bearer /, "") ?? "";
   const agent = findAgent(bearer);
   if (agent) return handleMcp(c.req.raw, { readOnly: agent.readOnly, agent: agent.name });
+  if (!bearer) return handleMcp(c.req.raw, { readOnly: true, agent: "Démonstration (lecture seule)" });   // DEMO anonyme : jamais d'écriture
   return handleMcp(c.req.raw, { readOnly: !!API_KEY_READ && same(bearer, API_KEY_READ), agent: API_KEY && same(bearer, API_KEY) ? "Clé principale" : "Clé lecture seule" });
 });
 
