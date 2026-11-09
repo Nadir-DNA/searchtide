@@ -18,7 +18,7 @@ const period = {
 };
 const range = (days: number): Range => lastDays(days);
 
-function build() {
+function build(readOnly = false) {
   const server = new McpServer({ name: "searchtide", version: "0.1.0" });
 
   server.registerTool("list_sites", { description: "Liste les sites suivis et leur liaison Search Console." },
@@ -39,7 +39,7 @@ function build() {
     inputSchema: z.object(period),
   }, async ({ site: d, days }) => json(strikingDistance(site(d).id, range(days))));
 
-  server.registerTool("sync_search_console", {
+  if (!readOnly) server.registerTool("sync_search_console", {
     description: "Relance l'import des données Search Console d'un site.",
     inputSchema: z.object({ site: period.site }),
   }, async ({ site: d }) => {
@@ -51,8 +51,8 @@ function build() {
 }
 
 /** Point d'entrée MCP en Streamable HTTP, sans état (un serveur par requête). */
-export async function handleMcp(req: Request): Promise<Response> {
+export async function handleMcp(req: Request, opts: { readOnly?: boolean } = {}): Promise<Response> {
   const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined });
-  await build().connect(transport);
+  await build(opts.readOnly).connect(transport);
   return transport.handleRequest(req);
 }

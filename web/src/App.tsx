@@ -44,9 +44,12 @@ export function App() {
 
 function Login() {
   const [error, setError] = useState("");
+  const [totp, setTotp] = useState(false);
+  useEffect(() => { api<{ totp: boolean }>("/api/auth-config").then((r) => setTotp(r.totp)).catch(() => {}); }, []);
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    try { await api("/api/login", { method: "POST", json: { password: new FormData(e.currentTarget).get("password") } }); location.reload(); }
+    const f = new FormData(e.currentTarget);
+    try { await api("/api/login", { method: "POST", json: { password: f.get("password"), code: f.get("code") ?? "" } }); location.reload(); }
     catch (err) { setError((err as Error).message); }
   }
   return (
@@ -56,8 +59,13 @@ function Login() {
         <h1 className="text-[28px] font-light">Connexion</h1>
         <p className="mt-1 mb-6 text-sm text-muted">Le mot de passe est défini par ADMIN_PASSWORD sur votre instance.</p>
         <label className="block text-sm">Mot de passe
-          <input name="password" type="password" autoFocus required className={`${inputCls} mt-2`} />
+          <input name="password" type="password" autoFocus required autoComplete="current-password" className={`${inputCls} mt-2`} />
         </label>
+        {totp && (
+          <label className="mt-4 block text-sm">Code de l'application d'authentification
+            <input name="code" inputMode="numeric" pattern="[0-9 ]{6,7}" autoComplete="one-time-code" required placeholder="123 456" className={`${inputCls} mt-2`} />
+          </label>
+        )}
         {error && <p role="alert" className="mt-2 text-sm text-negative">{error}</p>}
         <Button className="mt-5 w-full">Se connecter</Button>
       </form>

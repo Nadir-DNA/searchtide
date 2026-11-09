@@ -65,6 +65,13 @@ ou `x-country`. Placez l'instance derrière Cloudflare (gratuit) pour les obteni
          - ./google.json:/secrets/google.json:ro
    ```
 
+## Sécurité
+
+- **Double authentification** : `npm run 2fa` affiche un QR code à scanner (Google Authenticator, Authy…) et enregistre le secret dans `.env`. Redémarrez : la connexion demande ensuite le code.
+- **Essais limités** : 5 échecs de connexion en 15 minutes bloquent l'adresse IP.
+- **Clé en lecture seule** : `API_KEY_READ` donne aux agents l'accès aux statistiques sans droit d'écriture.
+- **Sauvegardes** : copie cohérente de la base chaque nuit dans `BACKUP_DIR`, 14 jours gardés. `GET /healthz` répond pour la surveillance externe.
+
 ## Agents IA (MCP)
 
 Définissez `API_KEY`, puis ajoutez le serveur à votre agent. Avec Claude Code :

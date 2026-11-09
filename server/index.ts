@@ -10,10 +10,16 @@ import { collect } from "./collect.ts";
 import { lastDays, overview, searchStats, strikingDistance, trafficStats, type Range } from "./stats.ts";
 import { gscConfigured, listProperties, syncAll, syncSite } from "./gsc.ts";
 import { handleMcp } from "./mcp.ts";
+import { backup, loginLimiter, verifyTotp } from "./security.ts";
 
 const SECRET = process.env.SECRET ?? "dev-secret";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? "";
 const API_KEY = process.env.API_KEY ?? "";
+// Clé en lecture seule pour les agents : statistiques et outils MCP sans écriture
+const API_KEY_READ = process.env.API_KEY_READ ?? "";
+// Double authentification : secret TOTP (base32), créé par `npm run 2fa`
+const TOTP_SECRET = process.env.TOTP_SECRET ?? "";
+const BACKUP_DIR = process.env.BACKUP_DIR ?? (process.env.DATABASE_PATH?.startsWith("/data/") ? "/data/backups" : "data/backups");
 // Démo publique : lecture ouverte à tous, écriture toujours protégée
 const DEMO = process.env.DEMO === "1";
 if (process.env.NODE_ENV === "production" && (SECRET === "dev-secret" || !ADMIN_PASSWORD)) {
@@ -38,10 +44,24 @@ app.post("/api/collect", async (c) => {
   return c.body(null, 202, { "Access-Control-Allow-Origin": "*" });
 });
 
-// ── Authentification : mot de passe admin (cookie) ou clé API (agents) ──
+// Santé de l'instance, pour la surveillance externe
+app.get("/healthz", (c) => { db.prepare("SELECT 1").get(); return c.json({ ok: true }); });
+
+// ── Authentification : mot de passe admin (+ code TOTP) par cookie, ou clé API (agents) ──
+const limiter = loginLimiter();
+const clientIp = (c: Context) => c.req.header("cf-connecting-ip") ?? c.req.header("x-forwarded-for")?.split(",")[0].trim() ?? getConnInfo(c).remote.address ?? "";
+app.get("/api/auth-config", (c) => c.json({ totp: !!TOTP_SECRET }));
 app.post("/api/login", async (c) => {
-  const { password } = await c.req.json().catch(() => ({ password: "" }));
-  if (!ADMIN_PASSWORD || typeof password !== "string" || !same(password, ADMIN_PASSWORD)) return c.json({ error: "Mot de passe incorrect" }, 401);
+  const ip = clientIp(c);
+  if (limiter.blocked(ip)) return c.json({ error: "Trop d'essais : réessayez dans 15 minutes" }, 429);
+  const { password, code } = await c.req.json().catch(() => ({ password: "", code: "" }));
+  const okPassword = !!ADMIN_PASSWORD && typeof password === "string" && same(password, ADMIN_PASSWORD);
+  const okCode = !TOTP_SECRET || (typeof code === "string" && verifyTotp(TOTP_SECRET, code.replace(/\s/g, "")));
+  if (!okPassword || !okCode) {
+    limiter.fail(ip);
+    return c.json({ error: okPassword ? "Code de vérification incorrect" : "Mot de passe incorrect" }, 401);
+  }
+  limiter.reset(ip);
   await setSignedCookie(c, "st_session", "admin", SECRET, {
     httpOnly: true, sameSite: "Lax", secure: c.req.url.startsWith("https"), maxAge: 30 * 86400, path: "/",
   });
@@ -52,6 +72,11 @@ app.post("/api/logout", (c) => { deleteCookie(c, "st_session", { path: "/" }); r
 async function auth(c: Context, next: Next) {
   const bearer = c.req.header("authorization")?.replace(/^Bearer /, "");
   if (API_KEY && bearer && same(bearer, API_KEY)) return next();
+  if (API_KEY_READ && bearer && same(bearer, API_KEY_READ)) {
+    // Lecture seule : GET, et MCP avec les seuls outils de lecture (voir la route /mcp)
+    if (c.req.method === "GET" || c.req.path === "/mcp") return next();
+    return c.json({ error: "Clé en lecture seule" }, 403);
+  }
   if ((await getSignedCookie(c, SECRET, "st_session")) === "admin") return next();
   if (DEMO && c.req.method === "GET") return next();
   return c.json({ error: "Non authentifié" }, 401);
@@ -59,7 +84,10 @@ async function auth(c: Context, next: Next) {
 app.use("/api/*", auth);
 app.use("/mcp", auth);
 
-app.all("/mcp", (c) => handleMcp(c.req.raw));
+app.all("/mcp", (c) => {
+  const bearer = c.req.header("authorization")?.replace(/^Bearer /, "") ?? "";
+  return handleMcp(c.req.raw, { readOnly: !!API_KEY_READ && same(bearer, API_KEY_READ) });
+});
 
 // ── API privée ──
 const getSite = (id: string) => db.prepare("SELECT * FROM sites WHERE id = ? OR domain = ?").get(id, id) as Site | undefined;
@@ -128,6 +156,15 @@ app.get("*", serveStatic({ path: "./web/dist/index.html" }));
 const SYNC_MS = 6 * 3600 * 1000;
 setTimeout(() => void syncAll(), 10_000);
 setInterval(() => void syncAll(), SYNC_MS).unref();
+
+// Sauvegarde quotidienne (vers 2 h UTC) dans BACKUP_DIR, 14 jours gardés
+let lastBackup = "";
+setInterval(() => {
+  const d = new Date();
+  if (d.getUTCHours() !== 2 || lastBackup === d.toISOString().slice(0, 10)) return;
+  lastBackup = d.toISOString().slice(0, 10);
+  try { console.log(`Sauvegarde : ${backup(BACKUP_DIR)}`); } catch (e) { console.error("[sauvegarde]", (e as Error).message); }
+}, 10 * 60 * 1000).unref();
 
 const port = Number(process.env.PORT ?? 3030);
 serve({ fetch: app.fetch, port }, () => console.log(`Searchtide sur http://localhost:${port}`));

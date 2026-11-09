@@ -15,7 +15,8 @@
     "build": "vite build",
     "start": "node --env-file-if-exists=.env server/index.ts",
     "test": "DATABASE_PATH=:memory: node --test server/*.test.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "2fa": "node scripts/activer-2fa.mjs"
   },
   "dependencies": {
     "@hono/node-server": "^2.1.6",
@@ -28,10 +29,12 @@
     "@fontsource/ibm-plex-sans": "^5.3.0",
     "@tailwindcss/vite": "^4.3.5",
     "@types/node": "^26.6.6",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.2.1",
     "concurrently": "^9.2.1",
+    "qrcode": "^1.5.4",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "tailwindcss": "^4.3.5",
