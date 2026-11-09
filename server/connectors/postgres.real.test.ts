@@ -56,8 +56,12 @@ test("réel : un compte en lecture seule est accepté sans avertissement ; un co
   assert.equal(rw.ok, true, rw.error ?? ""); assert.deepEqual(rw.warnings, ["Ce compte peut écrire : utilisez un compte en lecture seule (modèle dans le guide)."]);
 });
 
-test("réel : un SELECT s'exécute ; le paramètre $1 reçoit le jour", { skip }, async () => {
+test("réel : un SELECT s'exécute ; un « ; » final est toléré (E2), pas deux ; le paramètre $1 reçoit le jour", { skip }, async () => {
   assert.equal(await pgQuery(urls.ro, "SELECT COUNT(*) FROM evt", undefined, ctx), 3);
+  assert.equal(await pgQuery(urls.ro, "SELECT COUNT(*) FROM evt;\n-- fin", undefined, ctx), 3);
+  await assert.rejects(pgQuery(urls.ro, "SELECT COUNT(*) FROM evt;;", undefined, ctx), /point-virgule/);
+  await assert.rejects(pgQuery(urls.rw, "SELECT 1; INSERT INTO evt (n) VALUES (5);", undefined, ctx), /point-virgule/);
+  assert.equal(await count(), 3);
   assert.equal(await pgQuery(urls.ro, "SELECT COUNT(*) FROM evt WHERE $1::date = DATE '2026-11-09'", "2026-11-09", ctx), 3);
 });
 
@@ -72,7 +76,7 @@ test("CA16 réel : INSERT/UPDATE refusés ; une écriture cachée dans un WITH e
 });
 
 test("CA16 réel : deux instructions refusées par le garde-fou ; et si le garde-fou était contourné, le serveur refuse l'écriture (transaction en lecture seule)", { skip }, async () => {
-  await assert.rejects(pgQuery(urls.rw, "SELECT 1; INSERT INTO evt (n) VALUES (7)", undefined, ctx), /sans point-virgule/);
+  await assert.rejects(pgQuery(urls.rw, "SELECT 1; INSERT INTO evt (n) VALUES (7)", undefined, ctx), /point-virgule/);
   // contournement simulé : on envoie nous-mêmes les deux instructions dans une transaction en lecture seule, avec le compte qui peut écrire
   const raw = new pg.Client({ connectionString: urls.rw }); await raw.connect();
   try {

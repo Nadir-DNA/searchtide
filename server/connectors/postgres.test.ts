@@ -19,7 +19,7 @@ import "./index.ts";
 process.env.SECRET = "t".repeat(40);
 const URL_RO = "postgres://searchtide_ro:" + "Sup3rMotDePasse9x@db.exemple.test:5432/produit";
 const log: { sql: string; params?: unknown[] }[] = []; let ended = 0, released = 0;
-let who: Record<string, any> = { u: "searchtide_ro", d: "produit", v: "PostgreSQL 16.2 on x86_64", su: false }; let canWrite = false;
+let who: Record<string, any> = { u: "searchtide_ro", d: "produit", v: "PostgreSQL 16.2 on x86_64", su: false, vn: 160002 }; let canWrite = false;
 let failWith: any = null; let answer: any[] = [{ count: "42" }]; let connectError: any = null;
 const pool: PgPoolLike = {
   connect: async () => { if (connectError) throw connectError; return { query: async (sql: string, params?: unknown[]) => {
@@ -36,7 +36,7 @@ const sim = realCtx({ pg: () => pool, now: () => new Date("2026-11-09T10:00:00Z"
 const admin = new Hono(); admin.use("*", (c, n) => { markAdmin(c); return n(); }); registerConnections(admin);
 const post = (body: unknown) => admin.request("/api/connections", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
 beforeEach(() => { log.length = 0; ended = 0; released = 0; failWith = null; connectError = null; answer = [{ count: "42" }]; canWrite = false;
-  who = { u: "searchtide_ro", d: "produit", v: "PostgreSQL 16.2 on x86_64", su: false }; delete process.env.MA_BASE; process.env.SECRET = "t".repeat(40);
+  who = { u: "searchtide_ro", d: "produit", v: "PostgreSQL 16.2 on x86_64", su: false, vn: 160002 }; delete process.env.MA_BASE; process.env.SECRET = "t".repeat(40);
   db.exec("DELETE FROM connections"); setConnectorContext(sim); setCollectContext(sim); });
 
 test("contrat commun : le connecteur Postgres est conforme", async () => {
@@ -54,9 +54,10 @@ test("garde-fou SQL : un SELECT/WITH seul passe, y compris avec « ; » dans une
 test("CA16 : INSERT/UPDATE/DELETE/DDL et deux instructions séparées par « ; » sont refusés", () => {
   for (const bad of ["INSERT INTO t VALUES (1)", "UPDATE t SET a = 1", "DELETE FROM t", "DROP TABLE t", "TRUNCATE t", "CREATE TABLE x (a int)", "COPY t TO '/tmp/x'", "CALL p()", "DO $$ BEGIN END $$", "SET ROLE x", "BEGIN"])
     assert.throws(() => checkSql(bad), /Seules les requêtes SELECT/, bad);
-  for (const multi of ["SELECT 1; SELECT 2", "SELECT 1;", "SELECT 1; DROP TABLE t", "SELECT 1 ;\nDELETE FROM t", "SELECT 'x'; SELECT 'y'", "SELECT $$a$$; SELECT 1", "SELECT 1 /* c */ ; SELECT 2", "SELECT E'\\\\'; DROP TABLE t"])
-    assert.throws(() => checkSql(multi), /sans point-virgule/, multi);
+  for (const multi of ["SELECT 1; SELECT 2", "SELECT 1;;", "SELECT 1; ;", "SELECT 1; DROP TABLE t", "SELECT 1; SELECT 2;", "SELECT 1 ;\nDELETE FROM t", "SELECT 'x'; SELECT 'y'", "SELECT $$a$$; SELECT 1", "SELECT 1 /* c */ ; SELECT 2", "SELECT E'\\\\'; DROP TABLE t"])
+    assert.throws(() => checkSql(multi), /point-virgule/, multi);
   assert.throws(() => checkSql("   "), /vide/);
+  assert.throws(() => checkSql("SELECT 1; -- ok\n; SELECT 2"), /point-virgule/);
   assert.deepEqual(statementSeparators("SELECT 1; SELECT ';'; SELECT 3"), [8, 20]);
 });
 
@@ -130,7 +131,7 @@ test("URL invalide, mauvais mot de passe, base injoignable, délai : messages cl
 test("indicateurs : INSERT ou deux instructions refusés à l'enregistrement ; relevé via la connexion (jour passé en $1) ; ancien mode env gardé", async () => {
   const p = saveProject(null, { name: "Produit" })!;
   assert.throws(() => saveIndicator(null, p.id, { label: "x", mode: "total", source: "pg", config: { sql: "INSERT INTO t VALUES (1)" } }), /Seules les requêtes SELECT/);
-  assert.throws(() => saveIndicator(null, p.id, { label: "x", mode: "total", source: "pg", config: { sql: "SELECT 1; SELECT 2" } }), /sans point-virgule/);
+  assert.throws(() => saveIndicator(null, p.id, { label: "x", mode: "total", source: "pg", config: { sql: "SELECT 1; SELECT 2" } }), /point-virgule/);
   await post({ kind: "postgres", values: { url: URL_RO } });
   const daily = saveIndicator(null, p.id, { label: "Inscriptions", mode: "daily", source: "pg", config: { sql: "SELECT COUNT(*) FROM users WHERE created_at >= $1::date" } })!;
   const total = saveIndicator(null, p.id, { label: "Utilisateurs", mode: "total", source: "pg", config: { sql: "SELECT COUNT(*) FROM users" } })!;
@@ -151,4 +152,42 @@ test("compte ou clé révoqués pendant un relevé → la connexion passe en « 
   connectError = Object.assign(new Error("password authentication failed"), { code: "28P01" });
   await assert.rejects(measure(ind), /refuse ces identifiants/);
   assert.equal(connections().find((x) => x.id === c.connection.id)!.status, "reconnect");
+});
+
+// ───────── E2 : un seul « ; » final est toléré ─────────
+test("E2 : un « ; » final (suivi d'espaces ou de commentaires) est retiré ; tout autre « ; » reste refusé", () => {
+  for (const [input, expected] of [
+    ["SELECT 1;", "SELECT 1"], ["SELECT 1 ;  ", "SELECT 1   "], ["SELECT 1;\n", "SELECT 1\n"], ["SELECT 1; -- fin", "SELECT 1 -- fin"],
+    ["SELECT 1; /* fin */", "SELECT 1 /* fin */"], ["WITH a AS (SELECT 1) SELECT * FROM a;", "WITH a AS (SELECT 1) SELECT * FROM a"], ["SELECT 'a;b';", "SELECT 'a;b'"],
+  ]) assert.equal(checkSql(input), expected, input);
+  assert.equal(checkSql("SELECT 1"), "SELECT 1", "sans point-virgule : inchangé");
+  for (const bad of ["SELECT 1;;", "SELECT 1; SELECT 2", "SELECT 1; SELECT 2;", "SELECT 1; -- x\n SELECT 2", "SELECT 1;\nDROP TABLE t", "SELECT 1; ;", "SELECT 1;; -- fin"])
+    assert.throws(() => checkSql(bad), /point-virgule/, bad);
+  assert.throws(() => checkSql("INSERT INTO t VALUES (1);"), /Seules les requêtes SELECT/, "le « ; » final ne rend pas un INSERT acceptable");
+  assert.throws(() => checkSql(";"), /vide|SELECT/);
+});
+
+test("E2 : la requête exécutée est celle sans le « ; » final ; l'indicateur avec « ; » final s'enregistre et se relève", async () => {
+  assert.equal(await pgQuery(URL_RO, "SELECT COUNT(*) FROM users;", undefined, sim), 42);
+  assert.equal(log.find((l) => l.sql.startsWith("SELECT COUNT"))!.sql, "SELECT COUNT(*) FROM users");
+  await post({ kind: "postgres", values: { url: URL_RO } });
+  const p = saveProject(null, { name: "Point-virgule" })!;
+  const ind = saveIndicator(null, p.id, { label: "n", mode: "total", source: "pg", config: { sql: "SELECT COUNT(*) FROM users;" } })!;
+  assert.equal(await measure(ind), 42);
+  assert.throws(() => saveIndicator(null, p.id, { label: "x", mode: "total", source: "pg", config: { sql: "SELECT 1;;" } }), /point-virgule/);
+});
+
+// ───────── E6 : PostgreSQL 14 et antérieur ─────────
+test("E6 : le droit CREATE sur public n'est compté qu'à partir de PostgreSQL 15 (accordé à tous avant), l'écriture sur une table l'est toujours", async () => {
+  const writesQuery = () => log.find((l) => /AS can_write/.test(l.sql))!.sql;
+  who = { ...who, v: "PostgreSQL 14.10 on x86_64", vn: 140010 };
+  await post({ kind: "postgres", label: "PG14", values: { url: URL_RO } });
+  assert.doesNotMatch(writesQuery(), /has_schema_privilege/); assert.match(writesQuery(), /has_table_privilege/);
+  log.length = 0; who = { ...who, v: "PostgreSQL 16.2 on x86_64", vn: 160002 };
+  await post({ kind: "postgres", label: "PG16", values: { url: URL_RO.replace("Sup3r", "Autre") } });
+  assert.match(writesQuery(), /has_schema_privilege\(current_user, 'public', 'CREATE'\)/); assert.match(writesQuery(), /has_table_privilege/);
+  // PG 14 : un compte qui peut écrire dans une table est tout de même signalé
+  log.length = 0; canWrite = true; who = { ...who, v: "PostgreSQL 14.10 on x86_64", vn: 140010 };
+  const w = await post({ kind: "postgres", label: "PG14 écrit", values: { url: URL_RO.replace("Sup3r", "Troisieme") } });
+  assert.deepEqual((await w.json()).test.warnings, ["Ce compte peut écrire : utilisez un compte en lecture seule (modèle dans le guide)."]);
 });

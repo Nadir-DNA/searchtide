@@ -7,7 +7,7 @@
 import { register } from "./registry.ts";
 import { ConnectorError, type Cfg, type Connector, type Ctx, type TestResult } from "./types.ts";
 
-const FORBIDDEN = "Une seule requête SELECT est acceptée, sans point-virgule.";
+const FORBIDDEN = "Une seule requête SELECT est acceptée : un seul point-virgule final est toléré, aucun autre.";
 
 /** Positions des « ; » qui séparent des instructions (hors chaînes, identifiants, dollar-quoting et commentaires). */
 export function statementSeparators(sql: string): number[] {
@@ -42,18 +42,28 @@ export function statementSeparators(sql: string): number[] {
   return out;
 }
 
-/** Refuse tout ce qui n'est pas un unique SELECT/WITH. Lève ConnectorError("format"). */
-export function checkSql(sql: string) {
+/** Retire UN seul « ; » final, suivi seulement d'espaces ou de commentaires (SQL collé depuis un éditeur). Tout autre « ; » reste refusé. */
+function stripFinalSemicolon(sql: string): string {
+  const seps = statementSeparators(sql);
+  if (seps.length !== 1) return sql;
+  const rest = sql.slice(seps[0] + 1);
+  return /^(\s|--[^\n]*(\n|$)|\/\*[\s\S]*?\*\/)*$/.test(rest) ? sql.slice(0, seps[0]) + rest : sql;
+}
+
+/** Refuse tout ce qui n'est pas un unique SELECT/WITH. Renvoie la requête à exécuter (sans le « ; » final toléré). Lève ConnectorError("format"). */
+export function checkSql(sql: string): string {
   if (typeof sql !== "string" || !sql.trim()) throw new ConnectorError("format", "La requête est vide.");
-  if (statementSeparators(sql).length) throw new ConnectorError("format", FORBIDDEN);
+  const clean = stripFinalSemicolon(sql);
+  if (statementSeparators(clean).length) throw new ConnectorError("format", FORBIDDEN);
   // premier mot, après espaces, parenthèses et commentaires
-  const head = sql.replace(/^(\s|--[^\n]*\n?|\/\*[\s\S]*?\*\/|\()+/, "");
+  const head = clean.replace(/^(\s|--[^\n]*\n?|\/\*[\s\S]*?\*\/|\()+/, "");
   if (!/^(select|with|values|table)\b/i.test(head)) throw new ConnectorError("format", "Seules les requêtes SELECT sont acceptées.");
+  return clean;
 }
 
 /** Exécute une requête de lecture et renvoie un nombre. Toujours en lecture seule, 10 s au plus. */
-export async function pgQuery(url: string, sql: string, day: string | undefined, ctx: Ctx): Promise<number> {
-  checkSql(sql);
+export async function pgQuery(url: string, rawSql: string, day: string | undefined, ctx: Ctx): Promise<number> {
+  const sql = checkSql(rawSql);
   const pool = ctx.pg(url);
   let client;
   try {
@@ -113,10 +123,12 @@ export const postgres: Connector = {
       client = await pool.connect();
       await client.query("BEGIN READ ONLY", []);
       await client.query("SET LOCAL statement_timeout = '10s'", []);
-      const who = (await client.query("SELECT current_user AS u, current_database() AS d, version() AS v, (SELECT rolsuper FROM pg_roles WHERE rolname = current_user) AS su", [])).rows[0] ?? {};
+      const who = (await client.query("SELECT current_user AS u, current_database() AS d, version() AS v, (SELECT rolsuper FROM pg_roles WHERE rolname = current_user) AS su, current_setting('server_version_num')::int AS vn", [])).rows[0] ?? {};
       if (who.su === true) throw new ConnectorError("format", "Compte superutilisateur refusé : créez un compte en lecture seule.");
+      // PostgreSQL 14 et antérieur accordent CREATE sur le schéma public à tout le monde par défaut : seul le droit d'écrire dans une table compte alors (E6)
+      const schemaCreate = Number(who.vn) >= 150000 ? "has_schema_privilege(current_user, 'public', 'CREATE') OR " : "";
       const writes = (await client.query(
-        "SELECT (has_schema_privilege(current_user, 'public', 'CREATE') OR EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE c.relkind IN ('r','p') AND n.nspname NOT IN ('pg_catalog','information_schema') AND has_table_privilege(c.oid, 'INSERT,UPDATE,DELETE'))) AS can_write", [])).rows[0]?.can_write === true;
+        `SELECT (${schemaCreate}EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE c.relkind IN ('r','p') AND n.nspname NOT IN ('pg_catalog','information_schema') AND has_table_privilege(c.oid, 'INSERT,UPDATE,DELETE'))) AS can_write`, [])).rows[0]?.can_write === true;
       await client.query("ROLLBACK", []);
       const major = /PostgreSQL (\d+)/.exec(String(who.v))?.[1] ?? "?";
       return { ok: true, label: String(who.d ?? "base"), detail: `base ${who.d}, PostgreSQL ${major}, compte ${who.u}`, warnings: writes ? ["Ce compte peut écrire : utilisez un compte en lecture seule (modèle dans le guide)."] : [] };
