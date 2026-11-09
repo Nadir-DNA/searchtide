@@ -13,13 +13,15 @@ import { handleMcp } from "./mcp.ts";
 import { registerBusiness } from "./business.ts";
 import { registerReport } from "./report.ts";
 import { registerProjects } from "./projects.ts";
-import { registerConnections, startVault } from "./connections.ts";
+import { startVault } from "./connections.ts";
+import { registerConnections } from "./connectors/api.ts";
 import { registerOps } from "./ops.ts";
 import { registerPortfolio } from "./portfolio.ts";
 import { findAgent, registerAgents } from "./agents.ts";
 import { registerDashboards } from "./dashboards.ts";
 import { registerOutreach } from "./outreach.ts";
 import { backup, loginLimiter, verifyTotp } from "./security.ts";
+import { markAdmin } from "./admin.ts";
 
 const SECRET = process.env.SECRET ?? "dev-secret";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? "";
@@ -93,7 +95,7 @@ async function auth(c: Context, next: Next) {
     if (c.req.method === "GET" || c.req.path === "/mcp") return next();
     return c.json({ error: "Clé en lecture seule" }, 403);
   }
-  if ((await getSignedCookie(c, SECRET, "st_session")) === "admin") return next();
+  if ((await getSignedCookie(c, SECRET, "st_session")) === "admin") { markAdmin(c); return next(); }
   if (DEMO && c.req.method === "GET") return next();
   return c.json({ error: "Non authentifié" }, 401);
 }

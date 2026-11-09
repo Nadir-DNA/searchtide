@@ -7,7 +7,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Hono } from "hono";
 import { db } from "./db.ts";
-import { createConnection, getSecrets, setSecrets, migrateClearTokens, registerConnections, connections, findByFingerprint } from "./connections.ts";
+import { createConnection, getSecrets, setSecrets, migrateClearTokens, connections, findByFingerprint } from "./connections.ts";
+import { registerConnections } from "./connectors/api.ts";
 import { VaultError, seal, open, scrub, secretValid, SECRET_MESSAGE } from "./vault.ts";
 
 const GOOD = "s".repeat(40);

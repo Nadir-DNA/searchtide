@@ -2,10 +2,9 @@
 // Les secrets (clés, jetons, mots de passe) ne sont écrits que chiffrés, dans `secrets` (voir vault.ts).
 // Le reste (libellé, indice non secret, réglages) est dans `config`. Aucune route ne renvoie un secret.
 import { randomBytes } from "node:crypto";
-import type { Hono } from "hono";
 import { db } from "./db.ts";
 import { migrate } from "./migrations.ts";
-import { RECONNECT_MESSAGE, SECRET_MESSAGE, VaultError, fingerprint, open, scrub, seal, secretValid, secretValues } from "./vault.ts";
+import { RECONNECT_MESSAGE, SECRET_MESSAGE, VaultError, fingerprint, open, seal, secretValid } from "./vault.ts";
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS connections (
@@ -152,13 +151,4 @@ export function startVault() {
   if (r.pending) console.warn(`[coffre] ${r.pending} connexion(s) gardent un jeton en clair : définissez SECRET (32 caractères ou plus) puis redémarrez.`);
   else if (r.migrated) console.log(`[coffre] ${r.migrated} jeton(s) chiffré(s)`);
   return r;
-}
-
-export { scrub, secretValues };
-
-export function registerConnections(app: Hono) {
-  app.get("/api/connections", (c) => c.json({ vault: secretValid(), list: connections() }));
-  app.delete("/api/connections/:id", (c) => removeConnection(c.req.param("id"))
-    ? c.json({ ok: true })
-    : c.json({ error: "Connexion introuvable" }, 404));
 }

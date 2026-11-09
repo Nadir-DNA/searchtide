@@ -8,6 +8,7 @@ import { registerProjectTools } from "./projects.ts";
 import { instrument } from "./agents.ts";
 import { registerDashboardTools } from "./dashboards.ts";
 import { registerPortfolioTools } from "./portfolio.ts";
+import { registerConnectionTools } from "./connectors/api.ts";
 
 const INSTRUCTIONS = `Searchtide : tous ses projets (sites, Search Console, Stripe, indicateurs métier, CRM, publications) dans un tableau de bord.
 Commencez par portfolio_overview (et alerts) pour l'état général. Les pages du tableau de bord sont personnalisables :
@@ -61,6 +62,7 @@ function build(readOnly = false, agent = "Clé principale") {
   registerBusinessTools(server, readOnly);
   registerProjectTools(server, readOnly);
   registerPortfolioTools(server);
+  registerConnectionTools(server);
   registerDashboardTools(server, readOnly, agent);
   return server;
 }
