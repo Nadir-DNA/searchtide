@@ -14,7 +14,7 @@ export function setupFor(agent: string, url: string, key: string) {
   const id = "searchtide";
   if (agent === "Claude Code") return { where: "Dans un terminal", code: `claude mcp add --scope user --transport http ${id} ${url} --header "Authorization: Bearer ${key}"` };
   if (agent === "Codex") return { where: "Dans ~/.codex/config.toml", code: `[mcp_servers.${id}]\nurl = "${url}"\nhttp_headers = { Authorization = "Bearer ${key}" }` };
-  if (agent === "OpenCode") return { where: "Dans ~/.config/opencode/opencode.json, clé \"mcp\"", code: JSON.stringify({ mcp: { [id]: { type: "remote", url, enabled: true, headers: { Authorization: `Bearer ${key}` } } } }, null, 2) };
+  if (agent === "OpenCode") return { where: "Dans ~/.config/opencode/opencode.json(c), sous mcp.servers", code: JSON.stringify({ $schema: "https://opencode.ai/config.json", mcp: { servers: { [id]: { type: "remote", url, oauth: false, headers: { Authorization: `Bearer ${key}` } } } } }, null, 2) };
   if (agent === "Hermes") return { where: "Dans ~/.hermes/config.yaml, sous mcp_servers:", code: `  ${id}:\n    url: ${url}\n    headers:\n      Authorization: "Bearer ${key}"\n    enabled: true` };
   // Client quelconque : transport Streamable HTTP, URL et en-tête ; exemple au format « mcpServers » courant
   return { where: "Tout client MCP « Streamable HTTP » : URL et en-tête Authorization", code: `URL : ${url}\nEn-tête : Authorization: Bearer ${key}\n\n${JSON.stringify({ mcpServers: { [id]: { type: "http", url, headers: { Authorization: `Bearer ${key}` } } } }, null, 2)}` };
