@@ -6,8 +6,9 @@ export async function api<T>(path: string, init?: RequestInit & { json?: unknown
     headers: init?.json !== undefined ? { "Content-Type": "application/json" } : undefined,
     body: init?.json !== undefined ? JSON.stringify(init.json) : init?.body,
   });
-  if (res.status === 401) throw new AuthError();
-  const data = await res.json();
+  const data = await res.json().catch(() => ({}));
+  // 401 : session expirée, ou mot de passe refusé à la connexion (le message du serveur est conservé)
+  if (res.status === 401) throw new AuthError(data.error ?? "Non authentifié");
   if (!res.ok) throw new Error(data.error ?? `Erreur ${res.status}`);
   return data as T;
 }
