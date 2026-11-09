@@ -2,49 +2,51 @@
 
 /* Sombre par défaut : cartes arrondies sur un fond presque noir, un seul accent citron pour les données.
    Le thème clair reprend les mêmes rôles (data-theme="light" sur <html>). */
+/* Sombre par défaut : surfaces plates séparées par un filet, la couleur réservée aux données
+   (chaque projet a la sienne ; le corail sert aux séries uniques et au focus). Le thème clair reprend les mêmes rôles. */
 @theme {
   --font-sans: "IBM Plex Sans", Inter, system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
 
-  --color-ground: #0c0d0e;
-  --color-surface: #151719;
-  --color-raised: #1d2023;
-  --color-active: #26292d;
-  --color-border: #22262a;
-  --color-rule: #1f2326;
-  --color-control: #363b40;
-  --color-ink: #f3f4f5;
-  --color-muted: #9ba2a7;
-  --color-accent: #c8f55a;
-  --color-on-accent: #0c0d0e;
+  --color-ground: #0e0f11;
+  --color-surface: #15171a;
+  --color-raised: #1c1f23;
+  --color-active: #25292e;
+  --color-border: #23262a;
+  --color-rule: #1f2226;
+  --color-control: #363b41;
+  --color-ink: #eceef0;
+  --color-muted: #8d949b;
+  --color-accent: #ff8f6b;
+  --color-on-accent: #0e0f11;
   --color-chart-2: #7cc4e8;
-  --color-chart-3: #e3bf7a;
-  --color-chart-4: #5f676d;
-  --color-positive: #6ee7a0;
-  --color-positive-bg: #15301f;
-  --color-negative: #ff8a8f;
-  --color-negative-bg: #36191c;
+  --color-chart-3: #e8b65a;
+  --color-chart-4: #5c636a;
+  --color-positive: #5fd896;
+  --color-positive-bg: #12291c;
+  --color-negative: #ff7f86;
+  --color-negative-bg: #33171a;
 }
 
 :root[data-theme="light"] {
-  --color-ground: #edf0f2;
+  --color-ground: #f3f2ee;
   --color-surface: #ffffff;
-  --color-raised: #f3f5f7;
-  --color-active: #e7eaed;
-  --color-border: #e1e5e8;
-  --color-rule: #edf0f2;
-  --color-control: #cdd3d8;
-  --color-ink: #111315;
-  --color-muted: #5b6267;
-  --color-accent: #a3e635;
-  --color-on-accent: #111315;
-  --color-chart-2: #3b9fd1;
-  --color-chart-3: #c9952f;
-  --color-chart-4: #aab2b8;
-  --color-positive: #1e7b4f;
-  --color-positive-bg: #dcfae5;
+  --color-raised: #f5f4f1;
+  --color-active: #ebe9e4;
+  --color-border: #e3e1db;
+  --color-rule: #eeece7;
+  --color-control: #cfccc4;
+  --color-ink: #17181a;
+  --color-muted: #66676a;
+  --color-accent: #e5603a;
+  --color-on-accent: #ffffff;
+  --color-chart-2: #2f8fc4;
+  --color-chart-3: #c48a1c;
+  --color-chart-4: #a9a7a0;
+  --color-positive: #18794a;
+  --color-positive-bg: #dcf5e5;
   --color-negative: #b4232a;
-  --color-negative-bg: #ffe9e6;
+  --color-negative-bg: #fde8e6;
 }
 
 html { color-scheme: dark; }

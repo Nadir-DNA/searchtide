@@ -1,0 +1,117 @@
+// Vue d'ensemble multi-projets : une ligne par projet (trafic, Google, argent, contacts, objectifs) et ce qui demande une action.
+import type { Hono } from "hono";
+import { db, localDay } from "./db.ts";
+import type { McpServer } from "@modelcontextprotocol/server";
+import { z } from "zod";
+import { agentLog } from "./agents.ts";
+import { lastDays, previous, type Range } from "./stats.ts";
+import { listProjects, rangeOf } from "./projects.ts";
+
+type Row = Record<string, any>;
+const all = (sql: string, ...p: (string | number)[]) => db.prepare(sql).all(...p) as Row[];
+const ph = (n: number) => Array(n).fill("?").join(", ");
+
+function siteTotals(ids: string[], r: Range) {
+  if (!ids.length) return { visitors: 0, clicks: 0, impressions: 0, position: null as number | null };
+  const t = all(`SELECT COUNT(DISTINCT site_id || visitor || day) AS visitors FROM events
+    WHERE site_id IN (${ph(ids.length)}) AND day BETWEEN ? AND ? AND type = 'pageview'`, ...ids, r.from, r.to)[0];
+  const g = all(`SELECT COALESCE(SUM(clicks), 0) AS clicks, COALESCE(SUM(impressions), 0) AS impressions,
+    ROUND(SUM(position * impressions) / NULLIF(SUM(impressions), 0), 1) AS position
+    FROM gsc_rows WHERE site_id IN (${ph(ids.length)}) AND day BETWEEN ? AND ? AND query = '' AND page = ''`, ...ids, r.from, r.to)[0];
+  return { visitors: t.visitors as number, clicks: g.clicks as number, impressions: g.impressions as number, position: g.position as number | null };
+}
+
+/** Somme des indicateurs Stripe d'une métrique (chiffre d'affaires sur la période, ou MRR au dernier relevé). */
+const money = (inds: Row[], metric: string, key: "value" | "previous") =>
+  inds.filter((i) => i.source === "stripe" && i.config?.metric === metric && i[key] != null).reduce((n, i) => n + i[key], 0);
+
+export function portfolio(r: Range) {
+  const p = previous(r);
+  const today = localDay();
+  const sites = all(`SELECT s.id, s.domain, s.gsc_property, g.error AS sync_error,
+    (SELECT MAX(day) FROM events e WHERE e.site_id = s.id AND e.type = 'pageview') AS last_visit
+    FROM sites s LEFT JOIN gsc_syncs g ON g.site_id = s.id`);
+  const byDomain = new Map(sites.map((s) => [s.domain, s]));
+  const projects = listProjects(r);
+  // Sites suivis qui n'appartiennent à aucun projet : regroupés pour que les totaux restent justes
+  const claimed = new Set(projects.flatMap((x) => x.sites as string[]));
+  const loose = sites.filter((s) => !claimed.has(s.domain));
+  if (loose.length) projects.push({ id: "", name: "Autres sites", color: null, url: null, sites: loose.map((s) => s.domain), crm_key: null, indicators: [], funnel: [] });
+
+  const daily = new Map<string, Row>();
+  const alerts: { tone: "bad" | "warn" | "info"; project: string | null; text: string; to: Record<string, string> }[] = [];
+  const rows = projects.map((x) => {
+    const ss = (x.sites as string[]).map((d) => byDomain.get(d)).filter(Boolean) as Row[];
+    const ids = ss.map((s) => s.id);
+    const now = siteTotals(ids, r), before = siteTotals(ids, p);
+    const series = ids.length ? all(`SELECT day, COUNT(DISTINCT site_id || visitor) AS v FROM events
+      WHERE site_id IN (${ph(ids.length)}) AND day BETWEEN ? AND ? AND type = 'pageview' GROUP BY day`, ...ids, r.from, r.to) : [];
+    for (const d of series) daily.set(d.day, { ...daily.get(d.day), day: d.day, [x.id || "_"]: d.v });
+    const inds = x.indicators as Row[];
+    const crm = x.crm_key ? all(`SELECT
+      SUM(created_at BETWEEN ? AND ?) AS leads, SUM(created_at BETWEEN ? AND ?) AS leads_prev,
+      SUM(stage IN ('new', 'contacted', 'qualified', 'proposal')) AS open,
+      SUM(next_at <= ? AND opt_out = 0 AND stage NOT IN ('won', 'lost')) AS todo
+      FROM contacts WHERE project = ?`, Date.parse(r.from), Date.parse(r.to) + 86399999, Date.parse(p.from), Date.parse(p.to) + 86399999, today, x.crm_key)[0] : null;
+    // Indicateurs métier (hors trafic du site, déjà dans les colonnes)
+    const kpis = inds.filter((i) => i.source !== "site").slice(0, 3).map((i) => ({ id: i.id, label: i.label, unit: i.unit, mode: i.mode, value: i.value, previous: i.previous, error: i.last_error }));
+    const goals = inds.filter((i) => i.goal).map((i) => ({ label: i.label, unit: i.unit, ...i.goal }));
+    const to: Record<string, string> = x.id ? { view: "project", id: x.id } : { site: ss[0]?.domain ?? "" };
+
+    const broken = inds.filter((i) => i.last_error);
+    if (broken.length) alerts.push({ tone: "bad", project: x.id, to, text: broken.length === 1
+      ? `${x.name} · « ${broken[0].label} » ne se met plus à jour` : `${x.name} · ${broken.length} indicateurs ne se mettent plus à jour` });
+    for (const s of ss) {
+      if (s.sync_error) alerts.push({ tone: "bad", project: x.id, text: `${s.domain} · import Search Console en échec`, to: { site: s.domain, tab: "search" } });
+      const silent = s.last_visit ? Math.round((Date.parse(today) - Date.parse(s.last_visit)) / 86400000) : null;
+      if (silent == null || silent >= 3) alerts.push({ tone: "warn", project: x.id, text: silent == null ? `${s.domain} · aucune visite reçue : script de suivi absent ?` : `${s.domain} · aucune visite depuis ${silent} jours`, to: { site: s.domain, tab: "setup" } });
+    }
+    if (before.visitors >= 20 && now.visitors < before.visitors * 0.7) alerts.push({ tone: "warn", project: x.id, text: `${x.name} · visites en baisse de ${Math.round((1 - now.visitors / before.visitors) * 100)} %`, to });
+    for (const g of goals) if (g.projection < g.target && g.elapsed / g.total >= 0.5) alerts.push({ tone: "warn", project: x.id, text: `${x.name} · objectif « ${g.label} » en retard (${g.pct} %)`, to });
+
+    return {
+      id: x.id, name: x.name, color: x.color, url: x.url, sites: ss.map((s) => s.domain), to,
+      visitors: now.visitors, visitorsPrev: before.visitors, clicks: now.clicks, clicksPrev: before.clicks,
+      impressions: now.impressions, position: now.position, positionPrev: before.position,
+      revenue: money(inds, "revenue", "value"), revenuePrev: money(inds, "revenue", "previous"), mrr: money(inds, "mrr", "value"),
+      hasMoney: inds.some((i) => i.source === "stripe"), hasSearch: ss.some((s) => s.gsc_property),
+      leads: crm?.leads ?? 0, leadsPrev: crm?.leads_prev ?? 0, open: crm?.open ?? 0, todo: crm?.todo ?? 0,
+      series: Object.fromEntries(series.map((d) => [d.day, d.v])), kpis, goals,
+      issues: alerts.filter((a) => a.project === x.id).length,
+    };
+  });
+  const sum = (k: keyof (typeof rows)[number]) => rows.reduce((n, x) => n + (x[k] as number), 0);
+  const todo = (db.prepare("SELECT COUNT(*) AS n FROM contacts WHERE next_at <= ? AND opt_out = 0 AND stage NOT IN ('won', 'lost')").get(today) as Row).n;
+  if (todo) alerts.unshift({ tone: "info", project: null, text: `${todo} relance${todo > 1 ? "s" : ""} à faire aujourd'hui`, to: { view: "crm", tab: "todo" } });
+  const pubs = all("SELECT id, title, project, network, status FROM publications WHERE day = ? ORDER BY title", today);
+  for (const x of pubs.filter((x) => x.status !== "published")) alerts.push({ tone: "info", project: null, text: `À publier aujourd'hui · ${x.title}${x.network ? ` (${x.network})` : ""}`, to: { view: "pubs" } });
+
+  return {
+    range: r, today,
+    totals: {
+      visitors: sum("visitors"), visitorsPrev: sum("visitorsPrev"), clicks: sum("clicks"), clicksPrev: sum("clicksPrev"),
+      revenue: sum("revenue"), revenuePrev: sum("revenuePrev"), mrr: sum("mrr"), leads: sum("leads"), leadsPrev: sum("leadsPrev"), open: sum("open"), todo,
+    },
+    projects: rows,
+    daily: [...daily.values()].sort((a, b) => a.day.localeCompare(b.day)),
+    alerts: alerts.sort((a, b) => ["bad", "warn", "info"].indexOf(a.tone) - ["bad", "warn", "info"].indexOf(b.tone)),
+  };
+}
+
+export function registerPortfolio(app: Hono) {
+  app.get("/api/portfolio", (c) => c.json(portfolio(rangeOf(c.req.query()))));
+}
+
+const json = (data: unknown) => ({ content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] });
+export function registerPortfolioTools(server: McpServer) {
+  server.registerTool("portfolio_overview", {
+    description: "Vue d'ensemble de tous les projets en un appel : totaux (visites, clics Google, CA, revenu mensuel, contacts, relances), une ligne par projet et les alertes. À appeler en premier.",
+    inputSchema: z.object({ days: z.number().int().min(1).max(500).default(28) }),
+  }, async ({ days }) => { const o = portfolio(lastDays(days)); return json({ ...o, daily: undefined, projects: o.projects.map((p) => ({ ...p, series: undefined })) }); });
+  server.registerTool("alerts", { description: "Ce qui demande une action maintenant : relevés en panne, sites sans visites, baisses, objectifs en retard, relances, publications du jour." },
+    async () => json(portfolio(lastDays(7)).alerts));
+  server.registerTool("agent_activity", {
+    description: "Journal des appels des agents IA à Searchtide (qui a fait quoi, quand). Filtrable par agent.",
+    inputSchema: z.object({ agent: z.string().optional(), limit: z.number().int().min(1).max(500).default(50) }),
+  }, async ({ agent, limit }) => json(agentLog(limit, agent).map((r) => ({ ...r, at: new Date(r.ts).toISOString() }))));
+}

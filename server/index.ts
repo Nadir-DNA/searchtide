@@ -3,13 +3,22 @@ import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { getConnInfo } from "@hono/node-server/conninfo";
 import { getSignedCookie, setSignedCookie, deleteCookie } from "hono/cookie";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import { db, localDay, type Site } from "./db.ts";
 import { collect } from "./collect.ts";
 import { lastDays, overview, searchStats, strikingDistance, trafficStats, type Range } from "./stats.ts";
 import { gscConfigured, listProperties, syncAll, syncSite } from "./gsc.ts";
 import { handleMcp } from "./mcp.ts";
+import { registerBusiness } from "./business.ts";
+import { registerReport } from "./report.ts";
+import { registerProjects } from "./projects.ts";
+import { registerConnections } from "./connections.ts";
+import { registerOps } from "./ops.ts";
+import { registerPortfolio } from "./portfolio.ts";
+import { findAgent, registerAgents } from "./agents.ts";
+import { registerDashboards } from "./dashboards.ts";
+import { registerOutreach } from "./outreach.ts";
 import { backup, loginLimiter, verifyTotp } from "./security.ts";
 
 const SECRET = process.env.SECRET ?? "dev-secret";
@@ -63,7 +72,7 @@ app.post("/api/login", async (c) => {
   }
   limiter.reset(ip);
   await setSignedCookie(c, "st_session", "admin", SECRET, {
-    httpOnly: true, sameSite: "Lax", secure: c.req.url.startsWith("https"), maxAge: 30 * 86400, path: "/",
+    httpOnly: true, sameSite: "Lax", secure: (c.req.header("x-forwarded-proto") ?? new URL(c.req.url).protocol.replace(":", "")) === "https", maxAge: 30 * 86400, path: "/",
   });
   return c.json({ ok: true });
 });
@@ -72,6 +81,13 @@ app.post("/api/logout", (c) => { deleteCookie(c, "st_session", { path: "/" }); r
 async function auth(c: Context, next: Next) {
   const bearer = c.req.header("authorization")?.replace(/^Bearer /, "");
   if (API_KEY && bearer && same(bearer, API_KEY)) return next();
+  // Clé d'agent : mêmes droits que la clé principale (ou lecture seule), mais elle ne peut pas gérer les clés
+  const agent = findAgent(bearer);
+  if (agent) {
+    if (c.req.path.startsWith("/api/agents") && c.req.method !== "GET") return c.json({ error: "Les clés d'agent se gèrent depuis l'interface" }, 403);
+    if (!agent.readOnly || c.req.method === "GET" || c.req.path === "/mcp") return next();
+    return c.json({ error: "Clé en lecture seule" }, 403);
+  }
   if (API_KEY_READ && bearer && same(bearer, API_KEY_READ)) {
     // Lecture seule : GET, et MCP avec les seuls outils de lecture (voir la route /mcp)
     if (c.req.method === "GET" || c.req.path === "/mcp") return next();
@@ -86,7 +102,9 @@ app.use("/mcp", auth);
 
 app.all("/mcp", (c) => {
   const bearer = c.req.header("authorization")?.replace(/^Bearer /, "") ?? "";
-  return handleMcp(c.req.raw, { readOnly: !!API_KEY_READ && same(bearer, API_KEY_READ) });
+  const agent = findAgent(bearer);
+  if (agent) return handleMcp(c.req.raw, { readOnly: agent.readOnly, agent: agent.name });
+  return handleMcp(c.req.raw, { readOnly: !!API_KEY_READ && same(bearer, API_KEY_READ), agent: API_KEY && same(bearer, API_KEY) ? "Clé principale" : "Clé lecture seule" });
 });
 
 // ── API privée ──
@@ -148,6 +166,16 @@ app.get("/api/gsc/properties", async (c) => {
   try { return c.json(await listProperties()); } catch (e) { return c.json({ error: (e as Error).message }, 400); }
 });
 
+registerBusiness(app);
+registerReport(app);
+registerProjects(app)
+registerConnections(app);
+registerOps(app);
+registerPortfolio(app);
+registerAgents(app);
+registerDashboards(app);
+registerOutreach(app);
+
 // ── Interface (build Vite) ──
 app.use("/*", serveStatic({ root: "./web/dist" }));
 app.get("*", serveStatic({ path: "./web/dist/index.html" }));
@@ -167,6 +195,13 @@ setInterval(() => {
 }, 10 * 60 * 1000).unref();
 
 const port = Number(process.env.PORT ?? 3030);
-serve({ fetch: app.fetch, port }, () => console.log(`Searchtide sur http://localhost:${port}`));
+// Écoute locale par défaut : sans HOST explicite, rien n'est joignable depuis le réseau.
+// Docker exige une écoute interne large pour publier un port (le port publié reste borné à 127.0.0.1 côté hôte).
+const inContainer = existsSync("/.dockerenv");
+const hostname = process.env.HOST ?? (inContainer ? "0.0.0.0" : "127.0.0.1");
+if (!inContainer && hostname !== "127.0.0.1" && hostname !== "localhost" && !TOTP_SECRET && !DEMO) {
+  console.warn(`Attention : Searchtide est joignable sur ${hostname} sans double authentification. Activez-la (npm run 2fa) ou bornez HOST à 127.0.0.1.`);
+}
+serve({ fetch: app.fetch, port, hostname }, () => console.log(`Searchtide sur http://localhost:${port}`));
 
 export { app };

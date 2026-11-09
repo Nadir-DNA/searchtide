@@ -27,7 +27,7 @@ function useWidth() {
 }
 
 /** Barres arrondies : une par jour, ou par semaine au-delà de 62 jours. La dernière (ou celle survolée) prend l'accent. */
-export function BarChart({ days, values, label, height = 300 }: { days: string[]; values: number[]; label: string; height?: number }) {
+export function BarChart({ days, values, label, height = 300, markers = [], color = "var(--color-accent)" }: { days: string[]; values: number[]; label: string; height?: number; markers?: { day: string; label: string }[]; color?: string }) {
   const [ref, w] = useWidth();
   const [hover, setHover] = useState<number | null>(null);
 
@@ -71,8 +71,15 @@ export function BarChart({ days, values, label, height = 300 }: { days: string[]
             const h = Math.max(y(0) - y(b.value), b.value ? 4 : 2);
             return (
               <rect key={i} x={cx(i) - barW / 2} y={y(0) - h} width={barW} height={h} rx={Math.min(barW / 2, 10)}
-                fill="var(--color-accent)" opacity={i === focus ? 1 : 0.28} style={{ transition: "opacity .15s" }} />
+                fill={i === focus ? color : "var(--color-control)"} style={{ transition: "fill .15s" }} />
             );
+          })}
+          {/* Repères (publications, notes) : un point sous la barre du jour, détail au survol */}
+          {markers.map((m, k) => {
+            const idx = days.indexOf(m.day);
+            if (idx < 0) return null;
+            const i = weekly ? Math.floor(idx / 7) : idx;
+            return <circle key={k} cx={cx(i)} cy={y(0) + 6} r={3.5} fill="var(--color-chart-2)"><title>{`${dayLabel(m.day)} : ${m.label}`}</title></circle>;
           })}
           {buckets.map((b, i) => (n - 1 - i) % every === 0 && (
             <text key={i} x={cx(i)} y={height - 8} textAnchor="middle" fontSize="12" fill={i === focus ? "var(--color-ink)" : "var(--color-muted)"}>
@@ -84,8 +91,81 @@ export function BarChart({ days, values, label, height = 300 }: { days: string[]
       {w > 0 && hover !== null && (
         <div className="pointer-events-none absolute rounded-xl border border-control bg-raised px-3 py-2 text-xs shadow-lg"
           style={{ left: tipFlip ? Math.max(cx(focus) - barW / 2 - 150, 0) : tipLeft, top: Math.max(y(buckets[focus].value) - 8, 0) }}>
-          <div className="num flex items-center gap-2 text-sm font-medium"><span className="size-2 rounded-full bg-accent" />{fmt(buckets[focus].value)}</div>
+          <div className="num flex items-center gap-2 text-sm font-medium"><span className="size-2 rounded-full" style={{ background: color }} />{fmt(buckets[focus].value)}</div>
           <div className="mt-0.5 text-muted">{weekly ? `Semaine du ${dayLabel(buckets[focus].day)}` : dayLabel(buckets[focus].day, { weekday: "long", day: "numeric", month: "long" })}</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Barres empilées par série (un projet = une couleur). Survol : le détail du jour, série par série. */
+export function StackedBars({ days, series, rows, label, height = 280 }: {
+  days: string[]; series: { key: string; label: string; color: string }[]; rows: Record<string, number>[]; label: string; height?: number;
+}) {
+  const [ref, w] = useWidth();
+  const [hover, setHover] = useState<number | null>(null);
+  const weekly = days.length > 62;
+  const buckets = weekly
+    ? Array.from({ length: Math.ceil(days.length / 7) }, (_, i) => ({ day: days[i * 7], v: Object.fromEntries(series.map((s) => [s.key, rows.slice(i * 7, i * 7 + 7).reduce((n, r) => n + (r[s.key] ?? 0), 0)])) }))
+    : days.map((day, i) => ({ day, v: rows[i] }));
+  const totals = buckets.map((b) => series.reduce((n, s) => n + (b.v[s.key] ?? 0), 0));
+  const n = buckets.length;
+  const ys = ticks(Math.max(...totals, 0));
+  const yMax = ys.at(-1)!;
+  const top = 12, bottom = 28;
+  const left = Math.max(...ys.map((t) => fmt(t).length)) * 7 + 14;
+  const plotW = Math.max(w - left, 10), plotH = height - top - bottom;
+  const slot = plotW / Math.max(n, 1);
+  const barW = Math.max(2, Math.min(24, slot * 0.6));
+  const cx = (i: number) => left + slot * i + slot / 2;
+  const y = (v: number) => top + plotH - (v / yMax) * plotH;
+  const every = Math.max(1, Math.ceil(n / Math.max(2, Math.floor(plotW / 84))));
+  function move(e: React.PointerEvent<SVGSVGElement>) {
+    const r = e.currentTarget.getBoundingClientRect();
+    setHover(Math.min(Math.max(Math.floor((e.clientX - r.left - left) / slot), 0), n - 1));
+  }
+  const f = hover ?? -1;
+  return (
+    <div ref={ref} className="relative">
+      {w > 0 && n > 0 && (
+        <svg width={w} height={height} role="img" className="block touch-none" onPointerMove={move} onPointerLeave={() => setHover(null)}
+          aria-label={`${label} ${weekly ? "par semaine" : "par jour"}, du ${dayLabel(days[0])} au ${dayLabel(days.at(-1)!)}`}>
+          {ys.map((t) => (
+            <g key={t}>
+              <line x1={left} x2={w} y1={y(t)} y2={y(t)} stroke="var(--color-rule)" />
+              <text x={left - 12} y={y(t) + 4} textAnchor="end" fontSize="12" fill="var(--color-muted)" className="num">{fmt(t)}</text>
+            </g>
+          ))}
+          {buckets.map((b, i) => {
+            let acc = 0;
+            return (
+              <g key={i} opacity={f < 0 || f === i ? 1 : 0.35} style={{ transition: "opacity .15s" }}>
+                {series.map((s) => {
+                  const v = b.v[s.key] ?? 0;
+                  if (!v) return null;
+                  const y1 = y(acc), y2 = y(acc + v);
+                  acc += v;
+                  return <rect key={s.key} x={cx(i) - barW / 2} y={y2} width={barW} height={Math.max(y1 - y2 - 1, 1)} rx={Math.min(2, barW / 4)} fill={s.color} />;
+                })}
+              </g>
+            );
+          })}
+          {buckets.map((b, i) => (n - 1 - i) % every === 0 && (
+            <text key={i} x={cx(i)} y={height - 8} textAnchor="middle" fontSize="12" fill={i === f ? "var(--color-ink)" : "var(--color-muted)"}>
+              {dayLabel(b.day, n <= 8 ? { weekday: "short" } : undefined)}
+            </text>
+          ))}
+        </svg>
+      )}
+      {w > 0 && hover !== null && (
+        <div className="pointer-events-none absolute z-10 min-w-44 rounded-lg border border-control bg-raised px-3 py-2 text-xs shadow-lg"
+          style={{ left: cx(f) + 190 > w ? Math.max(cx(f) - barW / 2 - 186, 0) : cx(f) + barW / 2 + 10, top: top }}>
+          <div className="mb-1.5 text-muted">{weekly ? `Semaine du ${dayLabel(buckets[f].day)}` : dayLabel(buckets[f].day, { weekday: "long", day: "numeric", month: "long" })}</div>
+          {series.filter((s) => buckets[f].v[s.key]).map((s) => (
+            <div key={s.key} className="flex items-center gap-2 py-0.5"><span className="size-2 rounded-sm" style={{ background: s.color }} /><span className="flex-1">{s.label}</span><span className="num">{fmt(buckets[f].v[s.key])}</span></div>
+          ))}
+          <div className="mt-1 flex justify-between border-t border-rule pt-1 font-medium"><span>Total</span><span className="num">{fmt(totals[f])}</span></div>
         </div>
       )}
     </div>

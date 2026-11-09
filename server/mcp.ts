@@ -3,6 +3,16 @@ import { z } from "zod";
 import { db, type Site } from "./db.ts";
 import { lastDays, searchStats, strikingDistance, trafficStats, type Range } from "./stats.ts";
 import { gscConfigured, syncSite } from "./gsc.ts";
+import { registerBusinessTools } from "./business.ts";
+import { registerProjectTools } from "./projects.ts";
+import { instrument } from "./agents.ts";
+import { registerDashboardTools } from "./dashboards.ts";
+import { registerPortfolioTools } from "./portfolio.ts";
+
+const INSTRUCTIONS = `Searchtide : tous ses projets (sites, Search Console, Stripe, indicateurs métier, CRM, publications) dans un tableau de bord.
+Commencez par portfolio_overview (et alerts) pour l'état général. Les pages du tableau de bord sont personnalisables :
+dashboard_catalog donne les blocs possibles, dashboard_list les pages, widget_add / widget_update / widget_move / widget_remove les modifient.
+Une note (type "note") sert à laisser un briefing écrit visible par vous. Tous vos appels sont journalisés sous le nom de votre clé.`;
 
 const json = (data: unknown) => ({ content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] });
 
@@ -18,8 +28,9 @@ const period = {
 };
 const range = (days: number): Range => lastDays(days);
 
-function build(readOnly = false) {
-  const server = new McpServer({ name: "searchtide", version: "0.1.0" });
+function build(readOnly = false, agent = "Clé principale") {
+  const server = new McpServer({ name: "searchtide", version: "0.2.0" }, { instructions: INSTRUCTIONS });
+  instrument(server, agent);
 
   server.registerTool("list_sites", { description: "Liste les sites suivis et leur liaison Search Console." },
     async () => json(db.prepare("SELECT domain, name, gsc_property FROM sites ORDER BY domain").all()));
@@ -47,12 +58,16 @@ function build(readOnly = false) {
     return json(await syncSite(site(d)));
   });
 
+  registerBusinessTools(server, readOnly);
+  registerProjectTools(server, readOnly);
+  registerPortfolioTools(server);
+  registerDashboardTools(server, readOnly, agent);
   return server;
 }
 
 /** Point d'entrée MCP en Streamable HTTP, sans état (un serveur par requête). */
-export async function handleMcp(req: Request, opts: { readOnly?: boolean } = {}): Promise<Response> {
+export async function handleMcp(req: Request, opts: { readOnly?: boolean; agent?: string } = {}): Promise<Response> {
   const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined });
-  await build(opts.readOnly).connect(transport);
+  await build(opts.readOnly, opts.agent).connect(transport);
   return transport.handleRequest(req);
 }

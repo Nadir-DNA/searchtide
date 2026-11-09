@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { api, AuthError, type Overview as OverviewData, type Search, type Site, type Traffic } from "./api";
 import { BarChart, Donut, fillDays } from "./chart";
+import { CrmView, PubsView, ReportView } from "./business";
+import { ManageProject, ProjectView, type Project } from "./projects";
+import { Onboarding } from "./onboarding";
+import { ConnectionsView } from "./connections";
+import { AgentsView } from "./agents";
+import { DashboardView, type Dashboards } from "./dashboard";
+import { SettingsView } from "./settings";
 import { Button, Card, Delta, EmptyBox, Icon, KpiCard, Mark, Segmented, ShareList, Skeleton, Svg, Table, fmt, inputCls } from "./ui";
 
 const CHANNELS: Record<string, string> = {
@@ -54,8 +61,8 @@ function Login() {
   }
   return (
     <main className="grid min-h-screen place-items-center px-4">
-      <form onSubmit={submit} className="w-full max-w-sm rounded-[24px] border border-border bg-surface p-8">
-        <div className="mb-8 flex items-center gap-2.5"><Mark className="size-8" /><span className="text-lg">Searchtide</span></div>
+      <form onSubmit={submit} className="w-full max-w-sm rounded-2xl border border-border bg-surface p-8">
+        <div className="mb-8 flex items-center gap-2.5"><Mark className="size-8" /><span className="text-lg font-medium tracking-tight">Searchtide</span></div>
         <h1 className="text-[28px] font-light">Connexion</h1>
         <p className="mt-1 mb-6 text-sm text-muted">Le mot de passe est défini par ADMIN_PASSWORD sur votre instance.</p>
         <label className="block text-sm">Mot de passe
@@ -77,17 +84,49 @@ function Shell({ me, onLogout }: { me: Me; onLogout: () => void }) {
   const { q, go } = useRoute();
   const [theme, setTheme] = useTheme();
   const [sites, setSites] = useState<Site[] | null>(null);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [menu, setMenu] = useState(false);
   const load = useCallback(() => api<Site[]>("/api/sites").then(setSites).catch((e) => e instanceof AuthError && onLogout()), [onLogout]);
-  useEffect(() => { load(); }, [load]);
+  const loadProjects = useCallback(() => api<Project[]>("/api/projects?days=1").then(setProjects).catch(() => {}), []);
+  const [dash, setDash] = useState<Dashboards | null>(null);
+  const loadDash = useCallback(() => { if (!me.demo) api<Dashboards>("/api/dashboards").then(setDash).catch(() => {}); }, [me.demo]);
+  useEffect(() => { load(); loadProjects(); loadDash(); }, [load, loadProjects, loadDash]);
   const days = Number(q.days) || 28;
   const site = sites?.find((s) => s.domain === q.site);
   const nav = (next: Record<string, string | undefined>) => { setMenu(false); go(next); };
+  // Retour d'une autorisation (Stripe…) : on ouvre l'écran Connexions avec le résultat
+  useEffect(() => {
+    if (q.connexion) { history.replaceState(null, "", "/?view=connections"); }
+  }, [q.connexion]);
+  // Réinitialise les filtres propres à chaque vue
+  const home = { site: undefined, tab: undefined, view: undefined, id: undefined, q: undefined, project: undefined, source: undefined, month: undefined };
 
   const sidebar = (
     <nav aria-label="Navigation" className="flex flex-1 flex-col gap-1 px-4 pb-5">
-      <NavItem icon={Icon.grid} active={!q.site && q.view !== "add"} onClick={() => nav({ site: undefined, tab: undefined, view: undefined })}>Vue d'ensemble</NavItem>
-      <div className="mt-6 mb-1.5 px-3 text-xs text-muted">Sites</div>
+      {me.demo || !dash ? <NavItem icon={Icon.grid} active={!q.site && !q.view} onClick={() => nav(home)}>Vue d'ensemble</NavItem>
+        : dash.dashboards.map((d, i) => (
+          <NavItem key={d.id} icon={Icon.grid} active={!q.site && (q.view === "page" ? q.id === d.id : !q.view && i === 0)} onClick={() => nav(i === 0 ? home : { ...home, view: "page", id: d.id })}>
+            <span className="truncate">{d.name}</span>
+          </NavItem>
+        ))}
+      {!me.demo && <NavItem icon={Icon.plus} active={false} onClick={async () => {
+        const name = prompt("Nom de la nouvelle page");
+        if (name?.trim()) { const d = await api<{ id: string }>("/api/dashboards", { method: "POST", json: { name } }); loadDash(); nav({ ...home, view: "page", id: d.id }); }
+      }}>Nouvelle page</NavItem>}
+      <div className="mt-6 mb-1 px-3 text-xs text-muted">Outils</div>
+      <NavItem icon={Icon.users} active={q.view === "crm"} onClick={() => nav({ ...home, view: "crm" })}>Contacts</NavItem>
+      <NavItem icon={Icon.calendar} active={q.view === "pubs"} onClick={() => nav({ ...home, view: "pubs" })}>Publications</NavItem>
+      <NavItem icon={Icon.mail} active={q.view === "report"} onClick={() => nav({ ...home, view: "report" })}>Rapport hebdo</NavItem>
+      {!me.demo && <NavItem icon={Icon.bot} active={q.view === "agents"} onClick={() => nav({ ...home, view: "agents" })}>Agents IA</NavItem>}
+      {!me.demo && <NavItem icon={Icon.link} active={q.view === "connections"} onClick={() => nav({ ...home, view: "connections" })}>Connexions</NavItem>}
+      <div className="mt-6 mb-1 px-3 text-xs text-muted">Projets</div>
+      {projects.map((p) => (
+        <NavItem key={p.id} icon={<circle cx="8" cy="8" r="3" fill={p.color ?? "currentColor"} stroke="none" />} active={q.view === "project" && q.id === p.id} onClick={() => nav({ ...home, view: "project", id: p.id })}>
+          <span className="truncate">{p.name}</span>
+        </NavItem>
+      ))}
+      <NavItem icon={Icon.plus} active={q.view === "newproject"} onClick={() => nav({ ...home, view: "newproject" })}>Nouveau projet</NavItem>
+      <div className="mt-6 mb-1 px-3 text-xs text-muted">Sites</div>
       {sites?.map((s) => (
         <NavItem key={s.id} icon={Icon.globe} active={s.domain === q.site} onClick={() => nav({ site: s.domain, view: undefined })}>
           <span className="truncate">{s.domain}</span>
@@ -96,6 +135,7 @@ function Shell({ me, onLogout }: { me: Me; onLogout: () => void }) {
       ))}
       {!me.demo && <NavItem icon={Icon.plus} active={q.view === "add"} onClick={() => nav({ site: undefined, view: "add" })}>Ajouter un site</NavItem>}
       <div className="mt-auto space-y-1 pt-6">
+        <NavItem icon={Icon.gear} active={q.view === "settings"} onClick={() => nav({ ...home, view: "settings" })}>Réglages</NavItem>
         <a href="https://github.com/Nadir-DNA/searchtide" target="_blank" rel="noreferrer" className="flex h-10 items-center gap-3 rounded-xl px-3 text-sm text-muted hover:text-ink"><Svg>{Icon.book}</Svg>Documentation</a>
         {!me.demo && <button onClick={() => api("/api/logout", { method: "POST" }).then(onLogout)} className="flex h-10 w-full items-center gap-3 rounded-xl px-3 text-sm text-muted hover:text-ink"><Svg>{Icon.out}</Svg>Déconnexion</button>}
         <div className="flex items-center justify-between rounded-2xl border border-border bg-surface px-3 py-2 text-sm">
@@ -109,13 +149,13 @@ function Shell({ me, onLogout }: { me: Me; onLogout: () => void }) {
   return (
     <div className="flex min-h-screen">
       <aside className="sticky top-0 hidden h-screen w-[248px] shrink-0 flex-col md:flex">
-        <div className="flex h-20 items-center gap-2.5 px-7"><Mark className="size-7" /><span className="text-lg">Searchtide</span></div>
+        <div className="flex h-20 items-center gap-2.5 px-7"><Mark className="size-7" /><span className="text-lg font-medium tracking-tight">Searchtide</span></div>
         {sidebar}
       </aside>
       {menu && (
         <div className="fixed inset-0 z-20 flex flex-col bg-ground md:hidden">
           <div className="flex h-14 items-center justify-between px-4">
-            <span className="flex items-center gap-2.5"><Mark className="size-7" /><span className="text-lg">Searchtide</span></span>
+            <span className="flex items-center gap-2.5"><Mark className="size-7" /><span className="text-lg font-medium tracking-tight">Searchtide</span></span>
             <button onClick={() => setMenu(false)} className="h-11 px-2 text-sm">Fermer</button>
           </div>
           {sidebar}
@@ -129,9 +169,23 @@ function Shell({ me, onLogout }: { me: Me; onLogout: () => void }) {
           {me.demo && <span className="ml-auto text-xs text-muted">Démo</span>}
         </div>
         {sites === null ? null
+          : q.view === "crm" ? <CrmView tab={q.tab ?? ""} go={go} q={q} />
+          : q.view === "pubs" ? <PubsView q={q} go={go} />
+          : q.view === "report" ? <ReportView />
+          : q.view === "settings" ? <SettingsView />
+          : q.view === "agents" ? <AgentsView />
+          : q.view === "connections" ? <ConnectionsView />
+          : q.view === "project" && q.id ? <ProjectView key={q.id} id={q.id} days={days} go={go} />
+          : q.view === "newproject" ? <ManageProject project={null} onClose={() => go(home)} onSaved={(p) => { loadProjects(); if (p) go({ ...home, view: "project", id: p.id }); }} />
           : q.view === "add" ? <AddSite onAdded={(s) => { load(); go({ site: s.domain, tab: "setup", view: undefined }); }} />
           : site ? <SiteView key={site.id} site={site} me={me} days={days} tab={q.tab ?? "traffic"} go={go} onChange={load} />
-          : <Overview days={days} demo={me.demo} go={go} />}
+          : !sites.length && !projects.length ? <Onboarding go={go} />
+          : me.demo ? <Overview days={days} demo={me.demo} go={go} />
+          : !dash ? <KpiSkeleton />
+          : (() => {
+            const d = (q.view === "page" && dash.dashboards.find((x) => x.id === q.id)) || dash.dashboards[0];
+            return <DashboardView key={d.id} dash={d} catalog={dash.catalog} sizes={dash.sizes} days={days} go={go} onChanged={loadDash} />;
+          })()}
       </div>
     </div>
   );
@@ -140,14 +194,13 @@ function Shell({ me, onLogout }: { me: Me; onLogout: () => void }) {
 function NavItem({ icon, active, onClick, children }: { icon: ReactNode; active: boolean; onClick: () => void; children: ReactNode }) {
   return (
     <button onClick={onClick} aria-current={active ? "page" : undefined}
-      className={`relative flex h-10 w-full items-center gap-3 rounded-xl px-3 text-left text-sm transition-colors ${active ? "bg-surface text-ink" : "text-muted hover:text-ink"}`}>
-      {active && <span className="absolute top-2.5 -left-4 h-5 w-[3px] rounded-r-full bg-accent" aria-hidden />}
+      className={`flex h-9 w-full items-center gap-3 rounded-lg px-3 text-left text-sm transition-colors ${active ? "bg-active text-ink" : "text-muted hover:bg-raised hover:text-ink"}`}>
       <Svg>{icon}</Svg>{children}
     </button>
   );
 }
 
-function useData<T>(url: string) {
+export function useData<T>(url: string) {
   const [state, setState] = useState<{ data: T | null; error: string }>({ data: null, error: "" });
   const reload = useCallback(() => {
     api<T>(url).then((data) => setState({ data, error: "" })).catch((e) => setState((s) => ({ ...s, error: e.message })));
@@ -156,7 +209,7 @@ function useData<T>(url: string) {
   return { ...state, reload };
 }
 
-function Header({ title, sub, days, go, demo, children }: {
+export function Header({ title, sub, days, go, demo, children }: {
   title: ReactNode; sub?: ReactNode; days?: number; go?: (n: Record<string, string | undefined>) => void; demo?: boolean; children?: ReactNode;
 }) {
   return (
@@ -176,12 +229,12 @@ function Header({ title, sub, days, go, demo, children }: {
   );
 }
 
-function ErrorLine({ error, retry }: { error: string; retry: () => void }) {
+export function ErrorLine({ error, retry }: { error: string; retry: () => void }) {
   return <EmptyBox>Impossible de charger les données : {error}. <button onClick={retry} className="text-ink underline">Réessayer</button></EmptyBox>;
 }
 
-function KpiSkeleton() {
-  return <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">{[0, 1, 2, 3].map((i) => <div key={i} className="space-y-3 rounded-[20px] border border-border bg-surface p-5"><Skeleton className="h-4 w-20" /><Skeleton className="h-9 w-28" /></div>)}</div>;
+export function KpiSkeleton() {
+  return <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">{[0, 1, 2, 3].map((i) => <div key={i} className="space-y-3 rounded-2xl border border-border bg-surface p-5"><Skeleton className="h-4 w-20" /><Skeleton className="h-9 w-28" /></div>)}</div>;
 }
 
 // ── Vue d'ensemble : tous les sites ──

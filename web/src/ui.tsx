@@ -5,7 +5,7 @@ export const fmt = (n: number | null | undefined, d = 0) =>
 
 export function Card({ title, action, children, className = "" }: { title?: ReactNode; action?: ReactNode; children: ReactNode; className?: string }) {
   return (
-    <section className={`min-w-0 rounded-[20px] border border-border bg-surface p-5 sm:p-6 ${className}`}>
+    <section className={`min-w-0 rounded-2xl border border-border bg-surface p-5 sm:p-6 ${className}`}>
       {(title || action) && (
         <div className="mb-5 flex min-h-8 flex-wrap items-center justify-between gap-3">
           {typeof title === "string" ? <h2 className="text-lg font-light">{title}</h2> : title}
@@ -64,7 +64,7 @@ export function KpiCard({ label, value, delta, active, onClick, hint }: {
       {hint && <div className="mt-1 text-xs text-muted">{hint}</div>}
     </>
   );
-  const cls = `min-w-0 rounded-[20px] border bg-surface p-5 text-left transition-colors ${active ? "border-control" : "border-border"}`;
+  const cls = `min-w-0 rounded-2xl border bg-surface p-5 text-left transition-colors ${active ? "border-control" : "border-border"}`;
   return onClick
     ? <button onClick={onClick} aria-pressed={active} className={`${cls} hover:border-control active:scale-[.99]`}>{body}</button>
     : <div className={cls}>{body}</div>;
@@ -130,12 +130,12 @@ export function Table<T>({ rows, cols, empty, onRow }: { rows: T[]; cols: Col<T>
 
 export function Button({ children, variant = "primary", ...p }: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" }) {
   const look = variant === "primary"
-    ? "bg-accent text-on-accent hover:brightness-95"
+    ? "bg-ink text-ground hover:opacity-90"
     : "border border-control bg-raised text-ink hover:bg-active";
   return <button {...p} className={`inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-full px-4 text-sm font-medium transition active:scale-[.98] disabled:opacity-50 ${look} ${p.className ?? ""}`}>{children}</button>;
 }
 
-export const inputCls = "h-10 w-full rounded-xl border border-control bg-raised px-3 text-sm text-ink placeholder:text-muted";
+export const inputCls = "h-10 w-full rounded-lg border border-control bg-raised px-3 text-sm text-ink placeholder:text-muted";
 
 /** Barre grise à la taille réelle de la valeur attendue (chargement). */
 export const Skeleton = ({ className = "" }: { className?: string }) => <span className={`block rounded-xl bg-raised ${className}`} />;
@@ -157,6 +157,12 @@ export const Icon = {
   plus: <path d="M8 3v10M3 8h10" />,
   book: <path d="M3 3.5h4a1.5 1.5 0 0 1 1.5 1.5v8A1.5 1.5 0 0 0 7 11.5H3zM13 3.5H9.5A1.5 1.5 0 0 0 8 5v8a1.5 1.5 0 0 1 1.5-1.5H13z" />,
   out: <path d="M6 13H3.5V3H6M10 5l3 3-3 3M13 8H6" />,
+  users: <><circle cx="6" cy="5.5" r="2.5" /><path d="M1.5 13.5c.5-2.5 2.3-3.8 4.5-3.8s4 1.3 4.5 3.8M10.5 3.2a2.5 2.5 0 0 1 0 4.6M12.5 9.9c1.1.6 1.8 1.8 2 3.6" /></>,
+  gear: <><circle cx="8" cy="8" r="2" /><path d="M8 1.8v1.6M8 12.6v1.6M3.6 3.6l1.1 1.1M11.3 11.3l1.1 1.1M1.8 8h1.6M12.6 8h1.6M3.6 12.4l1.1-1.1M11.3 4.7l1.1-1.1" /></>,
+  mail: <><rect x="2" y="3.5" width="12" height="9" rx="2" /><path d="m2.5 4.5 5.5 4 5.5-4" /></>,
+  bot: <><rect x="3" y="5" width="10" height="8" rx="2.5" /><path d="M8 2.5V5M6 9h.01M10 9h.01M1.5 9v1.5M14.5 9v1.5" /></>,
+  link: <><path d="M6.5 9.5a3 3 0 0 0 4.2 0l2.1-2.1a3 3 0 0 0-4.2-4.2L7.5 4.3" /><path d="M9.5 6.5a3 3 0 0 0-4.2 0L3.2 8.6a3 3 0 0 0 4.2 4.2l1.1-1.1" /></>,
+  calendar: <><rect x="2.5" y="3.5" width="11" height="10" rx="2" /><path d="M2.5 6.5h11M5.5 2v3M10.5 2v3" /></>,
 };
 export const Svg = ({ children }: { children: ReactNode }) => (
   <svg viewBox="0 0 16 16" className="size-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>{children}</svg>
