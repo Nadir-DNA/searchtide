@@ -14,8 +14,9 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 export const FIXTURES: Record<string, Fixture> = {
   stripe: {
     cfg: { config: {}, secrets: { key: "rk_" + "test_FIXTUREabcdefghij0123456789" } },
-    respond: (url) => {
-      if (/\/v1\/balance(\?|$)/.test(url)) return json({ available: [{ amount: 1000, currency: "eur" }] });
+    respond: (url, init) => {
+      const usd = /USD/.test(String((init?.headers as Record<string, string> | undefined)?.Authorization ?? ""));   // une clé contenant « USD » simule un compte en dollars
+      if (/\/v1\/balance(\?|$)/.test(url)) return json({ available: [{ amount: 1000, currency: usd ? "usd" : "eur" }] });
       if (url.includes("/balance_transactions")) return json({ data: [{ type: "charge", net: 1250 }, { type: "stripe_fee", net: -100 }, { type: "refund", net: -250 }], has_more: false });
       if (url.includes("/customers")) return json({ data: [{ id: "cus_1" }, { id: "cus_2" }], has_more: false });
       if (url.includes("/subscriptions")) return json({ data: [{ id: "sub_1", items: { data: [{ price: { unit_amount: 2900, recurring: { interval: "month" } }, quantity: 1 }] }, discounts: [] }], has_more: false });

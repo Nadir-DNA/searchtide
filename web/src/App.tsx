@@ -4,6 +4,7 @@ import { BarChart, Donut, fillDays } from "./chart";
 import { CrmView, PubsView, ReportView } from "./business";
 import { ManageProject, ProjectView, type Project } from "./projects";
 import { Onboarding, SKIP_KEY } from "./onboarding";
+import { PortfolioView } from "./portefeuille";
 import { ConnectionsView } from "./connections";
 import { AgentsView } from "./agents";
 import { DashboardView, type Dashboards } from "./dashboard";
@@ -114,6 +115,7 @@ function Shell({ me, onLogout }: { me: Me; onLogout: () => void }) {
         if (name?.trim()) { const d = await api<{ id: string }>("/api/dashboards", { method: "POST", json: { name } }); loadDash(); nav({ ...home, view: "page", id: d.id }); }
       }}>Nouvelle page</NavItem>}
       <div className="mt-6 mb-1 px-3 text-xs text-muted">Outils</div>
+      <NavItem icon={Icon.grid} active={q.view === "portfolio"} onClick={() => nav({ ...home, view: "portfolio" })}>Portefeuille</NavItem>
       {!me.demo && <NavItem icon={Icon.users} active={q.view === "crm"} onClick={() => nav({ ...home, view: "crm" })}>Contacts</NavItem>}
       {!me.demo && <NavItem icon={Icon.calendar} active={q.view === "pubs"} onClick={() => nav({ ...home, view: "pubs" })}>Publications</NavItem>}
       <NavItem icon={Icon.mail} active={q.view === "report"} onClick={() => nav({ ...home, view: "report" })}>Rapport hebdo</NavItem>
@@ -177,6 +179,7 @@ function Shell({ me, onLogout }: { me: Me; onLogout: () => void }) {
           : q.view === "agents" ? <AgentsView />
           : q.view === "connections" ? <ConnectionsView />
           : q.view === "start" ? <Onboarding go={go} />
+          : q.view === "portfolio" ? <PortfolioView days={days} go={go} />
           : q.view === "project" && q.id ? <ProjectView key={q.id} id={q.id} days={days} go={go} />
           : q.view === "newproject" ? <ManageProject project={null} onClose={() => go(home)} onSaved={(p) => { loadProjects(); if (p) go({ ...home, view: "project", id: p.id }); }} />
           : q.view === "add" ? <AddSite onAdded={(s) => { load(); go({ site: s.domain, tab: "setup", view: undefined }); }} />

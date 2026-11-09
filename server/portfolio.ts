@@ -4,6 +4,7 @@ import { db, localDay } from "./db.ts";
 import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { agentLog } from "./agents.ts";
+import { isAdmin } from "./admin.ts";
 import { lastDays, previous, type Range } from "./stats.ts";
 import { listProjects, rangeOf } from "./projects.ts";
 import { connections } from "./connections.ts";
@@ -22,6 +23,50 @@ function siteTotals(ids: string[], r: Range) {
     ROUND(SUM(position * impressions) / NULLIF(SUM(impressions), 0), 1) AS position
     FROM gsc_rows WHERE site_id IN (${ph(ids.length)}) AND day BETWEEN ? AND ? AND query = '' AND page = ''`, ...ids, r.from, r.to)[0];
   return { visitors: t.visitors as number, clicks: g.clicks as number, impressions: g.impressions as number, position: g.position as number | null };
+}
+
+/**
+ * Mesures comparables entre projets (colonnes du Portefeuille). `kind` règle l'agrégation de la ligne Total :
+ * count = somme ; money = somme seulement si tous les projets ont la même devise (sinon « Devises mélangées ») ; les autres : pas de total.
+ */
+export const MEASURES: Record<string, { label: string; kind: "count" | "money" | "score" | "rating" | "position" | "seconds" | "ratio"; lowerIsBetter?: boolean }> = {
+  visitors: { label: "Visites", kind: "count" },
+  clicks: { label: "Clics Google", kind: "count" },
+  position: { label: "Position Google", kind: "position", lowerIsBetter: true },
+  revenue: { label: "CA net", kind: "money" },
+  mrr: { label: "MRR", kind: "money" },
+  active_subscriptions: { label: "Abonnements actifs", kind: "count" },
+  new_customers: { label: "Nouveaux clients", kind: "count" },
+  "pagespeed:performance": { label: "Performance (PageSpeed)", kind: "score" },
+  "pagespeed:seo": { label: "SEO technique (PageSpeed)", kind: "score" },
+  "pagespeed:lcp": { label: "LCP (PageSpeed)", kind: "seconds", lowerIsBetter: true },
+  "pagespeed:cls": { label: "CLS (PageSpeed)", kind: "ratio", lowerIsBetter: true },
+  "play:rating": { label: "Note Google Play", kind: "rating" },
+  "play:active_installs": { label: "Installations actives (Play)", kind: "count" },
+  "play:daily_installs": { label: "Installations par jour (Play)", kind: "count" },
+  leads: { label: "Nouveaux contacts", kind: "count" },
+};
+type Measure = { value: number | null; previous: number | null; unit: string | null };
+const SUMMED = new Set(["count", "money"]);
+
+/** Valeurs des indicateurs d'un projet pour une clé de mesure (somme pour les comptes et l'argent, moyenne pour les notes). */
+function indicatorMeasures(inds: Row[]): Record<string, Measure> {
+  const groups = new Map<string, Row[]>();
+  for (const i of inds) {
+    const metric = i.config?.metric;
+    const key = i.source === "stripe" ? metric : i.source === "pagespeed" || i.source === "play" ? `${i.source}:${metric}` : null;
+    if (key && MEASURES[key]) groups.set(key, [...(groups.get(key) ?? []), i]);
+  }
+  const out: Record<string, Measure> = {};
+  for (const [key, list] of groups) {
+    const vals = list.filter((i) => i.value != null), prev = list.filter((i) => i.previous != null);
+    if (!vals.length) continue;
+    const add = (xs: Row[], f: "value" | "previous") => xs.reduce((n, i) => n + i[f], 0);
+    const mean = (xs: Row[], f: "value" | "previous") => (xs.length ? add(xs, f) / xs.length : null);
+    const sum = SUMMED.has(MEASURES[key].kind);
+    out[key] = { value: sum ? add(vals, "value") : mean(vals, "value"), previous: prev.length ? (sum ? add(prev, "previous") : mean(prev, "previous")) : null, unit: list.find((i) => i.unit)?.unit ?? null };
+  }
+  return out;
 }
 
 /** Somme des indicateurs Stripe d'une métrique (chiffre d'affaires sur la période, ou MRR au dernier relevé). */
@@ -96,6 +141,12 @@ export function portfolio(r: Range, weights: Weights = getWeights()) {
 
     return {
       id: x.id, name: x.name, color: x.color, url: x.url, sites: ss.map((s) => s.domain), to, health, mrrPrev: money(inds, "mrr", "previous"),
+      measures: {
+        ...(ids.length ? { visitors: { value: now.visitors, previous: before.visitors, unit: null } } : {}),
+        ...(ss.some((s) => s.gsc_property) ? { clicks: { value: now.clicks, previous: before.clicks, unit: null }, position: { value: now.position, previous: before.position, unit: null } } : {}),
+        ...(x.crm_key ? { leads: { value: crm?.leads ?? 0, previous: crm?.leads_prev ?? 0, unit: null } } : {}),
+        ...indicatorMeasures(inds),
+      } as Record<string, Measure>,
       visitors: now.visitors, visitorsPrev: before.visitors, clicks: now.clicks, clicksPrev: before.clicks,
       impressions: now.impressions, position: now.position, positionPrev: before.position,
       revenue: money(inds, "revenue", "value"), revenuePrev: money(inds, "revenue", "previous"), mrr: money(inds, "mrr", "value"),
@@ -111,8 +162,10 @@ export function portfolio(r: Range, weights: Weights = getWeights()) {
   const pubs = all("SELECT id, title, project, network, status FROM publications WHERE day = ? ORDER BY title", today);
   for (const x of pubs.filter((x) => x.status !== "published")) alerts.push({ tone: "info", project: null, text: `À publier aujourd'hui · ${x.title}${x.network ? ` (${x.network})` : ""}`, to: { view: "pubs" } });
 
+  // Colonnes proposées : les mesures présentes dans au moins un projet, dans l'ordre du dictionnaire
+  const columns = Object.entries(MEASURES).filter(([k]) => rows.some((x) => x.measures[k])).map(([key, m]) => ({ key, ...m }));
   return {
-    range: r, today,
+    range: r, today, columns,
     totals: {
       visitors: sum("visitors"), visitorsPrev: sum("visitorsPrev"), clicks: sum("clicks"), clicksPrev: sum("clicksPrev"),
       revenue: sum("revenue"), revenuePrev: sum("revenuePrev"), mrr: sum("mrr"), leads: sum("leads"), leadsPrev: sum("leadsPrev"), open: sum("open"), todo,
@@ -123,8 +176,24 @@ export function portfolio(r: Range, weights: Weights = getWeights()) {
   };
 }
 
+const COLUMNS_KEY = "portfolio.columns";
+db.exec("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)");
+/** Colonnes choisies, dans l'ordre, enregistrées dans settings.portfolio.columns ; null tant que rien n'est choisi. */
+export function getColumns(): string[] | null {
+  try { const v = JSON.parse((db.prepare("SELECT value FROM settings WHERE key = ?").get(COLUMNS_KEY) as Row | undefined)?.value ?? "null"); return Array.isArray(v) ? v.filter((k) => typeof k === "string" && MEASURES[k]) : null; } catch { return null; }
+}
+
 export function registerPortfolio(app: Hono) {
   app.get("/api/portfolio", (c) => c.json(portfolio(rangeOf(c.req.query()))));
+  app.get("/api/portfolio/columns", (c) => c.json({ columns: getColumns() }));
+  app.put("/api/portfolio/columns", async (c) => {
+    if (!isAdmin(c)) return c.json({ error: "Réservé à l'administrateur : connectez-vous avec le mot de passe de l'instance." }, 403);
+    const b = await c.req.json().catch(() => ({}));
+    const cols = Array.isArray(b.columns) ? [...new Set<string>(b.columns.map(String))] : null;
+    if (!cols || cols.length > 20 || cols.some((k) => !MEASURES[k])) return c.json({ error: "Colonnes inconnues." }, 400);
+    db.prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(COLUMNS_KEY, JSON.stringify(cols));
+    return c.json({ columns: cols });
+  });
   registerHealth(app, (days, w) => portfolio(lastDays(days), w).projects.filter((p) => p.id && p.health).map((p) => ({ id: p.id, name: p.name, health: p.health! })));
 }
 
