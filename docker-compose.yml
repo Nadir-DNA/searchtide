@@ -1,5 +1,8 @@
 services:
   searchtide:
+    # Image publiée (T25) : docker compose pull && docker compose up -d --no-build
+    # Sans image publiée, `docker compose up -d --build` construit localement et utilise ce même nom.
+    image: ${SEARCHTIDE_IMAGE:-ghcr.io/nadir-dna/searchtide:v0.2.0}
     build: .
     restart: unless-stopped
     healthcheck:
