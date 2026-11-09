@@ -52,7 +52,13 @@ if (DEMO) {
 if (PRODUCTION && (SECRET === "dev-secret" || SECRET.length < 32 || !ADMIN_PASSWORD)) {
   throw new Error("SECRET (32 caractères au moins) et ADMIN_PASSWORD sont obligatoires en production");
 }
-if (generatedSecret?.created) console.log(`[Searchtide] SECRET généré et enregistré dans ${generatedSecret.file} (droits 600).`);
+if (generatedSecret?.created) {
+  console.log(`[Searchtide] SECRET généré et enregistré dans ${generatedSecret.file} (droits 600).`);
+  try {
+    const n = (db.prepare("SELECT COUNT(*) AS n FROM connections").get() as { n: number }).n;
+    if (n > 0) console.warn(`[Searchtide] ATTENTION : SECRET régénéré alors que ${n} connexion(s) chiffrée(s) existent ; elles sont illisibles. Restaurez /data/secret depuis une sauvegarde complète (base + secret + admin-password).`);
+  } catch { /* table des connexions absente : rien à signaler */ }
+}
 if (generatedPassword?.created) console.log(`[Searchtide] Mot de passe administrateur généré : ${generatedPassword.value}\n[Searchtide]   enregistré dans ${generatedPassword.file} (droits 600) ; définissez ADMIN_PASSWORD pour le choisir.`);
 
 const same = (a: string, b: string) => a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));

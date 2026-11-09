@@ -121,7 +121,7 @@ npm test
 
 ## Données, sauvegarde et mot de passe
 
-Le volume `/data` contient la base SQLite, `secret` (clé de chiffrement du coffre) et `admin-password` (mot de passe généré au premier lancement), ces deux derniers en clair et en droits 600. **Sauvegardez tout `/data`** : restaurer la base sans `secret` rend toutes les connexions indéchiffrables. La sauvegarde nocturne inclut désormais la base, `secret` et `admin-password`. Ne joignez jamais ce volume à un ticket ou à une archive de support.
+Le volume `/data` contient la base SQLite, `secret` (clé de chiffrement du coffre) et `admin-password` (mot de passe généré au premier lancement), ces deux derniers en clair et en droits 600. **Sauvegardez tout `/data`** : restaurer la base sans `secret` rend toutes les connexions indéchiffrables. La sauvegarde nocturne inclut la base, `secret` et `admin-password` ; la sauvegarde hors site (`BACKUP_URL`) envoie un **bundle complet** (`searchtide-AAAA-MM-JJ.bundle.json.gz`) qui contient les trois. Restauration : `node scripts/restore-backup.mjs <bundle> /data`, puis redémarrage ; un bundle sans `secret` est signalé, car les connexions seraient illisibles. Ne joignez jamais ce volume ou ce bundle à un ticket ou à une archive de support.
 
 Mot de passe perdu : supprimez `admin-password` puis redémarrez ; une variable `ADMIN_PASSWORD` reste prioritaire.
 

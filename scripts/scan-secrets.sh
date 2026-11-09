@@ -2,6 +2,11 @@
 # Scan de secrets : arbre de travail ET toutes les révisions (`git rev-list --all`).
 # N'affiche jamais de valeur : seulement commit:chemin:ligne et le nom du motif.
 # Usage : scripts/scan-secrets.sh [depot] ; code 0 = aucun motif de clé, 1 = au moins un.
+#
+# Marques à surveiller : liste LOCALE, jamais dans ce dépôt.
+#   BRANDS_FILE=/chemin/vers/ma-liste.txt scripts/scan-secrets.sh
+#   (défaut : ~/.config/searchtide/brands.txt) ; une entrée par ligne, expressions régulières acceptées.
+# Sans fichier, le contrôle des marques n'est pas configuré et le script le dit (il ne prétend pas « aucun »).
 set -u
 repo=${1:-.}; cd "$repo" || exit 2
 hits=0
@@ -24,21 +29,29 @@ report_tree "URL de base avec identifiants (postgres/mysql/mongo/redis)" '(postg
 
 # 2. Historique : mêmes motifs de clés, sur toutes les révisions (une clé supprimée reste dans les anciens commits)
 hist=$(for c in $(git rev-list --all); do
-  git grep -InE '(sk|rk|pk)_(live|test|org)_[A-Za-z0-9]{8,}|whsec_[A-Za-z0-9]{8,}|BEGIN [A-Z ]*PRIVATE KEY|AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{20,}|AIza[0-9A-Za-z_-]{30,}|ck_[A-Za-z0-9_-]{20,}' "$c" 2>/dev/null
+  git grep -InE '(sk|rk|pk)_(live|test|org)_[A-Za-z0-9]{8,}|whsec_[A-Za-z0-9]{8,}|BEGIN [A-Z ]*PRIVATE KEY|AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AIza[0-9A-Za-z_-]{30,}|ck_[A-Za-z0-9_-]{20,}' "$c" 2>/dev/null
 done | sed -E 's/^([0-9a-f]{7})[0-9a-f]+:/\1:/' | sort -u)
 if [ -n "$hist" ]; then printf "[MOTIF] clés de fournisseur dans l'historique (commit:fichier:ligne)\n"; printf '%s\n' "$hist" | sed 's/^/    /'; hits=$((hits+1));
 else printf "[ok] clés de fournisseur absentes de toutes les révisions\n"; fi
 
-brands=$(for c in $(git rev-list --all); do
-  git grep -InE 'terme-local-1|terme-local-5|terme-local-4|terme-local-3|terme-local-7|terme-local-2|terme-local-6|terme-local-8' "$c" 2>/dev/null
-done | sed -E 's/^([0-9a-f]{7})[0-9a-f]+:/\1:/' | grep -v ':scripts/scan-secrets.sh:' | sort -u)
-if [ -n "$brands" ]; then printf "[MOTIF] marques de projets personnels dans l'historique (commit:fichier:ligne)\n"; printf '%s\n' "$brands" | sed 's/^/    /'; hits=$((hits+1));
-else printf "[ok] marques de projets personnels absentes de l'historique\n"; fi
-
-# 3. Marques et domaines de projets personnels (le nom de l'auteur dans LICENSE/README est attendu, pas ces marques)
-brand_hits=$(tree_hits 'terme-local-1|terme-local-5|terme-local-4|terme-local-3|terme-local-7|terme-local-2|terme-local-6|terme-local-8' | grep -v '^scripts/scan-secrets.sh:' || true)
-if [ -n "$brand_hits" ]; then printf '[MOTIF] marques et domaines de projets personnels\n'; printf '%s\n' "$brand_hits" | sed 's/^/    /'; hits=$((hits+1));
-else printf "[ok] marques et domaines de projets personnels absents de l'arbre (nom de l'auteur attendu dans LICENSE/README)\n"; fi
+# 3. Marques personnelles : liste fournie localement, jamais versionnée (aucun nom dans ce fichier).
+brands_file=${BRANDS_FILE:-${SEARCHTIDE_BRANDS:-$HOME/.config/searchtide/brands.txt}}
+pattern=""
+if [ -f "$brands_file" ]; then
+  pattern=$(grep -vE '^[[:space:]]*(#|$)' "$brands_file" 2>/dev/null | paste -sd'|' -)
+fi
+if [ -n "$pattern" ]; then
+  brand_hits=$(tree_hits "$pattern")
+  if [ -n "$brand_hits" ]; then printf '[MOTIF] marques de la liste locale\n'; printf '%s\n' "$brand_hits" | sed 's/^/    /'; hits=$((hits+1));
+  else printf "[ok] aucune marque de la liste locale dans l'arbre\n"; fi
+  brands_hist=$(for c in $(git rev-list --all); do
+    git grep -InE "$pattern" "$c" 2>/dev/null
+  done | sed -E 's/^([0-9a-f]{7})[0-9a-f]+:/\1:/' | sort -u)
+  if [ -n "$brands_hist" ]; then printf "[MOTIF] marques de la liste locale dans l'historique (commit:fichier:ligne)\n"; printf '%s\n' "$brands_hist" | sed 's/^/    /'; hits=$((hits+1));
+  else printf "[ok] aucune marque de la liste locale dans l'historique\n"; fi
+else
+  printf '[?] contrôle des marques non configuré (fichier local absent : %s)\n' "$brands_file"
+fi
 
 # 4. Fichiers sensibles suivis (jamais de contenu affiché)
 bad=$(git ls-files | grep -E '(^|/)\.env$|(^|/)\.env\.(local|production|development)$|(^|/)google[^/]*\.json$|(^|/).*\.(pem|p12)$' || true)

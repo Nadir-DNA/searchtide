@@ -2,12 +2,11 @@
 import type { Hono } from "hono";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { gzipSync } from "node:zlib";
 import { mailSetup, ntfySetup } from "./connectors/channels.ts";
 import { ntfyPublish } from "./connectors/ntfy.ts";
 import { currentCtx } from "./connectors/use.ts";
 import { db, localDay } from "./db.ts";
-import { backup } from "./security.ts";
+import { backupBundle } from "./security.ts";
 import { lastDays } from "./stats.ts";
 import { listProjects } from "./projects.ts";
 
@@ -27,11 +26,14 @@ export async function notify(title: string, message: string, priority: "default"
   for (const r of res) if (r.status === "rejected") console.error("[notification]", r.reason?.message);
 }
 
-/** Envoie la dernière sauvegarde (compressée) vers le Worker de veille, qui en garde 30 jours. */
+/**
+ * Envoie la dernière sauvegarde COMPLÈTE (base + SECRET + admin-password, déjà compressée) vers le Worker de veille.
+ * Une base seule ne suffirait pas : sans SECRET, les connexions seraient indéchiffrables après restauration.
+ */
 export async function offsiteBackup() {
   if (!process.env.BACKUP_URL || !process.env.BACKUP_TOKEN) throw new Error("BACKUP_URL et BACKUP_TOKEN absents de .env");
-  const file = backup(BACKUP_DIR);
-  const body = gzipSync(readFileSync(file));
+  const file = backupBundle(BACKUP_DIR);
+  const body = readFileSync(file);
   const res = await fetch(`${process.env.BACKUP_URL}/backup`, { method: "POST", headers: { Authorization: `Bearer ${process.env.BACKUP_TOKEN}` }, body });
   if (!res.ok) throw new Error(`Sauvegarde externe refusée : ${res.status} ${await res.text()}`);
   const r = await res.json() as Row;

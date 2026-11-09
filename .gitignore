@@ -10,3 +10,7 @@ docker-compose.override.yml
 
 test-results
 playwright-report
+
+# Liste locale des marques à surveiller (jamais versionnée)
+.secrets-denylist
+.brands.txt

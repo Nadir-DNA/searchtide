@@ -1,9 +1,10 @@
 // Sécurité de l'instance : limite des essais de connexion, double authentification (TOTP), sauvegardes.
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { db } from "./db.ts";
 import { bootFiles } from "./bootstrap.ts";
+import { makeBundle } from "./backup-bundle.ts";
 
 /** 5 échecs en 15 minutes par adresse IP, puis blocage jusqu'à la fin de la fenêtre. */
 export function loginLimiter(max = 5, windowMs = 15 * 60 * 1000) {
@@ -66,5 +67,21 @@ export function backup(dir: string, keep = 14, now = new Date()) {
   }
   const days = [...new Set(readdirSync(dir).filter((f) => /^searchtide-\d{4}-\d{2}-\d{2}\.(db|secret|admin-password)$/.test(f)).map((f) => f.slice(11, 21)))].sort();
   for (const d of days.slice(0, -keep)) for (const suffix of ["db", "secret", "admin-password"]) rmSync(join(dir, `searchtide-${d}.${suffix}`), { force: true });
+  return file;
+}
+
+/**
+ * Sauvegarde complète hors site : base + SECRET + mot de passe généré, dans un fichier `.bundle.json.gz` (600).
+ * Sans SECRET, une base restaurée rendrait les connexions indéchiffrables ; le script de restauration le signale.
+ */
+export function backupBundle(dir: string, keep = 14, now = new Date()) {
+  const day = now.toISOString().slice(0, 10);
+  const dbFile = backup(dir, keep, now);
+  const boot = bootFiles(process.env.DATABASE_PATH ?? "data/searchtide.db");
+  const file = join(dir, `searchtide-${day}.bundle.json.gz`);
+  const content = makeBundle(dbFile, boot.secret, boot.password, day);
+  rmSync(file, { force: true });
+  writeFileSync(file, content, { mode: 0o600 });
+  chmodSync(file, 0o600);
   return file;
 }

@@ -1,0 +1,7 @@
+# Modèle de liste de marques à surveiller pour scripts/scan-secrets.sh.
+# Copiez ce fichier HORS du dépôt (par exemple ~/.config/searchtide/brands.txt) et adaptez-le :
+# une expression régulière par ligne. La liste réelle ne doit jamais être versionnée.
+#
+# BRANDS_FILE=~/.config/searchtide/brands.txt scripts/scan-secrets.sh /chemin/du/depot
+exemple-marque
+projet-demo\.com

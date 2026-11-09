@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { freePort, tempDb } from "./test-server.ts";
+import { freePort, seed, tempDb } from "./test-server.ts";
 
 const boot = (dbPath: string, port: number) => {
   const env: Record<string, string> = {};
@@ -67,4 +67,16 @@ test("T24 : une variable d'environnement explicite reste prioritaire ; un SECRET
     assert.notEqual(code, 0);
     assert.match(err + "", /SECRET \(32 caractères au moins\)/);
   } finally { await stop(child); t.done(); }
+});
+
+test("S2 : au démarrage, un SECRET régénéré avec des connexions chiffrées déclenche un avertissement clair", async () => {
+  const t = tempDb(); const port = await freePort(); const base = `http://127.0.0.1:${port}`;
+  seed(t.path, `import { createConnection } from "@server/connections.ts";
+    createConnection({ kind: "stripe", label: "Ancienne boîte", config: { hint: "…" }, secrets: { key: "rk_" + "test_ANCIENNE0123456789" } });`);
+  const s = boot(t.path, port);
+  try {
+    await waitUp(base);
+    assert.match(s.output(), /ATTENTION : SECRET régénéré/);
+    assert.match(s.output(), /restaurez \/data\/secret/i);
+  } finally { await stop(s.child); t.done(); }
 });
