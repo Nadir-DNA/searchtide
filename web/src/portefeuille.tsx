@@ -18,7 +18,7 @@ const DEFAULTS = ["visitors", "clicks", "revenue", "mrr"];
 const TONE = { positive: "text-positive", warn: "text-ink", negative: "text-negative", none: "text-muted" } as const;
 
 const num = (v: number, kind: Column["kind"]) => kind === "rating" ? fmt(v, 1) : kind === "ratio" ? fmt(v, 3) : kind === "seconds" ? fmt(v, 2) : fmt(v, Math.abs(v) < 100 && v % 1 ? 1 : 0);
-const money = (v: number, unit: string | null) => { const u = unit ?? "€"; return `${fmt(v, Math.abs(v) < 100 && v % 1 ? 2 : 0)}${u.length > 1 ? " " : " "}${u}`; };
+const money = (v: number, unit: string | null) => { const u = unit ?? "€"; return `${fmt(v, Math.abs(v) < 100 && v % 1 ? 2 : 0)} ${u}`; };
 const show = (m: Measure, c: Column) => (m.value == null ? "—" : c.kind === "money" ? money(m.value, m.unit) : c.kind === "score" ? `${fmt(m.value, 0)}` : `${num(m.value, c.kind)}${c.kind === "seconds" ? " s" : ""}`);
 
 /** Variation en %, « — » quand la période précédente est absente ou vaut 0. Vert = bonne nouvelle (pour la position, une baisse). */

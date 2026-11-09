@@ -110,7 +110,14 @@ export function Drawer({ m, catalog, onClose, reload }: { m: Manifest; catalog: 
   const [label, setLabel] = useState("");
   const [confirmRm, setConfirmRm] = useState<{ conn: Conn; usage: Usage } | null>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
-  useEffect(() => { if (confirmRm) cancelRef.current?.focus(); }, [confirmRm]);
+  // Le focus entre dans la confirmation : tout de suite, puis 60 ms plus tard, car Chromium déplace lui-même le focus
+  // (sur « Fermer » du tiroir) un ou deux cycles après l'insertion du dialogue et écrasait le premier essai.
+  useEffect(() => {
+    if (!confirmRm) return;
+    cancelRef.current?.focus();
+    const id = window.setTimeout(() => cancelRef.current?.focus(), 60);
+    return () => window.clearTimeout(id);
+  }, [confirmRm]);
   const [busy, setBusy] = useState(false);
   const [out, setOut] = useState<Outcome | null>(null);
   useDrawerKeys(ref, onClose);
