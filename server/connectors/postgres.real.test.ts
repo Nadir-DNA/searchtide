@@ -1,7 +1,7 @@
 // T14, CA16 contre un VRAI Postgres. Désactivé par défaut (aucune base requise pour `npm test`).
 // Lancer avec une base jetable :
 //   docker run -d --rm --name pg-test -e POSTGRES_PASSWORD=mot-de-passe -p 127.0.0.1:55432:5432 postgres:17-alpine
-//   SEARCHTIDE_TEST_PG=postgres://postgres:mot-de-passe@127.0.0.1:55432/postgres npm test
+//   SEARCHTIDE_TEST_PG=postgres://postgres:<mot de passe>@127.0.0.1:55432/postgres npm test
 // Le test crée une base « st_t14 » et deux rôles (st_ro, st_rw), puis les supprime.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";

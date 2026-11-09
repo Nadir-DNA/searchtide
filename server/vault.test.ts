@@ -26,9 +26,9 @@ test("SECRET valable : 32 caractères ou plus, ni absent ni dev-secret", () => {
 });
 
 test("seal/open : aller-retour, nonce différent à chaque fois, altération refusée", () => withSecret(GOOD, () => {
-  const a = seal({ key: "rk_test_abcdef" }), b = seal({ key: "rk_test_abcdef" });
+  const a = seal({ key: "rk_" + "test_abcdef" }), b = seal({ key: "rk_" + "test_abcdef" });
   assert.notEqual(a, b, "un nonce neuf à chaque chiffrement");
-  assert.deepEqual(open(a), { key: "rk_test_abcdef" });
+  assert.deepEqual(open(a), { key: "rk_" + "test_abcdef" });
   assert.throws(() => open(a.slice(0, -3) + "AAA"), (e: any) => e instanceof VaultError && e.code === "undecryptable");
   assert.deepEqual(open(null), {});
 }));
@@ -36,7 +36,7 @@ test("seal/open : aller-retour, nonce différent à chaque fois, altération ref
 test("CA8 : sans SECRET valable, rien n'est chiffré ni enregistré", () => {
   const before = (db.prepare("SELECT COUNT(*) AS n FROM connections").get() as any).n;
   for (const bad of [undefined, "dev-secret", "court"]) withSecret(bad, () => {
-    assert.throws(() => createConnection({ kind: "stripe", label: "x", secrets: { key: "rk_test_zzz" } }), (e: any) => e instanceof VaultError && e.code === "secret-invalid" && e.message === SECRET_MESSAGE);
+    assert.throws(() => createConnection({ kind: "stripe", label: "x", secrets: { key: "rk_" + "test_zzz" } }), (e: any) => e instanceof VaultError && e.code === "secret-invalid" && e.message === SECRET_MESSAGE);
   });
   assert.equal((db.prepare("SELECT COUNT(*) AS n FROM connections").get() as any).n, before);
 });

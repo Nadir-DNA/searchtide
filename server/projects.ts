@@ -12,6 +12,8 @@ import { collectVia, currentCtx } from "./connectors/use.ts";
 import { connections } from "./connections.ts";
 import { stripeMetric } from "./connectors/stripe.ts";
 import { checkSql, pgQuery } from "./connectors/postgres.ts";
+import { pagespeedMetric } from "./connectors/pagespeed.ts";
+import { pickNumber } from "./connectors/jsonapi.ts";
 import { serviceAccount } from "./gsc.ts";
 import { playMetric } from "./connectors/google.ts";
 
@@ -70,10 +72,10 @@ const configs = {
   pg: z.object({ env: z.string().regex(ENV).optional(), connection_id: z.string().optional(), sql: z.string().min(1).max(4000) })
     .superRefine((v, ctx) => { try { checkSql(v.sql); } catch (e) { ctx.addIssue({ code: "custom", path: ["sql"], message: (e as Error).message }); } }),
   stripe: z.object({ env: z.string().regex(ENV).optional(), connection_id: z.string().optional(), metric: z.enum(["revenue", "new_customers", "active_subscriptions", "mrr"]), account: z.string().regex(/^acct_\w+$/).optional() }),
-  http: z.object({ url: z.string().url(), path: z.string().max(200).default(""), env: z.string().regex(ENV).optional() }),
+  http: z.object({ url: z.string().url(), path: z.string().max(200).default(""), env: z.string().regex(ENV).optional(), connection_id: z.string().optional() }),
   site: z.object({ domain: z.string(), metric: z.enum(["visitors", "pageviews", "clicks", "impressions"]) }),
   manual: z.object({}),
-  pagespeed: z.object({ url: z.string().url(), metric: z.enum(["performance", "seo", "lcp", "cls"]), strategy: z.enum(["mobile", "desktop"]).default("mobile"), env: z.string().regex(ENV).default("PAGESPEED_KEY") }),
+  pagespeed: z.object({ url: z.string().url(), metric: z.enum(["performance", "seo", "lcp", "cls"]), strategy: z.enum(["mobile", "desktop"]).default("mobile"), env: z.string().regex(ENV).optional(), connection_id: z.string().optional() }),
   play: z.object({ env: z.string().regex(ENV).optional(), connection_id: z.string().optional(), package: z.string().regex(/^[a-z][a-z0-9_.]+$/), metric: z.enum(["daily_installs", "active_installs", "rating"]) }),
 };
 export type Source = keyof typeof configs;
@@ -126,26 +128,20 @@ async function stripeValue(c: z.infer<typeof configs.stripe>, d?: string) {
   return collectVia("stripe", c.connection_id, c.metric, {}, d);
 }
 
+// API JSON : par une connexion « API JSON » (jeton envoyé au seul domaine autorisé), ou, ancien mode, par une adresse libre
+// avec un jeton facultatif dans une variable d'environnement (config.env).
 async function httpValue(c: z.infer<typeof configs.http>) {
-  const res = await fetch(c.url, { headers: c.env ? { Authorization: `Bearer ${secret(c.env)}` } : {}, signal: AbortSignal.timeout(15_000) });
+  if (c.connection_id) return collectVia("jsonapi", c.connection_id, "json_total", { url: c.url, path: c.path }, undefined);
+  const res = await currentCtx().fetch(c.url, { headers: c.env ? { Authorization: `Bearer ${secret(c.env)}` } : {}, signal: AbortSignal.timeout(15_000) });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const j = await res.json();
-  const v = Number(c.path ? c.path.split(".").reduce((o: any, k) => o?.[k], j) : j);
-  if (!Number.isFinite(v)) throw new Error(`Pas de nombre à « ${c.path || "la racine"} »`);
-  return v;
+  return pickNumber(await res.json(), c.path);
 }
 
-// PageSpeed Insights : note sur 100 ou mesure Core Web Vitals (secondes pour le LCP), une fois par jour
+// PageSpeed Insights : par la connexion PageSpeed (clé facultative), ou, ancien mode, par la variable d'environnement
+// qui contient la clé (config.env, défaut PAGESPEED_KEY quand aucune connexion n'existe).
 async function pagespeedValue(c: z.infer<typeof configs.pagespeed>) {
-  const q = new URLSearchParams({ url: c.url, strategy: c.strategy, key: secret(c.env) });
-  q.append("category", "performance"); q.append("category", "seo");
-  const res = await fetch(`https://www.googleapis.com/pagespeedonline/v5/runPagespeed?${q}`, { signal: AbortSignal.timeout(120_000) });
-  const j = await res.json() as Row;
-  if (!res.ok) throw new Error(`PageSpeed ${res.status} : ${j.error?.message?.slice(0, 200) ?? "erreur"}`);
-  const l = j.lighthouseResult;
-  if (c.metric === "performance" || c.metric === "seo") return Math.round(l.categories[c.metric].score * 100);
-  if (c.metric === "lcp") return Math.round(l.audits["largest-contentful-paint"].numericValue / 10) / 100;
-  return Math.round(l.audits["cumulative-layout-shift"].numericValue * 1000) / 1000;
+  if (c.connection_id || (!c.env && connections("pagespeed").length)) return collectVia("pagespeed", c.connection_id, c.metric, { url: c.url, strategy: c.strategy }, undefined);
+  return pagespeedMetric({ url: c.url, metric: c.metric, strategy: c.strategy, key: secret(c.env ?? "PAGESPEED_KEY") }, currentCtx());
 }
 
 // Google Play : par la connexion Google (bucket renseigné dans la connexion), ou, ancien mode, par la variable d'environnement

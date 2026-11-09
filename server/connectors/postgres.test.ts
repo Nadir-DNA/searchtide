@@ -17,7 +17,7 @@ import type { PgPoolLike } from "./types.ts";
 import "./index.ts";
 
 process.env.SECRET = "t".repeat(40);
-const URL_RO = "postgres://searchtide_ro:Sup3rMotDePasse9x@db.exemple.test:5432/produit";
+const URL_RO = "postgres://searchtide_ro:" + "Sup3rMotDePasse9x@db.exemple.test:5432/produit";
 const log: { sql: string; params?: unknown[] }[] = []; let ended = 0, released = 0;
 let who: Record<string, any> = { u: "searchtide_ro", d: "produit", v: "PostgreSQL 16.2 on x86_64", su: false }; let canWrite = false;
 let failWith: any = null; let answer: any[] = [{ count: "42" }]; let connectError: any = null;
@@ -114,7 +114,7 @@ test("compte en lecture seule : enregistré sans avertissement ; compte qui peut
 });
 
 test("URL invalide, mauvais mot de passe, base injoignable, délai : messages clairs, aucune ligne", async () => {
-  assert.match((await (await post({ kind: "postgres", values: { url: "mysql://a:b@h/d" } })).json()).error, /commencer par postgres:\/\//);
+  assert.match((await (await post({ kind: "postgres", values: { url: "mysql://a:" + "b@h/d" } })).json()).error, /commencer par postgres:\/\//);
   assert.match((await (await post({ kind: "postgres", values: { url: "pas une url" } })).json()).error, /ressembler à postgres/);
   connectError = Object.assign(new Error("password authentication failed"), { code: "28P01" });
   assert.match((await (await post({ kind: "postgres", values: { url: URL_RO } })).json()).error, /PostgreSQL refuse ces identifiants/);

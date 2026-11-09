@@ -105,6 +105,7 @@ function Drawer({ m, catalog, onClose, reload }: { m: Manifest; catalog: Catalog
   const closeRef = useRef<HTMLButtonElement>(null);
   const [values, setValues] = useState<Record<string, string>>(() => initial(m.fields));
   const [editing, setEditing] = useState<Conn | null>(null);
+  const [label, setLabel] = useState("");
   const [busy, setBusy] = useState(false);
   const [out, setOut] = useState<Outcome | null>(null);
   useDrawerKeys(ref, onClose);
@@ -117,11 +118,11 @@ function Drawer({ m, catalog, onClose, reload }: { m: Manifest; catalog: Catalog
     e.preventDefault(); setBusy(true); setOut(null);
     try {
       const r = editing
-        ? await api<{ test: { label?: string; detail?: string; warnings: string[] } }>(`/api/connections/${editing.id}`, { method: "PATCH", json: { values } })
-        : await api<{ test: { label?: string; detail?: string; warnings: string[] } }>("/api/connections", { method: "POST", json: { kind: m.id, values } });
+        ? await api<{ test: { label?: string; detail?: string; warnings: string[] } }>(`/api/connections/${editing.id}`, { method: "PATCH", json: { values, label } })
+        : await api<{ test: { label?: string; detail?: string; warnings: string[] } }>("/api/connections", { method: "POST", json: { kind: m.id, values, label } });
       const gen = m.fields.find((f) => f.generate);
       setOut({ kind: "ok", text: `Connecté : ${r.test.label ?? m.name}`, detail: r.test.detail, warnings: r.test.warnings, ...(gen && !editing ? { copy: { label: gen.label, value: values[gen.key] } } : {}) });
-      setValues(initial(m.fields)); setEditing(null);
+      setValues(initial(m.fields)); setEditing(null); setLabel("");
       await reload();
     } catch (err) { setOut({ kind: "error", text: (err as Error).message }); } finally { setBusy(false); }
   }
@@ -172,10 +173,16 @@ function Drawer({ m, catalog, onClose, reload }: { m: Manifest; catalog: Catalog
         {showForm && (
           <form onSubmit={submit} className="mt-6 space-y-4 border-t border-rule pt-6">
             <h3 className="text-sm font-medium">{editing ? `Remplacer la clé de « ${editing.label} »` : "Connexion"}</h3>
+            {!m.singleton && (
+              <div>
+                <label htmlFor="f-label" className="block text-sm">Libellé (facultatif)</label>
+                <input id="f-label" value={label} onChange={(e) => setLabel(e.target.value)} maxLength={80} autoComplete="off" placeholder="Pour reconnaître ce compte" className={`${inputCls} mt-2`} />
+              </div>
+            )}
             {m.fields.map((f) => <FieldInput key={f.key} f={f} value={values[f.key] ?? ""} onChange={(v) => setValues({ ...values, [f.key]: v })} editing={!!editing} />)}
             <div className="flex flex-wrap gap-3">
               <Button type="submit" disabled={busy}>{busy ? "Test en cours…" : "Tester et enregistrer"}</Button>
-              {editing && <Button type="button" variant="secondary" onClick={() => { setEditing(null); setOut(null); }}>Annuler</Button>}
+              {editing && <Button type="button" variant="secondary" onClick={() => { setEditing(null); setLabel(""); setOut(null); }}>Annuler</Button>}
             </div>
           </form>
         )}
@@ -209,7 +216,7 @@ function Drawer({ m, catalog, onClose, reload }: { m: Manifest; catalog: Catalog
                   {!catalog.demo && (
                     <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm">
                       <button type="button" disabled={busy} onClick={() => retest(c)} className="py-1 text-accent underline">Tester</button>
-                      <button type="button" onClick={() => { setEditing(c); setOut(null); setValues(Object.fromEntries(m.fields.map((f) => [f.key, f.secret ? "" : String(c.settings?.[f.key] ?? f.default ?? "")]))); }} className="py-1 text-accent underline">Remplacer la clé</button>
+                      <button type="button" onClick={() => { setEditing(c); setLabel(c.label); setOut(null); setValues(Object.fromEntries(m.fields.map((f) => [f.key, f.secret ? "" : String(c.settings?.[f.key] ?? f.default ?? "")]))); }} className="py-1 text-accent underline">Remplacer la clé</button>
                       <button type="button" onClick={() => remove(c)} className="py-1 text-muted hover:text-negative">Retirer</button>
                     </div>
                   )}

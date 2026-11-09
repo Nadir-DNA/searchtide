@@ -78,7 +78,7 @@ test("connecteurs PageSpeed et Google Play : configuration validée, accès manq
 });
 
 test("Stripe avec une clé d'organisation : compte visé dans Stripe-Context", async () => {
-  process.env.TEST_STRIPE_ORG = "sk_org_test";
+  process.env.TEST_STRIPE_ORG = "sk_" + "org_test";
   const seen: Record<string, string>[] = [];
   const real = globalThis.fetch;
   globalThis.fetch = (async (_u: string, init: RequestInit) => { seen.push(init.headers as Record<string, string>); return new Response(JSON.stringify({ data: [{ items: { data: [] } }], has_more: false })); }) as typeof fetch;

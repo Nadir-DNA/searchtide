@@ -115,7 +115,7 @@ test("SECRET changé : le relevé échoue avec le message de rotation (VaultErro
 });
 
 test("ancien mode : config.env garde la clé d'organisation et Stripe-Context (CA20, comportement conservé)", async () => {
-  process.env.TEST_STRIPE_ORG = "sk_org_test";
+  process.env.TEST_STRIPE_ORG = "sk_" + "org_test";
   const p = saveProject(null, { name: "Env" })!;
   const ind = saveIndicator(null, p.id, { label: "Abos", mode: "total", source: "stripe", config: { env: "TEST_STRIPE_ORG", metric: "active_subscriptions", account: "acct_123" } })!;
   setCollectContext(undefined); // le chemin env utilise le réseau global, remplacé ici

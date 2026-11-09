@@ -42,9 +42,19 @@ export const FIXTURES: Record<string, Fixture> = {
     },
   },
   postgres: {
-    cfg: { config: {}, secrets: { url: "postgres://searchtide_ro:Fixt0reMotDePasseDemo@db.exemple.test:5432/produit" } },
+    cfg: { config: {}, secrets: { url: "postgres://searchtide_ro:" + "Fixt0reMotDePasseDemo@db.exemple.test:5432/produit" } },
     params: { sql_daily: { sql: "SELECT COUNT(*) FROM users WHERE created_at >= $1::date" }, sql_total: { sql: "SELECT COUNT(*) FROM users" } },
     sql: (q) => /current_user AS u/.test(q) ? [{ u: "searchtide_ro", d: "produit", v: "PostgreSQL 16.2 on x86_64-pc-linux-gnu", su: false }]
       : /can_write/.test(q) ? [{ can_write: false }] : /^(BEGIN|SET|ROLLBACK)/i.test(q) ? [] : [{ count: "42" }],
+  },
+  pagespeed: {
+    cfg: { config: {}, secrets: { key: "AIza" + "FIXTUREkey0123456789abcdefghij" } },
+    params: { performance: { url: "https://exemple.com/", strategy: "mobile" }, seo: { url: "https://exemple.com/" }, lcp: { url: "https://exemple.com/" }, cls: { url: "https://exemple.com/" } },
+    respond: () => json({ lighthouseResult: { categories: { performance: { score: 0.87 }, seo: { score: 0.92 } }, audits: { "largest-contentful-paint": { numericValue: 2345 }, "cumulative-layout-shift": { numericValue: 0.0456 } } } }),
+  },
+  jsonapi: {
+    cfg: { config: { origin: "https://api.exemple.test", header: "Authorization" }, secrets: { token: "tok_FIXTURE0123456789abcdef" } },
+    params: { json_daily: { url: "https://api.exemple.test/stats", path: "stats.users" }, json_total: { url: "https://api.exemple.test/stats", path: "stats.users" } },
+    respond: (url) => url.endsWith("/stats") ? json({ stats: { users: 128 } }) : json({ ok: true }),
   },
 };

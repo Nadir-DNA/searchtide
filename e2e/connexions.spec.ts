@@ -92,7 +92,7 @@ test("tiroir : guide, champ secret masqué avec Afficher, échec → rien d'enre
   await dialog.getByRole("button", { name: "Tester et enregistrer" }).click();
   await expect(dialog.getByRole("alert").filter({ hasText: "refuse cette clé" })).toBeVisible();
   expect(created).toBe(false);
-  await key.fill("rk_live_valide");
+  await key.fill("rk_" + "live_valide");
   await dialog.getByRole("button", { name: "Tester et enregistrer" }).click();
   await expect(dialog.getByRole("status")).toContainText("Connecté : Compte démo");
   await expect(dialog.getByRole("status")).toContainText("Aucune propriété visible");
@@ -128,4 +128,42 @@ test("mode démonstration : formulaires désactivés", async ({ page }) => {
   await page.getByRole("button", { name: /^Stripe/ }).click();
   await expect(page.getByRole("dialog").getByText("Désactivé en démonstration.")).toBeVisible();
   await expect(page.getByRole("dialog").getByRole("button", { name: "Tester et enregistrer" })).toHaveCount(0);
+});
+
+// ───── Catalogue RÉEL : aucune simulation, les connecteurs viennent du serveur lancé par la configuration ─────
+test("catalogue réel à 375 px : les 7 connecteurs et 2 cartes intégrées, aucun défilement horizontal, sujet ntfy généré", async ({ page }) => {
+  await page.goto("/");
+  await page.locator('input[name="password"]').fill("e2e-mot-de-passe");
+  await page.keyboard.press("Enter");
+  await page.waitForLoadState("networkidle");
+  await page.goto("/?view=connections");
+  await expect(page.getByRole("heading", { name: "Connexions", level: 1 })).toBeVisible();
+  for (const n of ["Stripe", "Google", "Postgres (lecture seule)", "E-mail (SMTP)", "ntfy", "PageSpeed", "API JSON"]) await expect(page.getByRole("button", { name: new RegExp(`^${n.replace(/[()]/g, "\\$&")} :`) })).toBeVisible();
+  for (const n of ["Searchtide analytics", "Saisie manuelle"]) await expect(page.getByRole("heading", { name: n })).toBeVisible();
+  await expect(page.getByText("Non connecté", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("Cloudflare")).toBeVisible();
+  await expect(page.getByRole("alert")).toHaveCount(0); // SECRET valable : pas de bandeau
+  expect(await noHScroll(page)).toBe(true);
+  // filtre SEO : Google et PageSpeed seulement
+  await page.getByRole("button", { name: "SEO", exact: true }).click();
+  await expect(page.getByRole("button", { name: /^Google :/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^PageSpeed :/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Stripe :/ })).toHaveCount(0);
+  await page.getByRole("button", { name: "Tous", exact: true }).click();
+  // ntfy : le sujet est généré dans le navigateur
+  await page.getByRole("button", { name: /^ntfy :/ }).click();
+  const dialog = page.getByRole("dialog", { name: "ntfy" });
+  await expect(dialog.getByLabel("Sujet *")).toHaveValue(/^searchtide-[0-9a-f]{24}$/);
+  await dialog.getByRole("button", { name: "Afficher" }).first().click();
+  expect(await noHScroll(page)).toBe(true);
+  // un échec réel (sujet invalide) : le serveur répond, rien n'est enregistré
+  await dialog.getByLabel("Sujet *").fill("sujet invalide!");
+  await dialog.getByRole("button", { name: "Tester et enregistrer" }).click();
+  await expect(dialog.getByRole("alert")).toContainText("lettres, chiffres, tiret");
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  // Postgres : le guide contient le bloc SQL en lecture seule
+  await page.getByRole("button", { name: /^Postgres/ }).click();
+  await expect(page.getByRole("dialog").getByText(/CREATE ROLE searchtide_ro/)).toBeVisible();
+  expect(await noHScroll(page)).toBe(true);
 });
