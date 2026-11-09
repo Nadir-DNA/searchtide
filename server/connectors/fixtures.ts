@@ -41,4 +41,10 @@ export const FIXTURES: Record<string, Fixture> = {
       return json({ error: { message: "inattendu" } }, 404);
     },
   },
+  postgres: {
+    cfg: { config: {}, secrets: { url: "postgres://searchtide_ro:Fixt0reMotDePasseDemo@db.exemple.test:5432/produit" } },
+    params: { sql_daily: { sql: "SELECT COUNT(*) FROM users WHERE created_at >= $1::date" }, sql_total: { sql: "SELECT COUNT(*) FROM users" } },
+    sql: (q) => /current_user AS u/.test(q) ? [{ u: "searchtide_ro", d: "produit", v: "PostgreSQL 16.2 on x86_64-pc-linux-gnu", su: false }]
+      : /can_write/.test(q) ? [{ can_write: false }] : /^(BEGIN|SET|ROLLBACK)/i.test(q) ? [] : [{ count: "42" }],
+  },
 };

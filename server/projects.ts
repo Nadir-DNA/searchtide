@@ -3,7 +3,6 @@
 // Les secrets ne sont jamais en base : un indicateur nomme la variable d'environnement qui les contient.
 import type { Hono } from "hono";
 import { randomUUID } from "node:crypto";
-import pg from "pg";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/server";
 import { db, localDay } from "./db.ts";
@@ -12,6 +11,7 @@ import { migrate } from "./migrations.ts";
 import { collectVia, currentCtx } from "./connectors/use.ts";
 import { connections } from "./connections.ts";
 import { stripeMetric } from "./connectors/stripe.ts";
+import { checkSql, pgQuery } from "./connectors/postgres.ts";
 import { serviceAccount } from "./gsc.ts";
 import { playMetric } from "./connectors/google.ts";
 
@@ -67,7 +67,8 @@ const days = (r: Range) => { const out: string[] = []; for (let t = Date.parse(r
 const ENV = /^[A-Z][A-Z0-9_]*$/;
 
 const configs = {
-  pg: z.object({ env: z.string().regex(ENV), sql: z.string().min(1).max(4000) }),
+  pg: z.object({ env: z.string().regex(ENV).optional(), connection_id: z.string().optional(), sql: z.string().min(1).max(4000) })
+    .superRefine((v, ctx) => { try { checkSql(v.sql); } catch (e) { ctx.addIssue({ code: "custom", path: ["sql"], message: (e as Error).message }); } }),
   stripe: z.object({ env: z.string().regex(ENV).optional(), connection_id: z.string().optional(), metric: z.enum(["revenue", "new_customers", "active_subscriptions", "mrr"]), account: z.string().regex(/^acct_\w+$/).optional() }),
   http: z.object({ url: z.string().url(), path: z.string().max(200).default(""), env: z.string().regex(ENV).optional() }),
   site: z.object({ domain: z.string(), metric: z.enum(["visitors", "pageviews", "clicks", "impressions"]) }),
@@ -109,23 +110,11 @@ const secret = (name: string) => {
   if (!v) throw new Error(`Variable ${name} absente du fichier .env`);
   return v;
 };
-const pools = new Map<string, pg.Pool>();
-function pool(env: string) {
-  if (!pools.has(env)) pools.set(env, new pg.Pool({ connectionString: secret(env), max: 2, idleTimeoutMillis: 30_000, statement_timeout: 15_000, ssl: /sslmode=require|supabase/.test(secret(env)) ? { rejectUnauthorized: false } : undefined }));
-  return pools.get(env)!;
-}
-async function pgValue(c: z.infer<typeof configs.pg>, d?: string) {
-  if (!/^\s*(select|with)\b/i.test(c.sql)) throw new Error("Seules les requêtes SELECT sont acceptées");
-  const client = await pool(c.env).connect();
-  try {
-    // Lecture seule imposée côté base, en plus du rôle limité conseillé
-    await client.query("BEGIN READ ONLY");
-    const res = await client.query(c.sql, c.sql.includes("$1") ? [d] : []);
-    await client.query("ROLLBACK");
-    const v = Number(Object.values(res.rows[0] ?? {})[0] ?? 0);
-    if (!Number.isFinite(v)) throw new Error("La requête doit renvoyer un nombre");
-    return v;
-  } catch (e) { await client.query("ROLLBACK").catch(() => {}); throw e; } finally { client.release(); }
+// Postgres : par la connexion « Postgres (lecture seule) », ou, ancien mode, par la variable d'environnement qui contient l'URL
+// (config.env). Dans les deux cas : une seule requête SELECT, en lecture seule imposée, 10 s au plus (connectors/postgres.ts).
+async function pgValue(c: z.infer<typeof configs.pg>, mode: string, d?: string) {
+  if (c.env) return pgQuery(secret(c.env), c.sql, d, currentCtx());
+  return collectVia("postgres", c.connection_id, mode === "daily" ? "sql_daily" : "sql_total", { sql: c.sql }, d);
 }
 
 export { parisMidnight, monthlyNet } from "./connectors/stripe.ts";
@@ -183,7 +172,7 @@ function siteSeries(c: z.infer<typeof configs.site>, r: Range): Record<string, n
 export async function measure(ind: Row, d = localDay()) {
   const at = ind.mode === "daily" ? d : undefined;
   switch (ind.source) {
-    case "pg": return pgValue(configs.pg.parse(ind.config), at);
+    case "pg": return pgValue(configs.pg.parse(ind.config), ind.mode, at);
     case "stripe": return stripeValue(configs.stripe.parse(ind.config), at);
     case "http": return httpValue(configs.http.parse(ind.config));
     case "site": return siteSeries(configs.site.parse(ind.config), { from: d, to: d })[d] ?? 0;
