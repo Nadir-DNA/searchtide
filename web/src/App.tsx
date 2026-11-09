@@ -3,7 +3,7 @@ import { api, AuthError, type Overview as OverviewData, type Search, type Site, 
 import { BarChart, Donut, fillDays } from "./chart";
 import { CrmView, PubsView, ReportView } from "./business";
 import { ManageProject, ProjectView, type Project } from "./projects";
-import { Onboarding } from "./onboarding";
+import { Onboarding, SKIP_KEY } from "./onboarding";
 import { ConnectionsView } from "./connections";
 import { AgentsView } from "./agents";
 import { DashboardView, type Dashboards } from "./dashboard";
@@ -118,6 +118,7 @@ function Shell({ me, onLogout }: { me: Me; onLogout: () => void }) {
       {!me.demo && <NavItem icon={Icon.calendar} active={q.view === "pubs"} onClick={() => nav({ ...home, view: "pubs" })}>Publications</NavItem>}
       <NavItem icon={Icon.mail} active={q.view === "report"} onClick={() => nav({ ...home, view: "report" })}>Rapport hebdo</NavItem>
       {!me.demo && <NavItem icon={Icon.bot} active={q.view === "agents"} onClick={() => nav({ ...home, view: "agents" })}>Agents IA</NavItem>}
+      {!me.demo && <NavItem icon={Icon.book} active={q.view === "start"} onClick={() => nav({ ...home, view: "start" })}>Démarrage</NavItem>}
       {!me.demo && <NavItem icon={Icon.link} active={q.view === "connections"} onClick={() => nav({ ...home, view: "connections" })}>Connexions</NavItem>}
       <div className="mt-6 mb-1 px-3 text-xs text-muted">Projets</div>
       {projects.map((p) => (
@@ -175,11 +176,12 @@ function Shell({ me, onLogout }: { me: Me; onLogout: () => void }) {
           : q.view === "settings" ? <SettingsView />
           : q.view === "agents" ? <AgentsView />
           : q.view === "connections" ? <ConnectionsView />
+          : q.view === "start" ? <Onboarding go={go} />
           : q.view === "project" && q.id ? <ProjectView key={q.id} id={q.id} days={days} go={go} />
           : q.view === "newproject" ? <ManageProject project={null} onClose={() => go(home)} onSaved={(p) => { loadProjects(); if (p) go({ ...home, view: "project", id: p.id }); }} />
           : q.view === "add" ? <AddSite onAdded={(s) => { load(); go({ site: s.domain, tab: "setup", view: undefined }); }} />
           : site ? <SiteView key={site.id} site={site} me={me} days={days} tab={q.tab ?? "traffic"} go={go} onChange={load} />
-          : !sites.length && !projects.length ? <Onboarding go={go} />
+          : !sites.length && !projects.length && !me.demo && !localStorage.getItem(SKIP_KEY) ? <Onboarding go={go} />
           : me.demo ? <Overview days={days} demo={me.demo} go={go} />
           : !dash ? <KpiSkeleton />
           : (() => {

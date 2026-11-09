@@ -4,13 +4,13 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { api } from "./api";
 import { Button, Card, inputCls } from "./ui";
 
-type Field = { key: string; label: string; type: "text" | "url" | "number" | "select" | "json" | "textarea"; secret?: boolean; required?: boolean; help?: string; placeholder?: string; options?: { value: string; label: string }[]; default?: string; generate?: "topic" };
-type Conn = { id: string; kind: string; label: string; hint: string; settings: Record<string, string>; status: "connected" | "error" | "reconnect"; status_detail: string | null; tested_at: number | null; livemode: boolean; test_mode: boolean };
-type Manifest = {
+export type Field = { key: string; label: string; type: "text" | "url" | "number" | "select" | "json" | "textarea"; secret?: boolean; required?: boolean; help?: string; placeholder?: string; options?: { value: string; label: string }[]; default?: string; generate?: "topic" };
+export type Conn = { id: string; kind: string; label: string; hint: string; settings: Record<string, string>; status: "connected" | "error" | "reconnect"; status_detail: string | null; tested_at: number | null; livemode: boolean; test_mode: boolean };
+export type Manifest = {
   id: string; name: string; monogram: string; provider: string; description: string; category: string; minutes: number; singleton?: boolean; builtin?: boolean;
   unlocks: string[]; fields: Field[]; guide: { text: string; url?: string }[]; revokeUrl?: string; connections: Conn[]; status: "none" | "builtin" | "connected" | "error" | "reconnect";
 };
-type Catalog = { vault: { ok: boolean; message: string | null }; demo: boolean; admin: boolean; connectors: Manifest[]; later: string[] };
+export type Catalog = { vault: { ok: boolean; message: string | null }; demo: boolean; admin: boolean; connectors: Manifest[]; later: string[] };
 type Outcome = { kind: "ok" | "error"; text: string; detail?: string; warnings?: string[]; copy?: { label: string; value: string } };
 
 /** Sujet ntfy aléatoire (il sert de mot de passe) : 96 bits issus du générateur sécurisé du navigateur. */
@@ -100,7 +100,7 @@ function FieldInput({ f, value, onChange, editing }: { f: Field; value: string; 
   );
 }
 
-function Drawer({ m, catalog, onClose, reload }: { m: Manifest; catalog: Catalog; onClose: () => void; reload: () => Promise<void> }) {
+export function Drawer({ m, catalog, onClose, reload }: { m: Manifest; catalog: Catalog; onClose: () => void; reload: () => Promise<void> }) {
   const ref = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const [values, setValues] = useState<Record<string, string>>(() => initial(m.fields));
@@ -181,7 +181,7 @@ function Drawer({ m, catalog, onClose, reload }: { m: Manifest; catalog: Catalog
             )}
             {m.fields.map((f) => <FieldInput key={f.key} f={f} value={values[f.key] ?? ""} onChange={(v) => setValues({ ...values, [f.key]: v })} editing={!!editing} />)}
             <div className="flex flex-wrap gap-3">
-              <Button type="submit" disabled={busy}>{busy ? "Test en cours…" : "Tester et enregistrer"}</Button>
+              <Button type="submit" variant="accent" disabled={busy}>{busy ? "Test en cours…" : "Tester et enregistrer"}</Button>
               {editing && <Button type="button" variant="secondary" onClick={() => { setEditing(null); setLabel(""); setOut(null); }}>Annuler</Button>}
             </div>
           </form>
@@ -234,35 +234,40 @@ function ConnectorCard({ m, onOpen, cardRef }: { m: Manifest; onOpen: () => void
   const body = (
     <>
       <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-3">
+        <div className="flex min-w-0 items-start gap-3">
           <span aria-hidden className="grid size-10 shrink-0 place-items-center rounded-xl bg-raised text-sm font-medium text-muted">{m.monogram}</span>
-          <h3 className="min-w-0 text-base font-light break-words">{m.name}</h3>
+          <h3 className="flex min-h-10 min-w-0 items-center text-base font-light break-words">{m.name}</h3>
         </div>
         <StatusPill m={m} />
       </div>
       <p className="mt-3 text-sm leading-5 break-words text-muted">{m.unlocks.join(" · ")}</p>
-      <p className="mt-3 flex items-center justify-between gap-3 text-xs text-muted">
+      <p className="mt-auto flex items-center justify-between gap-3 pt-3 text-xs text-muted">
         <span>{m.builtin ? "Toujours disponible" : `~${m.minutes} min`}</span>
         {!m.builtin && <span className="text-sm text-accent">{m.connections.length ? "Gérer" : "Connecter"}</span>}
       </p>
     </>
   );
-  const cls = "block w-full min-w-0 rounded-2xl border border-border bg-surface p-5 text-left";
+  const cls = "flex h-full w-full min-w-0 flex-col items-stretch justify-start rounded-2xl border border-border bg-surface p-5 text-left";
   return m.builtin
     ? <div className={cls}>{body}</div>
     : <button type="button" ref={cardRef} onClick={onOpen} aria-label={`${m.name} : ${STATUS[m.status].text(m.connections.length)}. ${m.connections.length ? "Gérer" : "Connecter"}`} className={`${cls} hover:border-control focus-visible:outline-2 focus-visible:outline-accent`}>{body}</button>;
 }
 
-export function ConnectionsView() {
+/** Catalogue des connecteurs et de leurs connexions (partagé avec l'onboarding). */
+export function useCatalog() {
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [error, setError] = useState("");
+  const load = useCallback(() => api<Catalog>("/api/connectors").then((c) => { setCatalog(c); setError(""); }).catch((e) => setError((e as Error).message)), []);
+  useEffect(() => { void load(); }, [load]);
+  return { catalog, error, reload: load };
+}
+
+export function ConnectionsView() {
+  const { catalog, error, reload: load } = useCatalog();
   const [filter, setFilter] = useState<(typeof FILTERS)[number][0]>("all");
   const [openId, setOpenId] = useState<string | null>(null);
   const cards = useRef(new Map<string, HTMLButtonElement | null>());
   const opener = useRef<string | null>(null);
-
-  const load = useCallback(() => api<Catalog>("/api/connectors").then((c) => { setCatalog(c); setError(""); }).catch((e) => setError((e as Error).message)), []);
-  useEffect(() => { void load(); }, [load]);
 
   const open = (id: string) => { opener.current = id; setOpenId(id); };
   const close = useCallback(() => { setOpenId(null); const id = opener.current; setTimeout(() => cards.current.get(id ?? "")?.focus(), 0); }, []);

@@ -128,10 +128,12 @@ export function Table<T>({ rows, cols, empty, onRow }: { rows: T[]; cols: Col<T>
   );
 }
 
-export function Button({ children, variant = "primary", ...p }: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" }) {
+export function Button({ children, variant = "primary", ...p }: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" | "accent" }) {
   const look = variant === "primary"
     ? "bg-ink text-ground hover:opacity-90"
-    : "border border-control bg-raised text-ink hover:bg-active";
+    : variant === "accent"
+      ? "bg-accent text-on-accent hover:opacity-90"
+      : "border border-control bg-raised text-ink hover:bg-active";
   return <button {...p} className={`inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-full px-4 text-sm font-medium transition active:scale-[.98] disabled:opacity-50 ${look} ${p.className ?? ""}`}>{children}</button>;
 }
 

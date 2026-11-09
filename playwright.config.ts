@@ -21,7 +21,7 @@ export default defineConfig({
   workers: 1,
   use: { baseURL: "http://127.0.0.1:3067", locale: "fr-FR", launchOptions: { executablePath: process.env.PLAYWRIGHT_CHROMIUM ?? localChromium() } },
   webServer: {
-    command: `rm -f ${db}* && DATABASE_PATH=${db} PORT=3067 HOST=127.0.0.1 ADMIN_PASSWORD=e2e-mot-de-passe SECRET=${"e".repeat(40)} API_KEY=e2e-cle node --no-warnings server/index.ts`,
+    command: `rm -f ${db}* && DATABASE_PATH=${db} PORT=3067 HOST=127.0.0.1 ADMIN_PASSWORD=e2e-mot-de-passe SECRET=${"e".repeat(40)} API_KEY=e2e-cle node --no-warnings --import ./e2e/fake-providers.ts server/index.ts`,
     url: "http://127.0.0.1:3067/healthz",
     reuseExistingServer: false,
   },

@@ -167,3 +167,28 @@ test("catalogue réel à 375 px : les 7 connecteurs et 2 cartes intégrées, auc
   await expect(page.getByRole("dialog").getByText(/CREATE ROLE searchtide_ro/)).toBeVisible();
   expect(await noHScroll(page)).toBe(true);
 });
+
+// ───── E4 et E5 (revue du tour 1) ─────
+test.describe("ordinateur 1280 px", () => {
+  test.use({ viewport: { width: 1280, height: 900 } });
+  test("E5 : les en-têtes de cartes d'une même rangée sont alignés en haut ; E4 : l'action principale du tiroir est en couleur d'accent", async ({ page }) => {
+    await page.goto("/");
+    await page.locator('input[name="password"]').fill("e2e-mot-de-passe");
+    await page.keyboard.press("Enter");
+    await page.waitForLoadState("networkidle");
+    await page.goto("/?view=connections");
+    await expect(page.getByRole("button", { name: /^Stripe :/ })).toBeVisible();
+    const tops = await page.locator("button[aria-label*='Connecter'], button[aria-label*='Gérer']").evaluateAll((cards) =>
+      cards.map((c) => ({ card: Math.round(c.getBoundingClientRect().top), mono: Math.round(c.querySelector("span[aria-hidden]")!.getBoundingClientRect().top) })));
+    const rows = new Map<number, number[]>();
+    for (const t of tops) rows.set(t.card, [...(rows.get(t.card) ?? []), t.mono - t.card]);
+    for (const [, offsets] of rows) expect(new Set(offsets).size, `décalages des monogrammes dans une rangée : ${offsets}`).toBe(1);
+    expect(rows.size).toBeGreaterThanOrEqual(2);
+    await page.getByRole("button", { name: /^Stripe :/ }).click();
+    const submit = page.getByRole("dialog").getByRole("button", { name: "Tester et enregistrer" });
+    await expect(submit).toHaveClass(/bg-accent/);
+    const bg = await submit.evaluate((el) => getComputedStyle(el).backgroundColor);
+    expect(bg).not.toBe("rgba(0, 0, 0, 0)");
+    expect(bg).not.toBe(await page.getByRole("dialog").getByRole("button", { name: "Fermer" }).evaluate((el) => getComputedStyle(el).backgroundColor));
+  });
+});
