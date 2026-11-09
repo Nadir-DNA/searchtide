@@ -46,7 +46,11 @@ docker logs searchtide    # mot de passe administrateur généré au premier lan
 
 ## Après le tag (à faire par Nadir)
 
-1. Pousser `main` (le scan de secrets et le déplacement de `.env`/`google.json` sont faits).
-2. Créer le tag `v0.2.0` : `git tag -s v0.2.0 -m "Searchtide v0.2.0" && git push origin v0.2.0`.
-3. Vérifier que le workflow « Image Docker » pousse bien `ghcr.io/nadir-dna/searchtide:v0.2.0` et `:latest` pour les deux architectures.
+1. **Déplacer `.env` et `google.json` hors du dépôt (T33)**, puis pousser `main`. Le scan de secrets de l'arbre et de tout l'historique est fait ; le déplacement de ces fichiers ne l'est pas encore.
+2. Créer le tag annoté `v0.2.0` : `git tag -a v0.2.0 -m "Searchtide v0.2.0" && git push origin v0.2.0` (utiliser `-s` seulement si une clé GPG est configurée).
+3. Vérifier que le workflow « Image Docker » pousse bien `ghcr.io/nadir-dna/searchtide:v0.2.0` et `:latest` pour les deux architectures. **Nom provisoire** : à confirmer par Nadir avant le tag (Q-N11) ; le workflow suit `github.repository`, seuls `docker-compose.yml` et la documentation citent ce nom.
 4. Publier ces notes comme release GitHub (copier ce fichier).
+
+## Données de l'instance
+
+Le volume `/data` contient la base SQLite, mais aussi `secret` (clé du coffre) et `admin-password` (mot de passe généré), en clair et en droits 600. **Sauvegarder tout `/data`** : une base restaurée sans `secret` rend les connexions indéchiffrables. La sauvegarde nocturne inclut désormais ces deux fichiers. Ne jamais joindre le volume à un ticket ou à une archive de support. Mot de passe perdu : supprimer `admin-password` et redémarrer (une variable `ADMIN_PASSWORD` reste prioritaire).

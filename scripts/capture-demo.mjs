@@ -13,7 +13,7 @@ const local = existsSync(root)
   : undefined;
 
 const browser = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_CHROMIUM ?? local });
-const page = await browser.newPage({ viewport: { width: 1280, height: 800 }, locale: "fr-FR", colorScheme: "light" });
+const page = await browser.newPage({ viewport: { width: 1280, height: 800 }, locale: "fr-FR", colorScheme: "dark"   // thème par défaut, celui des captures livrées (Q-N10 = A) });
 try {
   await page.goto(`${url}/`, { waitUntil: "networkidle" });
   await page.waitForTimeout(600);

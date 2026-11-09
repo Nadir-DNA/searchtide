@@ -119,6 +119,12 @@ npm run dev     # serveur sur :3030, interface Vite sur :5173
 npm test
 ```
 
+## Données, sauvegarde et mot de passe
+
+Le volume `/data` contient la base SQLite, `secret` (clé de chiffrement du coffre) et `admin-password` (mot de passe généré au premier lancement), ces deux derniers en clair et en droits 600. **Sauvegardez tout `/data`** : restaurer la base sans `secret` rend toutes les connexions indéchiffrables. La sauvegarde nocturne inclut désormais la base, `secret` et `admin-password`. Ne joignez jamais ce volume à un ticket ou à une archive de support.
+
+Mot de passe perdu : supprimez `admin-password` puis redémarrez ; une variable `ADMIN_PASSWORD` reste prioritaire.
+
 ## Licence
 
 MIT © Nadir DAOUDI. Les dépendances et polices tierces sont toutes sous licence permissive ou OFL-1.1 ; inventaire détaillé : [docs/licences.md](docs/licences.md).
