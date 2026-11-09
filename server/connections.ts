@@ -5,7 +5,7 @@ import { randomBytes } from "node:crypto";
 import type { Hono } from "hono";
 import { db } from "./db.ts";
 import { migrate } from "./migrations.ts";
-import { RECONNECT_MESSAGE, VaultError, fingerprint, open, scrub, seal, secretValid, secretValues } from "./vault.ts";
+import { RECONNECT_MESSAGE, SECRET_MESSAGE, VaultError, fingerprint, open, scrub, seal, secretValid, secretValues } from "./vault.ts";
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS connections (
@@ -59,7 +59,7 @@ export function getSecrets(conn: string | Row): Record<string, any> {
   const r = db.prepare("SELECT secrets FROM connections WHERE id = ?").get(idOf(conn)) as Row | undefined;
   if (!r) throw new Error("Connexion introuvable");
   try { return open(r.secrets); }
-  catch (e) { if (e instanceof VaultError && e.code === "undecryptable") markStatus(idOf(conn), "reconnect", RECONNECT_MESSAGE); throw e; }
+  catch (e) { if (e instanceof VaultError) markStatus(idOf(conn), "reconnect", e.message, false); throw e; }
 }
 
 /** Seul accès en écriture aux secrets. Refuse si SECRET est absent, `dev-secret` ou trop court (R2). */
@@ -68,8 +68,10 @@ export function setSecrets(conn: string | Row, obj: Record<string, unknown>, fp?
   db.prepare("UPDATE connections SET secrets = ?, fingerprint = COALESCE(?, fingerprint) WHERE id = ?").run(blob, fp ?? null, idOf(conn));
 }
 
-export function markStatus(id: string, status: Status, detail: string | null = null) {
-  db.prepare("UPDATE connections SET status = ?, status_detail = ?, tested_at = ? WHERE id = ?").run(status, detail, Date.now(), id);
+/** Change le statut d'une connexion. `tested` : le changement vient d'un vrai test (met à jour la date du dernier test). */
+export function markStatus(id: string, status: Status, detail: string | null = null, tested = true) {
+  if (tested) db.prepare("UPDATE connections SET status = ?, status_detail = ?, tested_at = ? WHERE id = ?").run(status, detail, Date.now(), id);
+  else db.prepare("UPDATE connections SET status = ?, status_detail = ? WHERE id = ?").run(status, detail, id);
 }
 
 export type NewConnection = {
@@ -122,9 +124,31 @@ export function migrateClearTokens(): { migrated: number; pending: number } {
   return { migrated, pending: 0 };
 }
 
-/** Au démarrage : migre les jetons en clair, ou avertit s'il n'y a pas de SECRET valable. */
+/**
+ * Rotation de SECRET (P5) : toute connexion dont le bloc chiffré ne peut plus être lu (SECRET changé, absent ou invalide)
+ * passe en « à reconnecter ». Une connexion de nouveau lisible (ancien SECRET remis) repasse en « connecté ».
+ * Ne lève jamais : l'instance continue de démarrer et les relevés échouent proprement.
+ */
+export function sweepVault(): { readable: number; reconnect: number } {
+  const rows = db.prepare("SELECT id, secrets, status, status_detail FROM connections WHERE secrets IS NOT NULL").all() as Row[];
+  let readable = 0, reconnect = 0;
+  for (const r of rows) {
+    try {
+      open(r.secrets); readable++;
+      if (r.status === "reconnect" && [RECONNECT_MESSAGE, SECRET_MESSAGE].includes(r.status_detail)) markStatus(r.id, "connected", null, false);
+    } catch (e) {
+      reconnect++;
+      markStatus(r.id, "reconnect", e instanceof VaultError ? e.message : RECONNECT_MESSAGE, false);
+    }
+  }
+  return { readable, reconnect };
+}
+
+/** Au démarrage : migre les jetons en clair, ou avertit s'il n'y a pas de SECRET valable ; puis contrôle que les connexions restent lisibles. */
 export function startVault() {
   const r = migrateClearTokens();
+  const sw = sweepVault();
+  if (sw.reconnect) console.warn(`[coffre] ${sw.reconnect} connexion(s) à reconnecter : la clé de l'instance (SECRET) a changé ou n'est pas valable.`);
   if (r.pending) console.warn(`[coffre] ${r.pending} connexion(s) gardent un jeton en clair : définissez SECRET (32 caractères ou plus) puis redémarrez.`);
   else if (r.migrated) console.log(`[coffre] ${r.migrated} jeton(s) chiffré(s)`);
   return r;

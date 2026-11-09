@@ -9,7 +9,7 @@ import type { McpServer } from "@modelcontextprotocol/server";
 import { db, localDay } from "./db.ts";
 import { lastDays, previous, type Range } from "./stats.ts";
 import { migrate } from "./migrations.ts";
-import { connections, getSecrets } from "./connections.ts";
+import { connections, getConnection, getSecrets } from "./connections.ts";
 import { googleToken } from "./gsc.ts";
 
 db.exec(`
@@ -65,7 +65,7 @@ const ENV = /^[A-Z][A-Z0-9_]*$/;
 
 const configs = {
   pg: z.object({ env: z.string().regex(ENV), sql: z.string().min(1).max(4000) }),
-  stripe: z.object({ env: z.string().regex(ENV).optional(), metric: z.enum(["revenue", "new_customers", "active_subscriptions", "mrr"]), account: z.string().regex(/^acct_\w+$/).optional() }),
+  stripe: z.object({ env: z.string().regex(ENV).optional(), connection_id: z.string().optional(), metric: z.enum(["revenue", "new_customers", "active_subscriptions", "mrr"]), account: z.string().regex(/^acct_\w+$/).optional() }),
   http: z.object({ url: z.string().url(), path: z.string().max(200).default(""), env: z.string().regex(ENV).optional() }),
   site: z.object({ domain: z.string(), metric: z.enum(["visitors", "pageviews", "clicks", "impressions"]) }),
   manual: z.object({}),
@@ -158,7 +158,7 @@ async function stripeValue(c: z.infer<typeof configs.stripe>, d?: string) {
   if (c.env) {
     key = secret(c.env);
   } else {
-    const conn = connections("stripe")[0] as Row | undefined;
+    const conn = (c.connection_id ? getConnection(c.connection_id) : connections("stripe")[0]) as Row | undefined;
     if (!conn) throw new Error("Aucun compte Stripe connecté : ajoutez Stripe dans Connexions");
     const s = getSecrets(conn);
     key = String(s.key ?? s.access_token ?? "");
