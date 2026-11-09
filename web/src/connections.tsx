@@ -11,6 +11,7 @@ export type Manifest = {
   unlocks: string[]; fields: Field[]; guide: { text: string; url?: string }[]; revokeUrl?: string; connections: Conn[];
   hasKpis?: boolean; kpis?: { id: string; label: string; mode: "daily" | "total"; unit?: string; params?: Field[] }[]; presets?: { kpi: string; label: string; params?: Record<string, string> }[]; status: "none" | "builtin" | "connected" | "error" | "reconnect";
 };
+type Usage = { label: string; provider: string; revokeUrl: string | null; indicators: { id: string; label: string; project: string | null }[] };
 export type Catalog = { vault: { ok: boolean; message: string | null }; demo: boolean; admin: boolean; connectors: Manifest[]; later: string[] };
 type Outcome = { kind: "ok" | "error"; text: string; detail?: string; warnings?: string[]; copy?: { label: string; value: string } };
 
@@ -107,6 +108,9 @@ export function Drawer({ m, catalog, onClose, reload }: { m: Manifest; catalog: 
   const [values, setValues] = useState<Record<string, string>>(() => initial(m.fields));
   const [editing, setEditing] = useState<Conn | null>(null);
   const [label, setLabel] = useState("");
+  const [confirmRm, setConfirmRm] = useState<{ conn: Conn; usage: Usage } | null>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => { if (confirmRm) cancelRef.current?.focus(); }, [confirmRm]);
   const [busy, setBusy] = useState(false);
   const [out, setOut] = useState<Outcome | null>(null);
   useDrawerKeys(ref, onClose);
@@ -135,10 +139,22 @@ export function Drawer({ m, catalog, onClose, reload }: { m: Manifest; catalog: 
       await reload();
     } finally { setBusy(false); }
   }
-  async function remove(c: Conn) {
-    if (!confirm(`Retirer « ${c.label} » ? Pensez aussi à supprimer la clé chez ${m.provider}${m.revokeUrl ? ` : ${m.revokeUrl}` : ""}.`)) return;
-    await api(`/api/connections/${c.id}`, { method: "DELETE" }).catch((e) => setOut({ kind: "error", text: (e as Error).message }));
-    await reload();
+  // Retrait en deux temps : la confirmation cite les indicateurs qui perdront leur source (P5)
+  async function askRemove(c: Conn) {
+    setOut(null);
+    try { setConfirmRm({ conn: c, usage: await api<Usage>(`/api/connections/${c.id}/usage`) }); }
+    catch (e) { setOut({ kind: "error", text: (e as Error).message }); }
+  }
+  async function doRemove() {
+    if (!confirmRm) return;
+    const { conn, usage } = confirmRm;
+    try {
+      await api(`/api/connections/${conn.id}`, { method: "DELETE" });
+      setConfirmRm(null);
+      setOut({ kind: "ok", text: `« ${conn.label} » est retiré.`, detail: usage.indicators.length ? `${usage.indicators.length} indicateur${usage.indicators.length > 1 ? "s" : ""} passe${usage.indicators.length > 1 ? "nt" : ""} en « Source retirée », historique conservé.` : undefined });
+      await reload();
+      closeRef.current?.focus();
+    } catch (e) { setOut({ kind: "error", text: (e as Error).message }); setConfirmRm(null); }
   }
 
   return (
@@ -204,6 +220,22 @@ export function Drawer({ m, catalog, onClose, reload }: { m: Manifest; catalog: 
           )}
         </div>
 
+        {confirmRm && (
+          <div role="alertdialog" aria-modal="false" aria-labelledby="rm-title" className="mt-6 rounded-xl border border-negative bg-negative-bg p-4 text-sm">
+            <h3 id="rm-title" className="font-medium">Retirer « {confirmRm.conn.label} » ?</h3>
+            <p className="mt-2 leading-6">
+              {confirmRm.usage.indicators.length
+                ? <>{confirmRm.usage.indicators.length} indicateur{confirmRm.usage.indicators.length > 1 ? "s" : ""} l'utilise{confirmRm.usage.indicators.length > 1 ? "nt" : ""} : {confirmRm.usage.indicators.map((i) => i.project ? `${i.label} (${i.project})` : i.label).join(", ")}. Leur historique est conservé, ils ne seront plus relevés.</>
+                : <>Aucun indicateur ne l'utilise.</>}
+              {" "}Pensez aussi à supprimer la clé chez {confirmRm.usage.provider}{confirmRm.usage.revokeUrl && <> : <a href={confirmRm.usage.revokeUrl} target="_blank" rel="noreferrer noopener" className="underline">ouvrir ↗</a></>}.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-3">
+              <button type="button" onClick={doRemove} className="h-9 rounded-full bg-negative px-4 text-sm font-medium text-ground">Retirer définitivement</button>
+              <button ref={cancelRef} type="button" onClick={() => setConfirmRm(null)} className="h-9 rounded-full border border-control px-4 text-sm">Annuler</button>
+            </div>
+          </div>
+        )}
+
         {m.connections.length > 0 && (
           <div className="mt-6 border-t border-rule pt-6">
             <h3 className="text-sm font-medium">Comptes connectés</h3>
@@ -218,7 +250,7 @@ export function Drawer({ m, catalog, onClose, reload }: { m: Manifest; catalog: 
                     <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm">
                       <button type="button" disabled={busy} onClick={() => retest(c)} className="py-1 text-accent underline">Tester</button>
                       <button type="button" onClick={() => { setEditing(c); setLabel(c.label); setOut(null); setValues(Object.fromEntries(m.fields.map((f) => [f.key, f.secret ? "" : String(c.settings?.[f.key] ?? f.default ?? "")]))); }} className="py-1 text-accent underline">Remplacer la clé</button>
-                      <button type="button" onClick={() => remove(c)} className="py-1 text-muted hover:text-negative">Retirer</button>
+                      <button type="button" onClick={() => askRemove(c)} className="py-1 text-muted hover:text-negative">Retirer</button>
                     </div>
                   )}
                 </li>

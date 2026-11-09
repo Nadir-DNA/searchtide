@@ -10,6 +10,7 @@ import { SECRET_MESSAGE, VaultError, fingerprint, scrub, secretValid, secretValu
 import { all, get, publicManifest, realCtx, runTest } from "./registry.ts";
 import type { Cfg, Connector, Ctx, Field, TestResult } from "./types.ts";
 import "./index.ts"; // enregistre les connecteurs
+import "../projects.ts"; // crée les tables des indicateurs (usage et retrait des connexions)
 
 type Row = Record<string, any>;
 
@@ -19,6 +20,12 @@ export function setConnectorContext(ctx?: Ctx) { ctxOverride = ctx; }
 const ctx = () => ctxOverride ?? realCtx();
 
 const DEMO = () => process.env.DEMO === "1";
+export const SOURCE_RETIREE = "Source retirée";
+/** Indicateurs (et leur projet) qui relèvent leurs chiffres avec cette connexion. */
+export function indicatorsUsing(connectionId: string): { id: string; label: string; project: string | null }[] {
+  return (db.prepare(`SELECT i.id, i.label, p.name AS project FROM indicators i LEFT JOIN projects p ON p.id = i.project_id
+    WHERE json_extract(i.config, '$.connection_id') = ? ORDER BY p.name, i.position, i.created_at`).all(connectionId) as Row[]).map((r) => ({ id: r.id, label: r.label, project: r.project }));
+}
 const LATER = ["Cloudflare", "Gmail (lecture)", "Sauvegarde distante", "CRM tiers", "Connexion en un clic"];
 const RANK: Record<string, number> = { reconnect: 3, error: 2, connected: 1 };
 
@@ -170,10 +177,29 @@ export function registerConnections(app: Hono) {
     return c.json({ ok: result.ok, label: result.label, detail: result.detail, warnings: result.warnings ?? [], error: result.error, failure: result.failure, status: statusOf(result) });
   });
 
+  // Ce que la connexion alimente : sert à la confirmation avant retrait (P5)
+  app.get("/api/connections/:id/usage", (c) => {
+    if (!isAdmin(c)) return forbidden(c);
+    const conn = getConnection(c.req.param("id"));
+    if (!conn) return c.json({ error: "Connexion introuvable" }, 404);
+    const m = get(conn.kind);
+    return c.json({ label: conn.label, provider: m?.provider ?? conn.kind, revokeUrl: m?.revokeUrl ?? null, indicators: indicatorsUsing(conn.id) });
+  });
+
+  // Retirer : la ligne et ses secrets disparaissent ; les indicateurs liés restent, historique intact, en erreur « Source retirée »
   app.delete("/api/connections/:id", (c) => {
     if (!isAdmin(c)) return forbidden(c);
     if (DEMO()) return c.json({ error: "Désactivé en démonstration." }, 403);
-    return removeConnection(c.req.param("id")) ? c.json({ ok: true }) : c.json({ error: "Connexion introuvable" }, 404);
+    const id = c.req.param("id");
+    if (!getConnection(id)) return c.json({ error: "Connexion introuvable" }, 404);
+    const affected = indicatorsUsing(id).length;
+    db.exec("BEGIN");
+    try {
+      db.prepare("UPDATE indicators SET last_error = ?, last_run = ? WHERE json_extract(config, '$.connection_id') = ?").run(SOURCE_RETIREE, Date.now(), id);
+      removeConnection(id);
+      db.exec("COMMIT");
+    } catch (e) { db.exec("ROLLBACK"); throw e; }
+    return c.json({ ok: true, affected });
   });
 }
 

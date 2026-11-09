@@ -67,16 +67,19 @@ const DAY = /^\d{4}-\d{2}-\d{2}$/;
 const day = (t: number) => new Date(t).toISOString().slice(0, 10);
 const days = (r: Range) => { const out: string[] = []; for (let t = Date.parse(r.from); t <= Date.parse(r.to); t += 86400000) out.push(day(t)); return out; };
 const ENV = /^[A-Z][A-Z0-9_]*$/;
+/** Variables qui contiennent les propres secrets de Searchtide : jamais lisibles par un indicateur (sinon un agent pourrait les envoyer à une adresse de son choix). */
+export const RESERVED_ENV = new Set(["SECRET", "ADMIN_PASSWORD", "API_KEY", "API_KEY_READ", "TOTP_SECRET", "INBOUND_KEY", "SMTP_URL", "BACKUP_TOKEN", "GOOGLE_SERVICE_ACCOUNT_JSON"]);
+const envName = z.string().regex(ENV).refine((n) => !RESERVED_ENV.has(n), "Variable réservée à Searchtide : choisissez une connexion ou une autre variable");
 
 const configs = {
-  pg: z.object({ env: z.string().regex(ENV).optional(), connection_id: z.string().optional(), sql: z.string().min(1).max(4000) })
+  pg: z.object({ env: envName.optional(), connection_id: z.string().optional(), sql: z.string().min(1).max(4000) })
     .superRefine((v, ctx) => { try { checkSql(v.sql); } catch (e) { ctx.addIssue({ code: "custom", path: ["sql"], message: (e as Error).message }); } }),
-  stripe: z.object({ env: z.string().regex(ENV).optional(), connection_id: z.string().optional(), metric: z.enum(["revenue", "new_customers", "active_subscriptions", "mrr"]), account: z.string().regex(/^acct_\w+$/).optional() }),
-  http: z.object({ url: z.string().url(), path: z.string().max(200).default(""), env: z.string().regex(ENV).optional(), connection_id: z.string().optional() }),
+  stripe: z.object({ env: envName.optional(), connection_id: z.string().optional(), metric: z.enum(["revenue", "new_customers", "active_subscriptions", "mrr"]), account: z.string().regex(/^acct_\w+$/).optional() }),
+  http: z.object({ url: z.string().url(), path: z.string().max(200).default(""), env: envName.optional(), connection_id: z.string().optional() }),
   site: z.object({ domain: z.string(), metric: z.enum(["visitors", "pageviews", "clicks", "impressions"]) }),
   manual: z.object({}),
-  pagespeed: z.object({ url: z.string().url(), metric: z.enum(["performance", "seo", "lcp", "cls"]), strategy: z.enum(["mobile", "desktop"]).default("mobile"), env: z.string().regex(ENV).optional(), connection_id: z.string().optional() }),
-  play: z.object({ env: z.string().regex(ENV).optional(), connection_id: z.string().optional(), package: z.string().regex(/^[a-z][a-z0-9_.]+$/), metric: z.enum(["daily_installs", "active_installs", "rating"]) }),
+  pagespeed: z.object({ url: z.string().url(), metric: z.enum(["performance", "seo", "lcp", "cls"]), strategy: z.enum(["mobile", "desktop"]).default("mobile"), env: envName.optional(), connection_id: z.string().optional() }),
+  play: z.object({ env: envName.optional(), connection_id: z.string().optional(), package: z.string().regex(/^[a-z][a-z0-9_.]+$/), metric: z.enum(["daily_installs", "active_installs", "rating"]) }),
 };
 export type Source = keyof typeof configs;
 const indicatorFields = z.object({
@@ -108,6 +111,7 @@ const getInd = (id: string) => { const r = db.prepare("SELECT * FROM indicators 
 
 // ── Connecteurs ──
 const secret = (name: string) => {
+  if (RESERVED_ENV.has(name)) throw new Error(`La variable ${name} est réservée à Searchtide : choisissez une connexion ou une autre variable.`);
   const v = process.env[name];
   if (!v) throw new Error(`Variable ${name} absente du fichier .env`);
   return v;
@@ -131,7 +135,7 @@ async function stripeValue(c: z.infer<typeof configs.stripe>, d?: string) {
 // API JSON : par une connexion « API JSON » (jeton envoyé au seul domaine autorisé), ou, ancien mode, par une adresse libre
 // avec un jeton facultatif dans une variable d'environnement (config.env).
 async function httpValue(c: z.infer<typeof configs.http>) {
-  if (c.connection_id) return collectVia("jsonapi", c.connection_id, "json_total", { url: c.url, path: c.path }, undefined);
+  if (c.connection_id && !c.env) return collectVia("jsonapi", c.connection_id, "json_total", { url: c.url, path: c.path }, undefined); // une variable explicite l'emporte (CA20)
   const res = await currentCtx().fetch(c.url, { headers: c.env ? { Authorization: `Bearer ${secret(c.env)}` } : {}, signal: AbortSignal.timeout(15_000) });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return pickNumber(await res.json(), c.path);
@@ -140,14 +144,14 @@ async function httpValue(c: z.infer<typeof configs.http>) {
 // PageSpeed Insights : par la connexion PageSpeed (clé facultative), ou, ancien mode, par la variable d'environnement
 // qui contient la clé (config.env, défaut PAGESPEED_KEY quand aucune connexion n'existe).
 async function pagespeedValue(c: z.infer<typeof configs.pagespeed>) {
-  if (c.connection_id || (!c.env && connections("pagespeed").length)) return collectVia("pagespeed", c.connection_id, c.metric, { url: c.url, strategy: c.strategy }, undefined);
+  if (!c.env && (c.connection_id || connections("pagespeed").length)) return collectVia("pagespeed", c.connection_id, c.metric, { url: c.url, strategy: c.strategy }, undefined);
   return pagespeedMetric({ url: c.url, metric: c.metric, strategy: c.strategy, key: secret(c.env ?? "PAGESPEED_KEY") }, currentCtx());
 }
 
 // Google Play : par la connexion Google (bucket renseigné dans la connexion), ou, ancien mode, par la variable d'environnement
 // qui contient le bucket (config.env, défaut PLAY_BUCKET) avec GOOGLE_SERVICE_ACCOUNT_JSON.
 async function playValue(c: z.infer<typeof configs.play>, d?: string) {
-  if (c.connection_id || (!c.env && connections("google").length)) return collectVia("google", c.connection_id, c.metric, { package: c.package }, d);
+  if (!c.env && (c.connection_id || connections("google").length)) return collectVia("google", c.connection_id, c.metric, { package: c.package }, d);
   const bucket = secret(c.env ?? "PLAY_BUCKET");
   const sa = serviceAccount();
   if (!sa) throw new Error("Google n'est pas connecté : ajoutez Google dans Connexions");
