@@ -62,3 +62,9 @@ test("période précédente", async () => {
   const { previous } = await import("./stats.ts");
   assert.deepEqual(previous({ from: "2026-11-01", to: "2026-11-28" }), { from: "2026-10-04", to: "2026-10-31" });
 });
+
+test("jour civil à l'heure de Paris", async () => {
+  const { localDay } = await import("./db.ts");
+  assert.equal(localDay(Date.parse("2026-11-08T23:30:00Z")), "2026-11-09"); // 0 h 30 à Paris
+  assert.equal(localDay(Date.parse("2026-07-01T21:59:00Z")), "2026-07-01"); // 23 h 59 en été
+});

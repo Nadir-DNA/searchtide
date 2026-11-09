@@ -1,4 +1,4 @@
-import { db } from "./db.ts";
+import { db, localDay } from "./db.ts";
 
 export type Range = { from: string; to: string }; // AAAA-MM-JJ inclus
 
@@ -84,13 +84,13 @@ export function overview(r: Range) {
     ...s, traffic: trafficTotals(s.id, r), trafficPrev: trafficTotals(s.id, p),
     search: s.gsc_property ? searchTotals(s.id, r) : null,
     today: (db.prepare("SELECT COUNT(DISTINCT visitor) AS n FROM events WHERE site_id = ? AND day = ? AND type = 'pageview'")
-      .get(s.id, new Date().toISOString().slice(0, 10)) as { n: number }).n,
+      .get(s.id, localDay()) as { n: number }).n,
   }));
   return { range: r, daily, sites };
 }
 
 export function lastDays(n: number, end = new Date()): Range {
-  const to = end.toISOString().slice(0, 10);
+  const to = localDay(end);
   const from = new Date(end.getTime() - (n - 1) * 86400000).toISOString().slice(0, 10);
   return { from, to };
 }

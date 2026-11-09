@@ -202,25 +202,25 @@ function Overview({ days, demo, go }: { days: number; demo: boolean; go: (n: Rec
       ) : (
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-            <KpiCard label="Visiteurs" value={fmt(visitors)} delta={<Delta now={visitors} before={prev} />} />
+            <KpiCard label="Visites" value={fmt(visitors)} delta={<Delta now={visitors} before={prev} />} hint="Visiteurs uniques de chaque jour, additionnés" />
             <KpiCard label="Pages vues" value={fmt(sum((s) => s.traffic.pageviews))} delta={<Delta now={sum((s) => s.traffic.pageviews)} before={sum((s) => s.trafficPrev.pageviews)} />} />
             <KpiCard label="Venus d'assistants IA" value={fmt(sum((s) => s.traffic.ai))} delta={<Delta now={sum((s) => s.traffic.ai)} before={sum((s) => s.trafficPrev.ai)} />} />
             <KpiCard label="Clics Google" value={linked.length ? fmt(linked.reduce((n, s) => n + s.search!.clicks, 0)) : "—"}
               hint={linked.length ? `${linked.length} site${linked.length > 1 ? "s" : ""} relié${linked.length > 1 ? "s" : ""} à Search Console` : "Aucun site relié à Search Console"} />
           </div>
           <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-            <Card title="Visiteurs, tous sites" action={<Delta now={visitors} before={prev} />}>
-              <BarChart label="Visiteurs, tous sites" {...fillDays(o.daily, o.range.from, o.range.to, (d) => d.visitors)} />
+            <Card title="Visiteurs par jour, tous sites" action={<Delta now={visitors} before={prev} />}>
+              <BarChart label="Visiteurs par jour, tous sites" {...fillDays(o.daily, o.range.from, o.range.to, (d) => d.visitors)} />
             </Card>
             <Card title="Répartition par site">
-              {visitors ? <Donut total={visitors} totalLabel="visiteurs" parts={sites!.map((s) => ({ label: s.domain, value: s.traffic.visitors }))} />
+              {visitors ? <Donut total={visitors} totalLabel="visites" parts={sites!.map((s) => ({ label: s.domain, value: s.traffic.visitors }))} />
                 : <EmptyBox>Aucune visite sur la période.</EmptyBox>}
             </Card>
           </div>
           <Card title="Sites">
             <Table rows={sites!} onRow={(s) => go({ site: s.domain })} empty="" cols={[
               { label: "Site", className: "w-1/3", render: (s) => <span className="flex items-center gap-2.5"><span className={`size-2 shrink-0 rounded-full ${s.today ? "bg-accent" : "bg-control"}`} title={s.today ? "Visites aujourd'hui" : "Aucune visite aujourd'hui"} />{s.domain}</span> },
-              { label: "Visiteurs", num: true, render: (s) => fmt(s.traffic.visitors) },
+              { label: "Visites", num: true, render: (s) => fmt(s.traffic.visitors) },
               { label: "Évolution", num: true, render: (s) => <Delta now={s.traffic.visitors} before={s.trafficPrev.visitors} /> },
               { label: "Pages vues", num: true, render: (s) => fmt(s.traffic.pageviews) },
               { label: "Depuis les IA", num: true, render: (s) => fmt(s.traffic.ai) },
@@ -295,11 +295,11 @@ function TrafficView({ site, days, onSetup }: { site: Site; days: number; onSetu
     );
   }
   const chart = fillDays(t.daily, t.range.from, t.range.to, (d) => d[metric]);
-  const metricName = metric === "visitors" ? "Visiteurs" : "Pages vues";
+  const metricName = metric === "visitors" ? "Visiteurs par jour" : "Pages vues";
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <KpiCard label="Visiteurs" value={fmt(t.totals.visitors)} delta={<Delta now={t.totals.visitors} before={t.previous.visitors} />} active={metric === "visitors"} onClick={() => setMetric("visitors")} />
+        <KpiCard label="Visites" hint="Visiteurs uniques de chaque jour, additionnés" value={fmt(t.totals.visitors)} delta={<Delta now={t.totals.visitors} before={t.previous.visitors} />} active={metric === "visitors"} onClick={() => setMetric("visitors")} />
         <KpiCard label="Pages vues" value={fmt(t.totals.pageviews)} delta={<Delta now={t.totals.pageviews} before={t.previous.pageviews} />} active={metric === "pageviews"} onClick={() => setMetric("pageviews")} />
         <KpiCard label="Pages par visiteur" value={t.totals.visitors ? fmt(t.totals.pageviews / t.totals.visitors, 1) : "—"} />
         <KpiCard label="Venus d'assistants IA" value={fmt(t.totals.ai)} delta={<Delta now={t.totals.ai} before={t.previous.ai} />}
@@ -442,6 +442,7 @@ function SetupView({ site, me, onChange }: { site: Site; me: Me; onChange: () =>
     <div className="space-y-4">
       <SettingCard title="Script de suivi" sub={<>À coller dans le &lt;head&gt; de chaque page. Sans cookie : aucune bannière de consentement n'est nécessaire.</>}>
         <Copyable text={`<script defer src="${location.origin}/script.js" data-site="${site.domain}"></script>`} />
+        <p className="mt-3 text-xs text-muted">Pour ne pas compter vos propres visites, ouvrez une fois <a className="text-ink underline" href={`https://${site.domain}/?searchtide=ignore`} target="_blank" rel="noreferrer">{site.domain}/?searchtide=ignore</a> sur chacun de vos appareils (<code className="font-mono">?searchtide=track</code> pour annuler).</p>
         <p className="mt-3 text-xs text-muted">Pour compter une action : <code className="font-mono">searchtide("inscription")</code> en JavaScript, ou l'attribut <code className="font-mono">data-searchtide="clic-cta"</code> sur un bouton.</p>
       </SettingCard>
       <SettingCard title="Google Search Console" sub="Mots-clés, clics, impressions et position de chaque page. Importés automatiquement toutes les 6 heures.">

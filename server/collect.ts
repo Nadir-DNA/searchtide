@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { db, type Site } from "./db.ts";
+import { db, type Site, localDay } from "./db.ts";
 
 const SECRET = process.env.SECRET ?? "dev-secret";
 
@@ -59,7 +59,7 @@ export function collect(hit: Hit, ip: string, ua: string, country: string | null
   if (referrer === host) referrer = null; // navigation interne
   const q = url.searchParams;
   const utm = (k: string) => q.get("utm_" + k)?.slice(0, 100) ?? null;
-  const day = new Date(now).toISOString().slice(0, 10);
+  const day = localDay(now);
   // Empreinte sans cookie : impossible de suivre quelqu'un d'un jour à l'autre
   const visitor = createHash("sha256").update(`${SECRET}|${day}|${site.id}|${ip}|${ua}`).digest("hex").slice(0, 16);
   const { browser, os, device } = parseUA(ua);

@@ -56,4 +56,9 @@ CREATE TABLE IF NOT EXISTS gsc_syncs (
 );
 `);
 
+/** Jour civil (AAAA-MM-JJ) dans le fuseau de l'instance : une visite à 0 h 30 compte pour le bon jour. */
+const DAY_TZ = process.env.DAY_TZ ?? "Europe/Paris";
+const dayFmt = new Intl.DateTimeFormat("en-CA", { timeZone: DAY_TZ, year: "numeric", month: "2-digit", day: "2-digit" });
+export const localDay = (t: number | Date = Date.now()) => dayFmt.format(t);
+
 export type Site = { id: string; domain: string; name: string; gsc_property: string | null; created_at: number };

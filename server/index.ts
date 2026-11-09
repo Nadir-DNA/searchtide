@@ -5,7 +5,7 @@ import { getConnInfo } from "@hono/node-server/conninfo";
 import { getSignedCookie, setSignedCookie, deleteCookie } from "hono/cookie";
 import { readFileSync } from "node:fs";
 import { randomUUID, timingSafeEqual } from "node:crypto";
-import { db, type Site } from "./db.ts";
+import { db, localDay, type Site } from "./db.ts";
 import { collect } from "./collect.ts";
 import { lastDays, overview, searchStats, strikingDistance, trafficStats, type Range } from "./stats.ts";
 import { gscConfigured, listProperties, syncAll, syncSite } from "./gsc.ts";
@@ -101,8 +101,8 @@ app.get("/api/me", (c) => c.json({ ok: true, gsc: gscConfigured(), demo: DEMO })
 app.get("/api/overview", (c) => c.json(overview(rangeOf(c))));
 
 app.get("/api/sites", (c) => c.json(db.prepare(`SELECT s.*, g.synced_at, g.last_day, g.error AS sync_error,
-  (SELECT COUNT(*) FROM events e WHERE e.site_id = s.id AND e.day = date('now')) AS today
-  FROM sites s LEFT JOIN gsc_syncs g ON g.site_id = s.id ORDER BY s.domain`).all()));
+  (SELECT COUNT(DISTINCT visitor) FROM events e WHERE e.site_id = s.id AND e.day = ? AND e.type = 'pageview') AS today
+  FROM sites s LEFT JOIN gsc_syncs g ON g.site_id = s.id ORDER BY s.domain`).all(localDay())));
 
 app.post("/api/sites", async (c) => {
   const b = await c.req.json().catch(() => ({}));

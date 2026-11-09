@@ -2,6 +2,12 @@
 (function () {
   var s = document.currentScript;
   if (!s || navigator.webdriver) return;
+  // Exclure ses propres visites : ouvrir une page du site avec ?searchtide=ignore (ou =track pour annuler)
+  try {
+    if (/[?&]searchtide=ignore\b/.test(location.search)) localStorage.setItem("searchtide-ignore", "1");
+    if (/[?&]searchtide=track\b/.test(location.search)) localStorage.removeItem("searchtide-ignore");
+    if (localStorage.getItem("searchtide-ignore")) return;
+  } catch (e) { /* stockage bloqué : on compte la visite */ }
   var site = s.getAttribute("data-site") || location.hostname.replace(/^www\./, "");
   var endpoint = new URL("/api/collect", s.src).href;
   var last;
