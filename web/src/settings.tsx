@@ -5,7 +5,7 @@ import { ErrorLine, Header, KpiSkeleton, useData } from "./App";
 import { Button, Card, EmptyBox, Pill } from "./ui";
 
 type Ops = {
-  ntfy: string | null; mail: boolean;
+  ntfy: string | null; ntfyVia: "connexion" | "env" | null; mail: boolean;
   veille: { name: string; up: boolean; since?: number; error?: string }[] | null;
   backups: { local: string[]; dir: string; offsite: { at: number; bytes: number } | null };
 };
@@ -41,7 +41,12 @@ export function SettingsView() {
           <p className="mt-3 text-xs text-muted">Une alerte part sur votre téléphone après 10 minutes sans réponse, puis au retour.</p>
         </Card>
         <Card title="Notifications sur le téléphone">
-          {o.ntfy ? (
+          {o.ntfyVia === "connexion" ? (
+            <>
+              <p className="text-sm">ntfy est connecté : le sujet est enregistré, chiffré, dans Connexions.</p>
+              <div className="mt-4 flex items-center gap-3"><Button variant="secondary" onClick={() => run("ntfy", "/api/ops/test-notification", "Envoyée")}>Envoyer un essai</Button><span className="text-sm text-muted">{msg.ntfy}</span></div>
+            </>
+          ) : o.ntfy ? (
             <>
               <ol className="list-decimal space-y-1.5 pl-5 text-sm">
                 <li>Installez l'application gratuite <b>ntfy</b> (Play Store ou App Store).</li>
@@ -51,7 +56,7 @@ export function SettingsView() {
               <p className="mt-3 text-xs text-muted">Vous recevrez : site hors ligne, relevé en erreur, baisse de plus de 30 % sur une semaine, nouvelle vente, relances du jour. Gardez ce nom de sujet pour vous : il fait office de clé.</p>
               <div className="mt-4 flex items-center gap-3"><Button variant="secondary" onClick={() => run("ntfy", "/api/ops/test-notification", "Envoyée")}>Envoyer un essai</Button><span className="text-sm text-muted">{msg.ntfy}</span></div>
             </>
-          ) : <EmptyBox>NTFY_TOPIC absent de .env.</EmptyBox>}
+          ) : <EmptyBox>ntfy n'est pas connecté : ajoutez-le dans Connexions.</EmptyBox>}
         </Card>
         <Card title="Sauvegardes">
           <p className="text-sm">Chaque nuit : une copie sur le PC ({o.backups.dir}, 14 jours) et une copie compressée chez Cloudflare (30 jours).</p>

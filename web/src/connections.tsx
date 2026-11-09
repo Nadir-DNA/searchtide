@@ -4,14 +4,18 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { api } from "./api";
 import { Button, Card, inputCls } from "./ui";
 
-type Field = { key: string; label: string; type: "text" | "url" | "number" | "select" | "json" | "textarea"; secret?: boolean; required?: boolean; help?: string; placeholder?: string; options?: { value: string; label: string }[]; default?: string };
+type Field = { key: string; label: string; type: "text" | "url" | "number" | "select" | "json" | "textarea"; secret?: boolean; required?: boolean; help?: string; placeholder?: string; options?: { value: string; label: string }[]; default?: string; generate?: "topic" };
 type Conn = { id: string; kind: string; label: string; hint: string; settings: Record<string, string>; status: "connected" | "error" | "reconnect"; status_detail: string | null; tested_at: number | null; livemode: boolean; test_mode: boolean };
 type Manifest = {
   id: string; name: string; monogram: string; provider: string; description: string; category: string; minutes: number; singleton?: boolean; builtin?: boolean;
   unlocks: string[]; fields: Field[]; guide: { text: string; url?: string }[]; revokeUrl?: string; connections: Conn[]; status: "none" | "builtin" | "connected" | "error" | "reconnect";
 };
 type Catalog = { vault: { ok: boolean; message: string | null }; demo: boolean; admin: boolean; connectors: Manifest[]; later: string[] };
-type Outcome = { kind: "ok" | "error"; text: string; detail?: string; warnings?: string[] };
+type Outcome = { kind: "ok" | "error"; text: string; detail?: string; warnings?: string[]; copy?: { label: string; value: string } };
+
+/** Sujet ntfy aléatoire (il sert de mot de passe) : 96 bits issus du générateur sécurisé du navigateur. */
+const genTopic = () => `searchtide-${[...crypto.getRandomValues(new Uint8Array(12))].map((b) => b.toString(16).padStart(2, "0")).join("")}`;
+const initial = (fields: Field[]) => Object.fromEntries(fields.map((f) => [f.key, f.generate === "topic" ? genTopic() : f.default ?? ""]));
 
 const FILTERS = [["all", "Tous"], ["revenus", "Revenus"], ["seo", "SEO"], ["produit", "Produit"], ["alertes", "Alertes"]] as const;
 
@@ -99,7 +103,7 @@ function FieldInput({ f, value, onChange, editing }: { f: Field; value: string; 
 function Drawer({ m, catalog, onClose, reload }: { m: Manifest; catalog: Catalog; onClose: () => void; reload: () => Promise<void> }) {
   const ref = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
-  const [values, setValues] = useState<Record<string, string>>(() => Object.fromEntries(m.fields.map((f) => [f.key, f.default ?? ""])));
+  const [values, setValues] = useState<Record<string, string>>(() => initial(m.fields));
   const [editing, setEditing] = useState<Conn | null>(null);
   const [busy, setBusy] = useState(false);
   const [out, setOut] = useState<Outcome | null>(null);
@@ -115,8 +119,9 @@ function Drawer({ m, catalog, onClose, reload }: { m: Manifest; catalog: Catalog
       const r = editing
         ? await api<{ test: { label?: string; detail?: string; warnings: string[] } }>(`/api/connections/${editing.id}`, { method: "PATCH", json: { values } })
         : await api<{ test: { label?: string; detail?: string; warnings: string[] } }>("/api/connections", { method: "POST", json: { kind: m.id, values } });
-      setOut({ kind: "ok", text: `Connecté : ${r.test.label ?? m.name}`, detail: r.test.detail, warnings: r.test.warnings });
-      setValues(Object.fromEntries(m.fields.map((f) => [f.key, f.default ?? ""]))); setEditing(null);
+      const gen = m.fields.find((f) => f.generate);
+      setOut({ kind: "ok", text: `Connecté : ${r.test.label ?? m.name}`, detail: r.test.detail, warnings: r.test.warnings, ...(gen && !editing ? { copy: { label: gen.label, value: values[gen.key] } } : {}) });
+      setValues(initial(m.fields)); setEditing(null);
       await reload();
     } catch (err) { setOut({ kind: "error", text: (err as Error).message }); } finally { setBusy(false); }
   }
@@ -181,6 +186,12 @@ function Drawer({ m, catalog, onClose, reload }: { m: Manifest; catalog: Catalog
               <p className="break-words">{out.text}</p>
               {out.detail && <p className="mt-1 break-words text-xs">{out.detail}</p>}
               {out.warnings?.map((w, i) => <p key={i} className="mt-1 break-words text-xs text-ink">⚠ {w}</p>)}
+              {out.copy && (
+                <div className="mt-2 flex items-center gap-2 text-ink">
+                  <code className="min-w-0 flex-1 rounded bg-raised px-2 py-1 font-mono text-xs break-all" aria-label={out.copy.label}>{out.copy.value}</code>
+                  <button type="button" onClick={() => navigator.clipboard?.writeText(out.copy!.value)} className="shrink-0 rounded-lg border border-control px-3 py-1 text-xs">Copier</button>
+                </div>
+              )}
             </div>
           )}
         </div>

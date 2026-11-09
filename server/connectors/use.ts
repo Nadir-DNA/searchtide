@@ -6,6 +6,8 @@ import { ConnectorError, type Ctx } from "./types.ts";
 let ctxOverride: Ctx | undefined;
 /** Pour les tests : remplace l'accès réseau des relevés. */
 export function setCollectContext(ctx?: Ctx) { ctxOverride = ctx; }
+/** Accès réseau courant (réel, ou simulé dans les tests). */
+export const currentCtx = () => ctxOverride ?? realCtx();
 
 /**
  * Relève `kpi` du connecteur `kind` avec la connexion `connectionId` (ou la première du type).

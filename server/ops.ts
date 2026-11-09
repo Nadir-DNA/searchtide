@@ -3,7 +3,9 @@ import type { Hono } from "hono";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
-import { createTransport } from "nodemailer";
+import { mailSetup, ntfySetup } from "./connectors/channels.ts";
+import { ntfyPublish } from "./connectors/ntfy.ts";
+import { currentCtx } from "./connectors/use.ts";
 import { db, localDay } from "./db.ts";
 import { backup } from "./security.ts";
 import { lastDays } from "./stats.ts";
@@ -17,13 +19,10 @@ const setSetting = (k: string, v: string) => db.prepare("INSERT INTO settings (k
 
 export async function notify(title: string, message: string, priority: "default" | "high" = "default") {
   const jobs: Promise<unknown>[] = [];
-  if (process.env.NTFY_TOPIC) jobs.push(fetch("https://ntfy.sh/", {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ topic: process.env.NTFY_TOPIC, title, message, priority: priority === "high" ? 5 : 3, click: process.env.PUBLIC_URL }),
-  }));
-  if (process.env.SMTP_URL && process.env.REPORT_TO && priority === "high") jobs.push(createTransport(process.env.SMTP_URL).sendMail({
-    from: process.env.REPORT_FROM || process.env.REPORT_TO, to: process.env.REPORT_TO, subject: `[Searchtide] ${title}`, text: message,
-  }));
+  const n = ntfySetup();
+  if (n) jobs.push(ntfyPublish(n, { title, message, priority: priority === "high" ? 5 : 3, click: process.env.PUBLIC_URL || undefined }, currentCtx().fetch));
+  const m = mailSetup();
+  if (m?.to && priority === "high") jobs.push(m.transport.sendMail({ from: m.from, to: m.to, subject: `[Searchtide] ${title}`, text: message }));
   const res = await Promise.allSettled(jobs);
   for (const r of res) if (r.status === "rejected") console.error("[notification]", r.reason?.message);
 }
@@ -85,7 +84,7 @@ export function registerOps(app: Hono) {
     const veille = process.env.BACKUP_URL ? await fetch(`${process.env.BACKUP_URL}/status`).then((r) => r.json()).catch(() => null) : null;
     const local = (() => { try { return readdirSync(BACKUP_DIR).filter((f) => f.endsWith(".db")).sort().reverse(); } catch { return []; } })();
     return c.json({
-      ntfy: process.env.NTFY_TOPIC ?? null, mail: !!process.env.SMTP_URL, veille,
+      ntfy: process.env.NTFY_TOPIC ?? null, ntfyVia: ntfySetup()?.via ?? null, mail: !!mailSetup(), veille,
       backups: { local: local.slice(0, 5), dir: BACKUP_DIR, offsite: JSON.parse(getSetting("backup_offsite") ?? "null") },
     });
   });

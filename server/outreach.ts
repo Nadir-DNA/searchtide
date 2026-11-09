@@ -3,7 +3,7 @@
 // plafond quotidien, envois automatiques en semaine de 9 h à 18 h (heure de Paris).
 import type { Hono } from "hono";
 import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
-import { createTransport } from "nodemailer";
+import { mailSetup } from "./connectors/channels.ts";
 import { z } from "zod";
 import { db, localDay } from "./db.ts";
 import { migrate } from "./migrations.ts";
@@ -49,7 +49,7 @@ export function render(text: string, c: Row) {
 }
 
 const sentToday = () => (db.prepare("SELECT COUNT(*) AS n FROM activities WHERE kind = 'email' AND ts >= ?").get(Date.parse(localDay() + "T00:00:00")) as Row).n as number;
-export const mailReady = () => !!process.env.SMTP_URL;
+export const mailReady = () => !!mailSetup();
 
 /** Envoie un e-mail à un contact et l'enregistre dans son historique. `transport` : injectable pour les tests. */
 export async function sendToContact(contactId: string, subject: string, body: string, opts: { transport?: { sendMail: (m: Row) => Promise<unknown> } } = {}) {
@@ -58,11 +58,12 @@ export async function sendToContact(contactId: string, subject: string, body: st
   if (c.opt_out) throw new Error("Ce contact a demandé à ne plus être contacté");
   if (!c.email) throw new Error("Ce contact n'a pas d'adresse e-mail");
   if (sentToday() >= DAILY_LIMIT) throw new Error(`Plafond de ${DAILY_LIMIT} e-mails par jour atteint (protège la réputation de votre adresse)`);
-  if (!opts.transport && !mailReady()) throw new Error("Envoi non configuré : SMTP_URL absent de .env");
+  const mail = opts.transport ? null : mailSetup();
+  if (!opts.transport && !mail) throw new Error("Envoi non configuré : ajoutez E-mail (SMTP) dans Connexions");
   const s = render(subject, c), text = render(body, c);
   const unsub = `${process.env.PUBLIC_URL ?? ""}/u/${unsubToken(c.id)}`;
-  await (opts.transport ?? createTransport(process.env.SMTP_URL!)).sendMail({
-    from: process.env.OUTREACH_FROM || process.env.REPORT_FROM || process.env.REPORT_TO,
+  await (opts.transport ?? mail!.transport).sendMail({
+    from: process.env.OUTREACH_FROM || mail?.from || process.env.REPORT_FROM || process.env.REPORT_TO,
     to: c.email, subject: s,
     text: `${text}\n\n—\nPour ne plus recevoir de messages de ma part : ${unsub}`,
     headers: { "List-Unsubscribe": `<${unsub}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" },

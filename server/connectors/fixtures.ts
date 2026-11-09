@@ -15,4 +15,11 @@ export const FIXTURES: Record<string, Fixture> = {
       return json({ error: { message: "inattendu" } }, 404);
     },
   },
+  smtp: {
+    cfg: { config: { preset: "gmail", user: "demo@exemple.com", from: "Démo <demo@exemple.com>", to: "demo@exemple.com" }, secrets: { pass: "abcdefghijklmnop" } },
+  },
+  ntfy: {
+    cfg: { config: { server: "https://ntfy.exemple.test" }, secrets: { topic: "searchtide-0123456789abcdef", token: "tk_FIXTUREtoken0123456789" } },
+    respond: () => json({ id: "msg1", event: "message" }),
+  },
 };

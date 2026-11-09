@@ -13,6 +13,8 @@ export type Field = {
   placeholder?: string;
   options?: { value: string; label: string }[];
   default?: string;
+  /** Valeur proposée automatiquement à la création (sujet ntfy). Modifiable. */
+  generate?: "topic";
 };
 
 export type Kpi = {
@@ -58,7 +60,7 @@ export class ConnectorError extends Error {
   constructor(kind: FailureKind, message: string) { super(message); this.name = "ConnectorError"; this.kind = kind; }
 }
 
-export type SmtpOptions = { host: string; port: number; secure: boolean; auth?: { user: string; pass: string } };
+export type SmtpOptions = { host: string; port: number; secure: boolean; requireTLS?: boolean; auth?: { user: string; pass: string } };
 export interface Mailer { verify(): Promise<unknown>; sendMail(m: Record<string, any>): Promise<unknown> }
 export interface PgClientLike { query(sql: string, params?: unknown[]): Promise<{ rows: any[] }>; release(): void }
 export interface PgPoolLike { connect(): Promise<PgClientLike>; end(): Promise<void> }

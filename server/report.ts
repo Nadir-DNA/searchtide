@@ -1,6 +1,6 @@
 // Rapport hebdomadaire : visites, Google, CRM et publications de la semaine écoulée, envoyé le lundi matin.
 import type { Hono } from "hono";
-import { createTransport } from "nodemailer";
+import { mailSetup } from "./connectors/channels.ts";
 import { db, localDay } from "./db.ts";
 import { previous, searchStats, strikingDistance, trafficStats, type Range } from "./stats.ts";
 import { listProjects } from "./projects.ts";
@@ -153,14 +153,14 @@ export function reportText(r: Report) {
 }
 
 // ── Envoi ──
-export const mailConfigured = () => !!(process.env.SMTP_URL && process.env.REPORT_TO);
+export const mailConfigured = () => { const m = mailSetup(); return !!(m && m.to); };
 
 export async function sendReport(r = weeklyReport()) {
-  if (!mailConfigured()) throw new Error("Envoi non configuré : renseignez SMTP_URL et REPORT_TO dans .env");
-  const transport = createTransport(process.env.SMTP_URL!);
-  await transport.sendMail({
-    from: process.env.REPORT_FROM || process.env.REPORT_TO,
-    to: process.env.REPORT_TO,
+  const m = mailSetup();
+  if (!m || !m.to) throw new Error("Envoi non configuré : ajoutez E-mail (SMTP) dans Connexions");
+  await m.transport.sendMail({
+    from: m.from,
+    to: m.to,
     subject: `Rapport de la semaine : ${pl(r.totals.visitors, "visite")}, ${pl(r.totals.clicks, "clic")} Google`,
     text: reportText(r),
     html: reportHtml(r, process.env.PUBLIC_URL ?? ""),
@@ -185,7 +185,7 @@ export function registerReport(app: Hono) {
   app.get("/api/report", (c) => c.json({ ...weeklyReport(), mail: mailConfigured() }));
   app.get("/api/report.html", (c) => c.html(reportHtml(weeklyReport(), new URL(c.req.url).origin)));
   app.post("/api/report/send", async (c) => {
-    try { await sendReport(); return c.json({ ok: true, to: process.env.REPORT_TO }); }
+    try { await sendReport(); return c.json({ ok: true, to: mailSetup()?.to }); }
     catch (e) { return c.json({ error: (e as Error).message }, 400); }
   });
   // Vérifie toutes les 30 min ; un envoi par semaine au plus
