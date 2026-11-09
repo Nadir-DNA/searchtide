@@ -8,7 +8,8 @@ export type Field = { key: string; label: string; type: "text" | "url" | "number
 export type Conn = { id: string; kind: string; label: string; hint: string; settings: Record<string, string>; status: "connected" | "error" | "reconnect"; status_detail: string | null; tested_at: number | null; livemode: boolean; test_mode: boolean };
 export type Manifest = {
   id: string; name: string; monogram: string; provider: string; description: string; category: string; minutes: number; singleton?: boolean; builtin?: boolean;
-  unlocks: string[]; fields: Field[]; guide: { text: string; url?: string }[]; revokeUrl?: string; connections: Conn[]; status: "none" | "builtin" | "connected" | "error" | "reconnect";
+  unlocks: string[]; fields: Field[]; guide: { text: string; url?: string }[]; revokeUrl?: string; connections: Conn[];
+  hasKpis?: boolean; kpis?: { id: string; label: string; mode: "daily" | "total"; unit?: string; params?: Field[] }[]; presets?: { kpi: string; label: string; params?: Record<string, string> }[]; status: "none" | "builtin" | "connected" | "error" | "reconnect";
 };
 export type Catalog = { vault: { ok: boolean; message: string | null }; demo: boolean; admin: boolean; connectors: Manifest[]; later: string[] };
 type Outcome = { kind: "ok" | "error"; text: string; detail?: string; warnings?: string[]; copy?: { label: string; value: string } };
@@ -45,7 +46,7 @@ const ago = (t: number | null) => {
 };
 
 /** Piège le focus dans le tiroir ; Échap le ferme. */
-function useDrawerKeys(ref: React.RefObject<HTMLElement | null>, onClose: () => void) {
+export function useDrawerKeys(ref: React.RefObject<HTMLElement | null>, onClose: () => void) {
   useEffect(() => {
     const el = ref.current;
     const focusable = () => [...(el?.querySelectorAll<HTMLElement>('a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])') ?? [])].filter((x) => x.getClientRects().length > 0);
@@ -270,7 +271,9 @@ export function ConnectionsView() {
   const opener = useRef<string | null>(null);
 
   const open = (id: string) => { opener.current = id; setOpenId(id); };
-  const close = useCallback(() => { setOpenId(null); const id = opener.current; setTimeout(() => cards.current.get(id ?? "")?.focus(), 0); }, []);
+  const close = useCallback(() => setOpenId(null), []);
+  // Le focus revient à la carte APRÈS le démontage du tiroir (sinon le piège à focus du tiroir le reprendrait)
+  useEffect(() => { if (openId === null && opener.current) cards.current.get(opener.current)?.focus(); }, [openId]);
 
   const m = catalog?.connectors.find((x) => x.id === openId);
   const real = catalog?.connectors.filter((x) => !x.builtin && (filter === "all" || x.category === filter)) ?? [];

@@ -18,7 +18,7 @@ export const all = () => [...connectors.values()];
 export const unregister = (id: string) => connectors.delete(id);
 
 export function publicManifest(c: Connector): PublicManifest {
-  const { test: _t, collect: _c, hint: _h, readPosts: _r, sideEffects: _s, ...rest } = c;
+  const { test: _t, collect: _c, hint: _h, readPosts: _r, sideEffects: _s, toIndicator: _i, ...rest } = c;
   return { ...rest, hasKpis: !!c.kpis?.length };
 }
 

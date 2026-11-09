@@ -76,6 +76,7 @@ export const pagespeed: Connector = {
     { id: "cls", label: "CLS", mode: "total", params },
   ],
   presets: [{ kpi: "performance", label: "Score de performance" }, { kpi: "seo", label: "Score SEO" }, { kpi: "lcp", label: "LCP" }, { kpi: "cls", label: "CLS" }],
+  toIndicator: (kpi, p) => ({ source: "pagespeed", config: { url: String(p.url ?? ""), metric: kpi.id, strategy: p.strategy === "desktop" ? "desktop" : "mobile" } }),
   async collect(c, kpi, p, _d, ctx) {
     const url = String(p.url ?? "");
     try { if (!/^https?:$/.test(new URL(url).protocol)) throw 0; } catch { throw new ConnectorError("format", "Adresse de page invalide (https://…)."); }

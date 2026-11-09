@@ -25,6 +25,8 @@ export type Kpi = {
   /** Paramètres demandés au rattachement (URL, package, requête SQL…). */
   params?: Field[];
   backfill?: boolean;
+  /** Montant d'argent : l'unité vient de la devise de la connexion (config.currency). */
+  money?: boolean;
 };
 
 /** Indicateur proposé à cocher quand on rattache la connexion à un projet (P6). */
@@ -48,6 +50,8 @@ export type TestResult = {
   /** Indice non secret mis à jour (ex. badge test). */
   livemode?: boolean;
   account?: string;
+  /** Réglages non secrets à garder dans la connexion (ex. devise détectée). */
+  settings?: Record<string, any>;
   /** Nature de l'échec, pour fixer le statut (R13) : auth/permission → « à reconnecter ». */
   failure?: FailureKind;
 };
@@ -104,8 +108,10 @@ export interface Connector {
   test(cfg: Cfg, ctx: Ctx): Promise<TestResult>;
   kpis?: Kpi[];
   presets?: Preset[];
+  /** Rattachement à un projet : source et configuration de l'indicateur qui relève ce KPI (le `connection_id` est ajouté par le serveur). */
+  toIndicator?(kpi: Kpi, params: Record<string, any>): { source: string; config: Record<string, any> };
   collect?(cfg: Cfg, kpi: Kpi, params: Record<string, any>, day: string | undefined, ctx: Ctx): Promise<number>;
 }
 
 /** Version du manifeste sans fonctions, renvoyée par /api/connectors. */
-export type PublicManifest = Omit<Connector, "test" | "collect" | "hint" | "readPosts" | "sideEffects"> & { hasKpis: boolean };
+export type PublicManifest = Omit<Connector, "test" | "collect" | "hint" | "readPosts" | "sideEffects" | "toIndicator"> & { hasKpis: boolean };

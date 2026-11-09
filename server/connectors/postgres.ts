@@ -147,6 +147,7 @@ export const postgres: Connector = {
     { kpi: "sql_total", label: "Utilisateurs activés", params: { sql: "SELECT COUNT(*) FROM users WHERE activated_at IS NOT NULL" } },
     { kpi: "sql_total", label: "Rétention à 7 jours (%)", params: { sql: "SELECT ROUND(100.0 * COUNT(*) FILTER (WHERE last_seen_at >= created_at + interval '7 days') / NULLIF(COUNT(*), 0), 1) FROM users WHERE created_at < now() - interval '7 days'" } },
   ],
+  toIndicator: (_kpi, params) => ({ source: "pg", config: { sql: String(params.sql ?? "") } }),
   async collect(c, kpi, params, day, ctx) { return pgQuery(String(c.secrets.url ?? ""), String(params.sql ?? ""), kpi.mode === "daily" ? day : undefined, ctx); },
 };
 register(postgres);

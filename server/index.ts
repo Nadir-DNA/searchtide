@@ -15,6 +15,7 @@ import { registerReport } from "./report.ts";
 import { registerProjects } from "./projects.ts";
 import { startVault } from "./connections.ts";
 import { registerConnections } from "./connectors/api.ts";
+import { registerSources } from "./sources.ts";
 import { registerOps } from "./ops.ts";
 import { registerPortfolio } from "./portfolio.ts";
 import { findAgent, registerAgents } from "./agents.ts";
@@ -174,6 +175,7 @@ registerBusiness(app);
 registerReport(app);
 registerProjects(app)
 registerConnections(app);
+registerSources(app);
 startVault();
 registerOps(app);
 registerPortfolio(app);

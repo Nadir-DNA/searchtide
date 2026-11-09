@@ -62,6 +62,8 @@ export const jsonapi: Connector = {
     { id: "json_daily", label: "Nombre lu dans une URL JSON (un chiffre par jour)", mode: "daily", params: [{ key: "url", label: "Adresse JSON", type: "url", required: true }, { key: "path", label: "Chemin du nombre", type: "text", placeholder: "stats.users" }] },
     { id: "json_total", label: "Nombre lu dans une URL JSON (un niveau)", mode: "total", params: [{ key: "url", label: "Adresse JSON", type: "url", required: true }, { key: "path", label: "Chemin du nombre", type: "text", placeholder: "stats.users" }] },
   ],
+  presets: [{ kpi: "json_total", label: "Nombre lu dans l'API (niveau)" }, { kpi: "json_daily", label: "Nombre lu dans l'API (un chiffre par jour)" }],
+  toIndicator: (_kpi, p) => ({ source: "http", config: { url: String(p.url ?? ""), path: String(p.path ?? "") } }),
   async collect(c, _k, p, _d, ctx) {
     let url: URL;
     try { url = new URL(String(p.url ?? "")); } catch { throw new ConnectorError("format", "Adresse JSON invalide."); }

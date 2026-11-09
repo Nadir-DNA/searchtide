@@ -127,6 +127,8 @@ export const google: Connector = {
     { id: "active_installs", label: "Installations actives (Play)", mode: "total", params: [{ key: "package", label: "Nom du package", type: "text", required: true, placeholder: "com.exemple.app" }] },
     { id: "rating", label: "Note moyenne (Play)", mode: "total", params: [{ key: "package", label: "Nom du package", type: "text", required: true, placeholder: "com.exemple.app" }] },
   ],
+  presets: [{ kpi: "daily_installs", label: "Installations par jour (Play)" }, { kpi: "active_installs", label: "Installations actives (Play)" }, { kpi: "rating", label: "Note moyenne (Play)" }],
+  toIndicator: (kpi, params) => ({ source: "play", config: { package: String(params.package ?? ""), metric: kpi.id } }),
   async collect(c, kpi, params, day, ctx) {
     const bucket = String(c.config.playBucket ?? "");
     if (!bucket) throw new ConnectorError("format", "Aucun bucket Google Play n'est renseigné pour cette connexion : modifiez-la pour l'ajouter.");

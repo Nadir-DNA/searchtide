@@ -4,6 +4,8 @@ import { api, type Overview as OverviewData, type Site } from "./api";
 import { ErrorLine, Header, KpiSkeleton, useData } from "./App";
 import { STAGES } from "./business";
 import { BarChart } from "./chart";
+import { SourcesCard } from "./sources";
+import { useCatalog } from "./connections";
 import { Button, Card, Delta, EmptyBox, KpiCard, Pill, Table, fmt, inputCls } from "./ui";
 
 type Point = { day: string; value: number | null };
@@ -19,6 +21,8 @@ export type Project = {
 type Go = (n: Record<string, string | undefined>) => void;
 
 const SOURCES = [["pg", "Base de données (Postgres, Supabase)"], ["stripe", "Stripe"], ["site", "Site suivi"], ["pagespeed", "PageSpeed (vitesse du site)"], ["play", "Google Play"], ["http", "Adresse web (JSON)"], ["manual", "Saisie à la main"]] as const;
+/** Connecteur qui fournit chaque source d'indicateur. */
+const KIND: Record<string, string> = { stripe: "stripe", pg: "postgres", http: "jsonapi", pagespeed: "pagespeed", play: "google" };
 const PSI_METRICS = [["performance", "Performance (sur 100)"], ["seo", "SEO technique (sur 100)"], ["lcp", "Affichage du contenu principal (LCP, s)"], ["cls", "Stabilité de la mise en page (CLS)"]] as const;
 const PLAY_METRICS = [["daily_installs", "Installations par jour"], ["active_installs", "Appareils actifs"], ["rating", "Note moyenne"]] as const;
 const STRIPE_METRICS = [["revenue", "Chiffre d'affaires (par jour)"], ["new_customers", "Nouveaux clients (par jour)"], ["active_subscriptions", "Abonnements actifs"], ["mrr", "Revenu mensuel récurrent"]] as const;
@@ -101,6 +105,7 @@ export function ProjectView({ id, days, go }: { id: string; days: number; go: Go
             {p.funnel.length > 1 && <Funnel steps={p.funnel} days={days} />}
           </div>
         )}
+        <SourcesCard projectId={p.id} onChanged={reload} go={go} />
         <div className="grid gap-4 lg:grid-cols-2">
           <ProjectSites project={p} days={days} go={go} />
           <ProjectCrm project={p} go={go} />
@@ -322,12 +327,24 @@ function IndicatorForm({ projectId, ind, sites, onClose, onSaved }: { projectId:
   const [source, setSource] = useState(ind.source ?? "pg");
   const [test, setTest] = useState("");
   const [error, setError] = useState("");
+  const { catalog } = useCatalog();
+  const kind = KIND[source];
+  const conns = catalog?.connectors.find((c) => c.id === kind)?.connections ?? [];
+  const firstConn = (src: string) => catalog?.connectors.find((c) => c.id === KIND[src])?.connections[0]?.id ?? "";
+  // "" : aucune connexion · "__env" : variable d'environnement (avancé, saisie explicite) · sinon l'id d'une connexion
+  const [connId, setConnId] = useState<string>(ind.config?.connection_id ?? (ind.config?.env ? "__env" : ""));
+  const [touched, setTouched] = useState(!!ind.config?.connection_id || !!ind.config?.env);
+  useEffect(() => { if (!touched && kind && conns.length) setConnId(conns[0].id); }, [touched, kind, conns.length]); // première connexion proposée tant qu'on n'a rien choisi
+  const useEnv = !!kind && connId === "__env";
+  const useConn = !!kind && !!connId && connId !== "__env";
   const read = (form: HTMLFormElement) => {
     const f = Object.fromEntries(new FormData(form)) as Record<string, string>;
-    const config = source === "pg" ? { env: f.env, sql: f.sql } : source === "stripe" ? { env: f.env, metric: f.metric, ...(f.account ? { account: f.account } : {}) }
-      : source === "http" ? { url: f.url, path: f.path, ...(f.env && { env: f.env }) } : source === "site" ? { domain: f.domain, metric: f.metric }
-      : source === "pagespeed" ? { url: f.url, metric: f.metric, strategy: f.strategy, env: f.env || "PAGESPEED_KEY" }
-      : source === "play" ? { package: f.package, metric: f.metric, env: f.env || "PLAY_BUCKET" } : {};
+    // Aucune variable n'est préremplie : `env` n'est envoyé que s'il est saisi explicitement (CA20, E3)
+    const link = { ...(useConn ? { connection_id: connId } : {}), ...(useEnv && f.env?.trim() ? { env: f.env.trim() } : {}) };
+    const config = source === "pg" ? { sql: f.sql, ...link } : source === "stripe" ? { metric: f.metric, ...(useEnv && f.account ? { account: f.account } : {}), ...link }
+      : source === "http" ? { url: f.url, path: f.path, ...link } : source === "site" ? { domain: f.domain, metric: f.metric }
+      : source === "pagespeed" ? { url: f.url, metric: f.metric, strategy: f.strategy, ...link }
+      : source === "play" ? { package: f.package, metric: f.metric, ...link } : {};
     return { label: f.label, unit: f.unit, mode: f.mode, source, config, goal: f.goal ? Number(f.goal.replace(",", ".")) : null, goal_period: f.goal_period };
   };
   async function runTest(form: HTMLFormElement) {
@@ -347,15 +364,14 @@ function IndicatorForm({ projectId, ind, sites, onClose, onSaved }: { projectId:
       {!ind.id && (
         <p className="rounded-xl bg-raised px-3 py-2.5 text-xs leading-5 text-muted">
           Vous voulez suivre un chiffre qui existe déjà ailleurs ? Choisissez sa source, puis <strong className="font-medium text-ink">Tester</strong> avant
-          d'enregistrer : Searchtide affiche la valeur d'aujourd'hui sans rien écrire. Si le test échoue, c'est la variable d'environnement
-          ou l'accès qui manque, jamais le projet.
+          d'enregistrer : Searchtide affiche la valeur d'aujourd'hui sans rien écrire. Si le test échoue, c'est la connexion ou l'accès qui manque, jamais le projet.
         </p>
       )}
       <div className="grid gap-4 sm:grid-cols-3">
         <Field label="Nom *" className="sm:col-span-2"><input name="label" required defaultValue={ind.label} className={inputCls} placeholder="Inscriptions, chiffre d'affaires…" /></Field>
         <Field label="Unité"><input name="unit" defaultValue={ind.unit ?? ""} className={inputCls} placeholder="€, %…" /></Field>
         <Field label="Source">
-          <select value={source} onChange={(e) => setSource(e.target.value)} className={inputCls}>{SOURCES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
+          <select value={source} onChange={(e) => { setSource(e.target.value); setTouched(false); setConnId(firstConn(e.target.value)); }} className={inputCls}>{SOURCES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
         </Field>
         <Field label="Type" className="sm:col-span-2">
           <select name="mode" defaultValue={ind.mode} className={inputCls}>
@@ -364,10 +380,28 @@ function IndicatorForm({ projectId, ind, sites, onClose, onSaved }: { projectId:
           </select>
         </Field>
       </div>
-      {(source === "pg" || source === "stripe" || source === "http") && (
-        <Field label={source === "http" ? "Variable .env du jeton (facultatif)" : "Variable .env qui contient l'accès *"}>
-          <input name="env" required={source !== "http"} defaultValue={c.env ?? ""} className={`${inputCls} font-mono`} placeholder={source === "pg" ? "MONPROJET_DB_URL" : source === "stripe" ? "STRIPE_MONPROJET_KEY" : ""} />
-        </Field>
+      {kind && (
+        <div className="space-y-3">
+          <Field label={`Connexion${source === "http" ? " (facultative)" : " *"}`}>
+            <select name="connexion" value={connId} onChange={(e) => { setConnId(e.target.value); setTouched(true); }} className={inputCls}>
+              {source === "http" ? <option value="">Aucune : adresse ouverte, sans jeton</option> : !conns.length && <option value="">Aucune connexion</option>}
+              {conns.map((c) => <option key={c.id} value={c.id}>{c.label} · {c.hint}</option>)}
+              <option value="__env">Variable d'environnement (avancé)</option>
+            </select>
+          </Field>
+          {!conns.length && !useEnv && source !== "http" && <p className="text-xs text-muted">Aucune connexion {catalog?.connectors.find((c) => c.id === kind)?.name ?? ""} : <a href="?view=connections" className="text-accent underline">ajoutez-la dans Connexions</a>, puis revenez ici.</p>}
+          {ind.id && ind.config?.env && (
+            <p className="flex flex-wrap items-center gap-2 text-xs text-muted">
+              <span className="rounded bg-raised px-1.5 py-0.5">via .env</span>
+              {conns.length > 0 && !useConn && <button type="button" onClick={() => { setConnId(conns[0].id); setTouched(true); }} className="text-accent underline">Passer sur une connexion</button>}
+            </p>
+          )}
+          {useEnv && (
+            <Field label={source === "http" ? "Variable d'environnement du jeton (facultatif)" : source === "pagespeed" || source === "play" ? "Variable d'environnement (facultatif)" : "Variable d'environnement *"}>
+              <input name="env" required={source === "pg" || source === "stripe"} defaultValue={ind.config?.env ?? ""} className={`${inputCls} font-mono`} placeholder="NOM_DE_LA_VARIABLE" />
+            </Field>
+          )}
+        </div>
       )}
       {source === "pg" && (
         <Field label="Requête SQL (lecture seule) *">
@@ -375,7 +409,7 @@ function IndicatorForm({ projectId, ind, sites, onClose, onSaved }: { projectId:
           <span className="mt-1.5 block text-xs text-muted">Avec <code className="font-mono">$1</code> (le jour, AAAA-MM-JJ) : un chiffre par jour, avec 90 jours d'historique repris. Sans : un niveau relevé chaque jour.</span>
         </Field>
       )}
-      {source === "stripe" && <Field label="Compte Stripe (avec une clé d'organisation)"><input name="account" defaultValue={c.account ?? ""} pattern="acct_[A-Za-z0-9]+" placeholder="acct_…" className={`${inputCls} font-mono`} /></Field>}
+      {source === "stripe" && useEnv && <Field label="Compte Stripe (avec une clé d'organisation)"><input name="account" defaultValue={c.account ?? ""} pattern="acct_[A-Za-z0-9]+" placeholder="acct_…" className={`${inputCls} font-mono`} /></Field>}
       {source === "stripe" && <Field label="Mesure"><select name="metric" defaultValue={c.metric} className={inputCls}>{STRIPE_METRICS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></Field>}
       {source === "http" && (
         <div className="grid gap-4 sm:grid-cols-2">
@@ -394,19 +428,17 @@ function IndicatorForm({ projectId, ind, sites, onClose, onSaved }: { projectId:
           <Field label="Page à mesurer *"><input name="url" type="url" required defaultValue={c.url ?? ""} className={inputCls} placeholder="https://…" /></Field>
           <Field label="Mesure"><select name="metric" defaultValue={c.metric} className={inputCls}>{PSI_METRICS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></Field>
           <Field label="Appareil"><select name="strategy" defaultValue={c.strategy ?? "mobile"} className={inputCls}><option value="mobile">Mobile</option><option value="desktop">Ordinateur</option></select></Field>
-          <Field label="Variable .env de la clé API"><input name="env" defaultValue={c.env ?? "PAGESPEED_KEY"} className={`${inputCls} font-mono`} /></Field>
         </div>
       )}
       {source === "play" && (
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Nom du paquet *"><input name="package" required defaultValue={c.package ?? ""} className={`${inputCls} font-mono`} placeholder="com.exemple.app" /></Field>
           <Field label="Mesure"><select name="metric" defaultValue={c.metric} className={inputCls}>{PLAY_METRICS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></Field>
-          <Field label="Variable .env de l'espace des rapports" className="sm:col-span-2"><input name="env" defaultValue={c.env ?? "PLAY_BUCKET"} className={`${inputCls} font-mono`} /></Field>
         </div>
       )}
       {source === "play" && (
         <p className="text-xs leading-5 text-muted">
-          L'accès déjà en place (compte de service Google) est utilisé : seule la variable qui nomme l'espace des rapports est à renseigner.
+          Le compte de service Google de la connexion est utilisé ; le bucket des rapports Play se règle dans cette connexion (Connexions → Google).
         </p>
       )}
       {source === "manual" && <p className="text-sm text-muted">La valeur se saisit sur la page du projet, ou par un agent avec l'outil indicator_record.</p>}

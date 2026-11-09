@@ -112,7 +112,7 @@ export function registerConnections(app: Hono) {
     try {
       const label = String(b.label ?? "").trim().slice(0, 80) || result.label || m.name;
       const conn = createConnection({ kind: m.id, label, account: result.account, livemode: result.livemode,
-        config: { ...cfg.config, hint: m.hint(cfg), ...(result.livemode === false ? { test: true } : {}) }, secrets: cfg.secrets, fingerprintOf: main || undefined });
+        config: { ...cfg.config, ...(result.settings ?? {}), hint: m.hint(cfg), ...(result.livemode === false ? { test: true } : {}) }, secrets: cfg.secrets, fingerprintOf: main || undefined });
       markStatus(conn.id, "connected", null);
       return c.json({ connection: view(getConnection(conn.id)!, "admin"), test: { label: result.label, detail: result.detail, warnings: result.warnings ?? [] } }, 201);
     } catch (e) {
@@ -146,7 +146,7 @@ export function registerConnections(app: Hono) {
     try {
       setSecrets(conn.id, cfg.secrets, main ? fingerprint(m.id, main) : null);
       db.prepare("UPDATE connections SET label = ?, config = ?, account = ?, livemode = ? WHERE id = ?")
-        .run(label, JSON.stringify({ ...cfg.config, hint: m.hint(cfg), ...(result.livemode === false ? { test: true } : {}) }), result.account ?? conn.account, result.livemode ? 1 : 0, conn.id);
+        .run(label, JSON.stringify({ ...cfg.config, ...(result.settings ?? {}), hint: m.hint(cfg), ...(result.livemode === false ? { test: true } : {}) }), result.account ?? conn.account, result.livemode ? 1 : 0, conn.id);
       markStatus(conn.id, "connected", null);
       return c.json({ connection: view(getConnection(conn.id)!, "admin"), test: { label: result.label, detail: result.detail, warnings: result.warnings ?? [] } });
     } catch (e) {

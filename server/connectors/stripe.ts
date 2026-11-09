@@ -80,6 +80,9 @@ export async function stripeMetric(a: StripeAuth, metric: string, day: string | 
   throw new Error(`Mesure Stripe inconnue : ${metric}`);
 }
 
+/** Symbole d'une devise (code ISO en minuscules) ; le code en majuscules à défaut. */
+export const currencyUnit = (code?: string) => ({ eur: "€", usd: "$", gbp: "£", chf: "CHF", cad: "CA$", aud: "A$", jpy: "¥" } as Record<string, string>)[String(code ?? "").toLowerCase()] ?? (code ? String(code).toUpperCase() : "€");
+
 const keyOf = (c: Cfg) => String(c.secrets.key ?? c.secrets.access_token ?? "");
 
 /** Contrôle le format de la clé collée avant tout appel réseau (R8). */
@@ -106,23 +109,29 @@ export const stripe: Connector = {
     const live = key.startsWith("rk_live_");
     // Les trois lectures dont dépendent les KPI : une permission manquante est signalée avant l'enregistrement
     for (const path of ["balance_transactions", "customers", "subscriptions"]) await probe(key, path, ctx);
-    let name = "";
+    let name = "", currency = "";
+    try { // devise du compte : sert d'unité aux indicateurs d'argent (facultatif)
+      const b = await ctx.fetch(`${API}/balance`, { headers: { Authorization: `Bearer ${key}` } });
+      if (b.ok) currency = String(((await b.json()) as Row).available?.[0]?.currency ?? "").toLowerCase();
+    } catch { /* la devise est facultative */ }
     try {
       const res = await ctx.fetch(`${API}/account`, { headers: { Authorization: `Bearer ${key}` } });
-      if (res.ok) { const a = await res.json() as Row; name = String(a.business_profile?.name ?? a.settings?.dashboard?.display_name ?? "").slice(0, 80); }
+      if (res.ok) { const a = await res.json() as Row; name = String(a.business_profile?.name ?? a.settings?.dashboard?.display_name ?? "").slice(0, 80); currency ||= String(a.default_currency ?? "").toLowerCase(); }
     } catch { /* le nom est facultatif */ }
-    return { ok: true, label: name || "Compte Stripe", livemode: live, detail: `${name || "Compte Stripe"}, mode ${live ? "production" : "test"}` };
+    return { ok: true, label: name || "Compte Stripe", livemode: live, settings: currency ? { currency } : undefined,
+      detail: `${name || "Compte Stripe"}, mode ${live ? "production" : "test"}${currency ? `, devise ${currency.toUpperCase()}` : ""}` };
   },
   kpis: [
-    { id: "revenue", label: "CA net", mode: "daily", backfill: true },
+    { id: "revenue", label: "CA net", mode: "daily", backfill: true, money: true },
     { id: "new_customers", label: "Nouveaux clients", mode: "daily", backfill: true },
     { id: "active_subscriptions", label: "Abonnements actifs", mode: "total" },
-    { id: "mrr", label: "MRR", mode: "total" },
+    { id: "mrr", label: "MRR", mode: "total", money: true },
   ],
   presets: [
     { kpi: "revenue", label: "CA net" }, { kpi: "mrr", label: "MRR" },
     { kpi: "active_subscriptions", label: "Abonnements actifs" }, { kpi: "new_customers", label: "Nouveaux clients" },
   ],
+  toIndicator: (kpi) => ({ source: "stripe", config: { metric: kpi.id } }),
   async collect(c, kpi, _p, day, ctx) { return stripeMetric({ key: keyOf(c) }, kpi.id, kpi.mode === "daily" ? day : undefined, ctx); },
 };
 register(stripe);

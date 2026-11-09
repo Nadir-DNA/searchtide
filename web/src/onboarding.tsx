@@ -51,7 +51,9 @@ export function Onboarding({ go }: { go: Go }) {
   const [open, setOpen] = useState<string | null>(null);
   const opener = useRef<HTMLElement | null>(null);
   const openDrawer = (id: string) => { opener.current = document.activeElement as HTMLElement | null; setOpen(id); };
-  const closeDrawer = () => { setOpen(null); setTimeout(() => opener.current?.focus(), 0); }; // le focus revient à la carte (CA23)
+  const closeDrawer = () => setOpen(null);
+  // Le focus revient à la carte (CA23), après le démontage du tiroir pour que son piège à focus ne le reprenne pas
+  useEffect(() => { if (open === null) opener.current?.focus(); }, [open]);
   const [agentName, setAgentName] = useState("");
   const [agentKey, setAgentKey] = useState<{ name: string; key: string } | null>(null);
   const [agentError, setAgentError] = useState("");
