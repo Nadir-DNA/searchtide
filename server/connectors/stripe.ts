@@ -98,7 +98,7 @@ export const stripe: Connector = {
   fields: [{ key: "key", label: "Clé limitée", type: "text", secret: true, required: true, placeholder: "rk_live_…", help: "Une clé qui commence par rk_. Les clés complètes (sk_) sont refusées." }],
   guide: [
     { text: "Ouvrez la page des clés Stripe, puis « Créer une clé limitée ».", url: "https://dashboard.stripe.com/apikeys" },
-    { text: "Mettez « Lecture » sur Customers, Subscriptions et Balance, et « Aucune » partout ailleurs (libellés exacts à confirmer dans votre Dashboard)." },
+    { text: "Dans la liste des autorisations, passez « Customers », « Subscriptions » et « Balance » en « Lecture », ainsi que « Balance Transaction Sources » pour les transactions ; laissez le reste sur « Aucune » (les noms restent en anglais dans le Dashboard)." },
     { text: "Copiez la clé rk_… : elle n'est montrée qu'une fois." },
   ],
   revokeUrl: "https://dashboard.stripe.com/apikeys",

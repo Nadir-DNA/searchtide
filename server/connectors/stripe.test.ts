@@ -129,3 +129,9 @@ test("runTest : délai dépassé → message « Stripe ne répond pas »", async
   const r = await runTest(stripe, { config: {}, secrets: { key: KEY } }, slow);
   assert.equal(r.ok, false); assert.equal(r.error, "Stripe ne répond pas. Réessayez dans un instant.");
 });
+
+test("Q1/T34 : le guide Stripe donne les libellés exacts relevés dans le Dashboard, sans mention « à confirmer »", () => {
+  const guide = stripe.guide.map((g) => g.text).join(" ");
+  assert.match(guide, /Customers/); assert.match(guide, /Subscriptions/); assert.match(guide, /Balance Transaction Sources/);
+  assert.doesNotMatch(guide, /à confirmer/i);
+});
