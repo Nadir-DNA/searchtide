@@ -28,13 +28,29 @@ done | sed -E 's/^([0-9a-f]{7})[0-9a-f]+:/\1:/' | sort -u)
 if [ -n "$hist" ]; then printf "[MOTIF] clés de fournisseur dans l'historique (commit:fichier:ligne)\n"; printf '%s\n' "$hist" | sed 's/^/    /'; hits=$((hits+1));
 else printf "[ok] clés de fournisseur absentes de toutes les révisions\n"; fi
 
-# 3. Fichiers sensibles suivis (jamais de contenu affiché)
+brands=$(for c in $(git rev-list --all); do
+  git grep -InE 'terme-local-1|terme-local-5|terme-local-4|terme-local-3|terme-local-7|terme-local-2|terme-local-6|terme-local-8' "$c" 2>/dev/null
+done | sed -E 's/^([0-9a-f]{7})[0-9a-f]+:/\1:/' | grep -v ':scripts/scan-secrets.sh:' | sort -u)
+if [ -n "$brands" ]; then printf "[MOTIF] marques de projets personnels dans l'historique (commit:fichier:ligne)\n"; printf '%s\n' "$brands" | sed 's/^/    /'; hits=$((hits+1));
+else printf "[ok] marques de projets personnels absentes de l'historique\n"; fi
+
+# 3. Marques et domaines de projets personnels (le nom de l'auteur dans LICENSE/README est attendu, pas ces marques)
+brand_hits=$(tree_hits 'terme-local-1|terme-local-5|terme-local-4|terme-local-3|terme-local-7|terme-local-2|terme-local-6|terme-local-8' | grep -v '^scripts/scan-secrets.sh:' || true)
+if [ -n "$brand_hits" ]; then printf '[MOTIF] marques et domaines de projets personnels\n'; printf '%s\n' "$brand_hits" | sed 's/^/    /'; hits=$((hits+1));
+else printf "[ok] marques et domaines de projets personnels absents de l'arbre (nom de l'auteur attendu dans LICENSE/README)\n"; fi
+
+# 4. Fichiers sensibles suivis (jamais de contenu affiché)
 bad=$(git ls-files | grep -E '(^|/)\.env$|(^|/)\.env\.(local|production|development)$|(^|/)google[^/]*\.json$|(^|/).*\.(pem|p12)$' || true)
 if [ -n "$bad" ]; then printf '[MOTIF] fichiers sensibles suivis par Git\n'; printf '%s\n' "$bad" | sed 's/^/    /'; hits=$((hits+1));
 else printf '[ok] aucun .env, google*.json, .pem ou .p12 suivi\n'; fi
 verybad=$(git log --all --name-only --format= | grep -E '(^|/)(\.env|google[^/]*\.json)$' | sort -u || true)
 if [ -n "$verybad" ]; then printf "[MOTIF] fichiers sensibles présents dans l'historique\n"; printf '%s\n' "$verybad" | sed 's/^/    /'; hits=$((hits+1));
 else printf "[ok] .env et google*.json absents de l'historique\n"; fi
+
+# 5. Hygiène avant archive (T33) : présence seulement, aucun contenu lu
+for f in .env google.json data .taste-skill; do
+  if [ -e "$f" ]; then printf "[À TRAITER] %s présent sur le disque, hors Git : à déplacer/protéger avant toute archive (T33)\n" "$f"; fi
+done
 
 printf 'Motifs de clé en alerte : %d\n' "$hits"
 exit $((hits > 0))
