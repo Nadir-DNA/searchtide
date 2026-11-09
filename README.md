@@ -102,4 +102,4 @@ npm test
 
 ## Licence
 
-MIT © Nadir DAOUDI
+MIT © Nadir DAOUDI. Les dépendances et polices tierces sont toutes sous licence permissive ou OFL-1.1 ; inventaire détaillé : [docs/licences.md](docs/licences.md).
