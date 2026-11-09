@@ -13,7 +13,7 @@ import { handleMcp } from "./mcp.ts";
 import { registerBusiness } from "./business.ts";
 import { registerReport } from "./report.ts";
 import { registerProjects } from "./projects.ts";
-import { registerConnections } from "./connections.ts";
+import { registerConnections, startVault } from "./connections.ts";
 import { registerOps } from "./ops.ts";
 import { registerPortfolio } from "./portfolio.ts";
 import { findAgent, registerAgents } from "./agents.ts";
@@ -170,6 +170,7 @@ registerBusiness(app);
 registerReport(app);
 registerProjects(app)
 registerConnections(app);
+startVault();
 registerOps(app);
 registerPortfolio(app);
 registerAgents(app);

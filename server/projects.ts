@@ -9,7 +9,7 @@ import type { McpServer } from "@modelcontextprotocol/server";
 import { db, localDay } from "./db.ts";
 import { lastDays, previous, type Range } from "./stats.ts";
 import { migrate } from "./migrations.ts";
-import { connectionByAccount, connections } from "./connections.ts";
+import { connections, getSecrets } from "./connections.ts";
 import { googleToken } from "./gsc.ts";
 
 db.exec(`
@@ -152,18 +152,18 @@ async function stripe(key: string, path: string, params: Record<string, string>,
   return items;
 }
 async function stripeValue(c: z.infer<typeof configs.stripe>, d?: string) {
-  // Sans variable d'environnement : on utilise la connexion obtenue par autorisation (bouton « Connecter »).
+  // Sans variable d'environnement : clé de la connexion enregistrée (déchiffrée à la demande, jamais écrite ailleurs)
   let account = c.account;
   let key: string;
   if (c.env) {
     key = secret(c.env);
   } else {
-    const conn = account ? connectionByAccount(account) : (connections("stripe")[0] as Row | undefined);
-    if (!conn) throw new Error("Aucun compte Stripe connecté : utilisez « Connecter Stripe » sur la page du projet");
-    key = process.env.STRIPE_OAUTH_SECRET_KEY ?? "";
-    if (!key && conn.access_token) key = conn.access_token;
-    if (!key) throw new Error("Clé de la plateforme absente : renseignez STRIPE_OAUTH_SECRET_KEY");
-    account = String(conn.account);
+    const conn = connections("stripe")[0] as Row | undefined;
+    if (!conn) throw new Error("Aucun compte Stripe connecté : ajoutez Stripe dans Connexions");
+    const s = getSecrets(conn);
+    key = String(s.key ?? s.access_token ?? "");
+    account = undefined; // la clé appartient au compte : jamais d'en-tête Stripe-Account
+    if (!key) throw new Error("Cette connexion n'a pas de clé : reconnectez Stripe");
   }
   // Bornes du jour civil à Paris (00:00 → 24:00), en secondes
   const start = d ? parisMidnight(d) : 0;
