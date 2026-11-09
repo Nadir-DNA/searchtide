@@ -1,8 +1,8 @@
 // Réglages : surveillance, sauvegardes, notifications et sécurité de l'instance.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "./api";
 import { ErrorLine, Header, KpiSkeleton, useData } from "./App";
-import { Button, Card, EmptyBox, Pill } from "./ui";
+import { Button, Card, EmptyBox, Pill, inputCls } from "./ui";
 
 type Ops = {
   ntfy: string | null; ntfyVia: "connexion" | "env" | null; mail: boolean;
@@ -10,6 +10,58 @@ type Ops = {
   backups: { local: string[]; dir: string; offsite: { at: number; bytes: number } | null };
 };
 const when = (t: number) => new Date(t).toLocaleString("fr-FR", { dateStyle: "medium", timeStyle: "short" });
+
+type Weights = Record<"trend" | "goals" | "reliability" | "conversion" | "action", number>;
+type Preview = { id: string; name: string; score: number | null; coverage: number; tone: "positive" | "warn" | "negative" | "none" }[];
+const TONE = { positive: "text-positive", warn: "text-ink", negative: "text-negative", none: "text-muted" } as const;
+
+/** Poids du score de santé (04-produit §5.6) : cinq nombres de 0 à 100, somme libre, aperçu des scores recalculés en direct. */
+function HealthWeights() {
+  const { data, reload } = useData<{ weights: Weights; defaults: Weights; labels: Record<keyof Weights, string> }>("/api/health/weights");
+  const [vals, setVals] = useState<Record<string, string> | null>(null);
+  const [preview, setPreview] = useState<Preview>([]);
+  const [msg, setMsg] = useState("");
+  useEffect(() => { if (data && !vals) setVals(Object.fromEntries(Object.entries(data.weights).map(([k, v]) => [k, String(v)]))); }, [data, vals]);
+  // Aperçu en direct : les poids saisis, non enregistrés, appliqués aux projets de l'instance
+  useEffect(() => {
+    if (!vals) return;
+    const t = setTimeout(() => api<{ projects: Preview }>("/api/health/preview?days=28", { method: "POST", json: { weights: vals } }).then((r) => { setPreview(r.projects); setMsg((m) => (m.startsWith("Poids") ? m : "")); }).catch((e) => setMsg((e as Error).message)), 250);
+    return () => clearTimeout(t);
+  }, [vals]);
+  if (!data || !vals) return null;
+  const save = async () => {
+    try { await api("/api/health/weights", { method: "PUT", json: { weights: vals } }); setMsg("Poids enregistrés."); reload(); }
+    catch (e) { setMsg((e as Error).message); }
+  };
+  return (
+    <Card title="Score de santé des projets">
+      <p className="text-sm text-muted">Le score va de 0 à 100. Chaque composante pèse selon ces poids ; la somme n'a pas besoin de faire 100 : seuls comptent les poids des composantes réellement mesurées.</p>
+      <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+        {(Object.keys(data.defaults) as (keyof Weights)[]).map((k) => (
+          <label key={k} className="block text-sm">{data.labels[k]}
+            <input type="number" min={0} max={100} step={1} inputMode="numeric" value={vals[k]} onChange={(e) => setVals({ ...vals, [k]: e.target.value })} className={`${inputCls} mt-2`} />
+          </label>
+        ))}
+      </div>
+      <div className="mt-4 flex flex-wrap items-center gap-3">
+        <Button variant="accent" onClick={save}>Enregistrer les poids</Button>
+        <Button variant="secondary" onClick={() => setVals(Object.fromEntries(Object.entries(data.defaults).map(([k, v]) => [k, String(v)])))}>Rétablir les valeurs par défaut</Button>
+        <span role="status" className="text-sm text-muted">{msg}</span>
+      </div>
+      <h3 className="mt-6 text-sm font-medium">Aperçu avec ces poids (28 jours)</h3>
+      {preview.length ? (
+        <ul className="mt-2 divide-y divide-rule text-sm">
+          {preview.map((p) => (
+            <li key={p.id} className="flex items-center justify-between gap-3 py-2">
+              <span className="min-w-0 truncate">{p.name}</span>
+              <span className={`num whitespace-nowrap ${TONE[p.tone]}`}>{p.score == null ? "—" : p.score} <span className="text-xs text-muted">· couverture {p.coverage} %</span></span>
+            </li>
+          ))}
+        </ul>
+      ) : <p className="mt-2 text-sm text-muted">Aucun projet pour l'instant.</p>}
+    </Card>
+  );
+}
 
 export function SettingsView() {
   const { data: o, error, reload } = useData<Ops>("/api/ops");
@@ -26,6 +78,7 @@ export function SettingsView() {
     <>
       <Header title="Réglages" sub="Surveillance, sauvegardes, notifications et sécurité" />
       <div className="grid gap-4 lg:grid-cols-2">
+        <div className="lg:col-span-2"><HealthWeights /></div>
         <Card title="Surveillance" action={<span className="text-xs text-muted">Toutes les 5 min, depuis Cloudflare</span>}>
           {o.veille ? (
             <ul className="divide-y divide-rule">

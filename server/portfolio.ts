@@ -6,6 +6,9 @@ import { z } from "zod";
 import { agentLog } from "./agents.ts";
 import { lastDays, previous, type Range } from "./stats.ts";
 import { listProjects, rangeOf } from "./projects.ts";
+import { connections } from "./connections.ts";
+import "./business.ts"; // tables des contacts et des publications, lues ci-dessous
+import { computeHealth, crmApplicable, getWeights, registerHealth, type Weights } from "./health.ts";
 
 type Row = Record<string, any>;
 const all = (sql: string, ...p: (string | number)[]) => db.prepare(sql).all(...p) as Row[];
@@ -25,7 +28,7 @@ function siteTotals(ids: string[], r: Range) {
 const money = (inds: Row[], metric: string, key: "value" | "previous") =>
   inds.filter((i) => i.source === "stripe" && i.config?.metric === metric && i[key] != null).reduce((n, i) => n + i[key], 0);
 
-export function portfolio(r: Range) {
+export function portfolio(r: Range, weights: Weights = getWeights()) {
   const p = previous(r);
   const today = localDay();
   const sites = all(`SELECT s.id, s.domain, s.gsc_property, g.error AS sync_error,
@@ -69,8 +72,30 @@ export function portfolio(r: Range) {
     if (before.visitors >= 20 && now.visitors < before.visitors * 0.7) alerts.push({ tone: "warn", project: x.id, text: `${x.name} · visites en baisse de ${Math.round((1 - now.visitors / before.visitors) * 100)} %`, to });
     for (const g of goals) if (g.projection < g.target && g.elapsed / g.total >= 0.5) alerts.push({ tone: "warn", project: x.id, text: `${x.name} · objectif « ${g.label} » en retard (${g.pct} %)`, to });
 
+    // Score de santé (04-produit §6) : tendance, objectifs, fiabilité des données, conversion, action
+    const days = (d: string | null) => (d ? Math.round((Date.parse(today) - Date.parse(d)) / 86400000) : null);
+    const used = [...new Set(inds.map((i) => i.config?.connection_id).filter(Boolean))] as string[];
+    const connState = new Map(connections().map((c) => [c.id, c.status]));
+    const first = x.funnel[0] ? inds.find((i) => i.id === x.funnel[0].id) : undefined, last = x.funnel.length > 1 ? inds.find((i) => i.id === x.funnel.at(-1).id) : undefined;
+    const health = x.id ? computeHealth({
+      trend: {
+        visits: { now: now.visitors, before: before.visitors },
+        clicks: ss.some((s) => s.gsc_property) ? { now: now.clicks, before: before.clicks } : undefined,
+        revenue: inds.some((i) => i.source === "stripe" && i.config?.metric === "revenue") ? { now: money(inds, "revenue", "value"), before: money(inds, "revenue", "previous") } : undefined,
+        mrr: inds.some((i) => i.source === "stripe" && i.config?.metric === "mrr") ? { now: money(inds, "mrr", "value"), before: money(inds, "mrr", "previous") } : undefined,
+      },
+      goals: { total: goals.length, reached: goals.filter((g) => g.projection >= g.target).length },
+      reliability: {
+        items: inds.length + ss.length + ss.filter((s) => s.gsc_property).length + used.length,
+        errors: inds.filter((i) => i.last_error).length + ss.filter((s) => days(s.last_visit) == null || days(s.last_visit)! >= 3).length
+          + ss.filter((s) => s.gsc_property && s.sync_error).length + used.filter((id) => connState.get(id) !== "connected").length,
+      },
+      conversion: first && last ? { steps: x.funnel.length, now: first.value > 0 && last.value != null ? last.value / first.value : null, before: first.previous > 0 && last.previous != null ? last.previous / first.previous : null } : null,
+      action: x.crm_key ? { late: crm?.todo ?? 0 } : null,
+    }, weights, { crm: crmApplicable() }) : null;
+
     return {
-      id: x.id, name: x.name, color: x.color, url: x.url, sites: ss.map((s) => s.domain), to,
+      id: x.id, name: x.name, color: x.color, url: x.url, sites: ss.map((s) => s.domain), to, health, mrrPrev: money(inds, "mrr", "previous"),
       visitors: now.visitors, visitorsPrev: before.visitors, clicks: now.clicks, clicksPrev: before.clicks,
       impressions: now.impressions, position: now.position, positionPrev: before.position,
       revenue: money(inds, "revenue", "value"), revenuePrev: money(inds, "revenue", "previous"), mrr: money(inds, "mrr", "value"),
@@ -100,6 +125,7 @@ export function portfolio(r: Range) {
 
 export function registerPortfolio(app: Hono) {
   app.get("/api/portfolio", (c) => c.json(portfolio(rangeOf(c.req.query()))));
+  registerHealth(app, (days, w) => portfolio(lastDays(days), w).projects.filter((p) => p.id && p.health).map((p) => ({ id: p.id, name: p.name, health: p.health! })));
 }
 
 const json = (data: unknown) => ({ content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] });
