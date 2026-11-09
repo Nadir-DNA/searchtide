@@ -1,5 +1,7 @@
 # Searchtide
 
+[![CI](https://github.com/Nadir-DNA/searchtide/actions/workflows/ci.yml/badge.svg)](https://github.com/Nadir-DNA/searchtide/actions/workflows/ci.yml)
+
 **Analytics web et suivi SEO tout-en-un, 100 % gratuit et open source, pilotable par vos agents IA.**
 
 Searchtide réunit dans un seul tableau de bord multi-sites ce qui demande d'habitude trois outils :
