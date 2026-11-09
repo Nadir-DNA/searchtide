@@ -13,17 +13,18 @@ function serviceAccount(): ServiceAccount | null {
 
 export const gscConfigured = () => !!process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
 
-let cached: { token: string; exp: number } | null = null;
+const cache = new Map<string, { token: string; exp: number }>();
 
-/** Jeton OAuth du compte de service (JWT signé RS256, sans dépendance Google). */
-async function accessToken(): Promise<string> {
+/** Jeton OAuth du compte de service (JWT signé RS256, sans dépendance Google), pour une portée donnée. */
+export async function googleToken(scope = "https://www.googleapis.com/auth/webmasters.readonly"): Promise<string> {
+  const cached = cache.get(scope);
   if (cached && cached.exp > Date.now() + 60_000) return cached.token;
   const sa = serviceAccount();
   if (!sa) throw new Error("GOOGLE_SERVICE_ACCOUNT_JSON n'est pas configuré");
   const now = Math.floor(Date.now() / 1000);
   const b64 = (o: object) => Buffer.from(JSON.stringify(o)).toString("base64url");
   const unsigned = `${b64({ alg: "RS256", typ: "JWT" })}.${b64({
-    iss: sa.client_email, scope: "https://www.googleapis.com/auth/webmasters.readonly",
+    iss: sa.client_email, scope,
     aud: "https://oauth2.googleapis.com/token", iat: now, exp: now + 3600,
   })}`;
   const jwt = `${unsigned}.${createSign("RSA-SHA256").update(unsigned).sign(sa.private_key, "base64url")}`;
@@ -33,9 +34,10 @@ async function accessToken(): Promise<string> {
   });
   const data = await res.json() as { access_token?: string; expires_in?: number; error_description?: string };
   if (!data.access_token) throw new Error(`Google OAuth : ${data.error_description ?? res.status}`);
-  cached = { token: data.access_token, exp: Date.now() + (data.expires_in ?? 3600) * 1000 };
-  return cached.token;
+  cache.set(scope, { token: data.access_token, exp: Date.now() + (data.expires_in ?? 3600) * 1000 });
+  return data.access_token;
 }
+const accessToken = () => googleToken();
 
 async function gscFetch(path: string, body?: object) {
   const res = await fetch(`https://searchconsole.googleapis.com/webmasters/v3/${path}`, {
