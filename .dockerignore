@@ -1,0 +1,9 @@
+node_modules
+web/dist
+data
+.env
+google*.json
+*.db*
+.git
+.taste-skill
+docker-compose.override.yml
