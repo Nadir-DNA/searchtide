@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "./api";
 import { useData } from "./App";
 import { useCatalog, useDrawerKeys, type Catalog, type Manifest } from "./connections";
-import { Button, Card, EmptyBox, inputCls } from "./ui";
+import { Button, Card, EmptyBox, inputCls, restoreFocus } from "./ui";
 
 type Go = (n: Record<string, string | undefined>) => void;
 type Sources = {
@@ -36,7 +36,7 @@ export function SourcesCard({ projectId, onChanged, go }: { projectId: string; o
     setMsg(`${plural(created, "indicateur")} ajouté${created > 1 ? "s" : ""}${skipped.length ? ` · déjà présent${skipped.length > 1 ? "s" : ""} : ${skipped.join(", ")}` : ""}.`);
   };
   // Le focus revient au bouton qui a ouvert le panneau, après son démontage
-  useEffect(() => { if (!attach) opener.current?.focus(); }, [attach]);
+  useEffect(() => { if (!attach) return restoreFocus(opener.current); }, [attach]);
   if (!s) return null;
   const empty = !s.groups.length && !s.legacy.length;
 

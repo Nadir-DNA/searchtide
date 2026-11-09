@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, type Site } from "./api";
 import { Drawer, useCatalog } from "./connections";
-import { Button, Card, inputCls } from "./ui";
+import { Button, Card, inputCls, restoreFocus } from "./ui";
 
 export const SKIP_KEY = "searchtide-demarrage-passe";
 type Go = (n: Record<string, string | undefined>) => void;
@@ -53,7 +53,7 @@ export function Onboarding({ go }: { go: Go }) {
   const openDrawer = (id: string) => { opener.current = document.activeElement as HTMLElement | null; setOpen(id); };
   const closeDrawer = () => setOpen(null);
   // Le focus revient à la carte (CA23), après le démontage du tiroir pour que son piège à focus ne le reprenne pas
-  useEffect(() => { if (open === null) opener.current?.focus(); }, [open]);
+  useEffect(() => { if (open === null) return restoreFocus(opener.current); }, [open]);
   const [agentName, setAgentName] = useState("");
   const [agentKey, setAgentKey] = useState<{ name: string; key: string } | null>(null);
   const [agentError, setAgentError] = useState("");

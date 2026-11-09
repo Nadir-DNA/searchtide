@@ -2,7 +2,7 @@
 // Le contenu des cartes et du formulaire vient du serveur (/api/connectors) : ajouter un connecteur n'exige aucun écran.
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { api } from "./api";
-import { Button, Card, inputCls } from "./ui";
+import { Button, Card, inputCls, restoreFocus } from "./ui";
 
 export type Field = { key: string; label: string; type: "text" | "url" | "number" | "select" | "json" | "textarea"; secret?: boolean; required?: boolean; help?: string; placeholder?: string; options?: { value: string; label: string }[]; default?: string; generate?: "topic" };
 export type Conn = { id: string; kind: string; label: string; hint: string; settings: Record<string, string>; status: "connected" | "error" | "reconnect"; status_detail: string | null; tested_at: number | null; livemode: boolean; test_mode: boolean };
@@ -305,7 +305,7 @@ export function ConnectionsView() {
   const open = (id: string) => { opener.current = id; setOpenId(id); };
   const close = useCallback(() => setOpenId(null), []);
   // Le focus revient à la carte APRÈS le démontage du tiroir (sinon le piège à focus du tiroir le reprendrait)
-  useEffect(() => { if (openId === null && opener.current) cards.current.get(opener.current)?.focus(); }, [openId]);
+  useEffect(() => { if (openId === null && opener.current) return restoreFocus(cards.current.get(opener.current)); }, [openId]);
 
   const m = catalog?.connectors.find((x) => x.id === openId);
   const real = catalog?.connectors.filter((x) => !x.builtin && (filter === "all" || x.category === filter)) ?? [];

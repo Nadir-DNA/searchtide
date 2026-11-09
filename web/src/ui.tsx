@@ -137,6 +137,16 @@ export function Button({ children, variant = "primary", ...p }: React.ButtonHTML
   return <button {...p} className={`inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-full px-4 text-sm font-medium transition active:scale-[.98] disabled:opacity-50 ${look} ${p.className ?? ""}`}>{children}</button>;
 }
 
+/**
+ * Rend le focus à l'élément d'origine après la fermeture d'un panneau (à appeler depuis un useEffect, qui renvoie l'annulation).
+ * Léger délai voulu : Chromium rétablit lui-même le focus sur le premier élément focalisable un ou deux cycles de rendu
+ * après le retrait de l'élément qui l'avait, ce qui écrasait une restauration immédiate (course observée en e2e).
+ */
+export function restoreFocus(el: HTMLElement | null | undefined) {
+  const id = window.setTimeout(() => el?.focus(), 60);
+  return () => window.clearTimeout(id);
+}
+
 export const inputCls = "h-10 w-full rounded-lg border border-control bg-raised px-3 text-sm text-ink placeholder:text-muted";
 
 /** Barre grise à la taille réelle de la valeur attendue (chargement). */
