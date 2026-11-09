@@ -4,6 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { startServer, login, seed, tempDb } from "./test-server.ts";
+import { mcpAccess } from "./mcp.ts";
 
 const SEED = `import { saveProject, saveIndicator, record } from "@server/projects.ts";
 import { createConnection } from "@server/connections.ts";
@@ -160,5 +161,32 @@ test("REST : une clé d'agent en lecture seule reçoit 403 sur une écriture, 20
     assert.match(writeText, /lecture seule/i);
     assert.equal((await fetch(`${s.base}/api/projects`, { headers: auth })).status, 200);
     assert.equal((await fetch(`${s.base}/api/agents`, { method: "POST", headers: { ...auth, "content-type": "application/json" }, body: JSON.stringify({ name: "Autre" }) })).status, 403);
+  } finally { s.stop(); t.done(); }
+});
+
+
+test("MCP : les droits sont fermés par défaut — seul l'admin (cookie) et la clé principale écrivent", () => {
+  const pc = { admin: false, apiKey: false, apiKeyRead: false };
+  assert.deepEqual(mcpAccess("", { ...pc, admin: true }), { readOnly: false, agent: "Administrateur (session)" });
+  assert.deepEqual(mcpAccess("", pc), { readOnly: true, agent: "Démonstration (lecture seule)" });
+  assert.equal(mcpAccess("ck_inconnu", pc).readOnly, true, "jeton inconnu → lecture seule");
+  assert.equal(mcpAccess("inconnu", pc).agent, "Lecture seule (jeton non reconnu)");
+  assert.equal(mcpAccess("cle-principale", { ...pc, apiKey: true }).readOnly, false);
+  assert.equal(mcpAccess("cle-lecture", { ...pc, apiKeyRead: true }).readOnly, true);
+  // L'admin n'est reconnu que sans en-tête : un jeton inconnu accompagné d'un cookie admin reste en lecture seule.
+  assert.equal(mcpAccess("inconnu", { ...pc, admin: true }).readOnly, true);
+});
+
+test("MCP (GET SSE) : un jeton inconnu en démonstration ne construit pas une session utilisable en POST", async () => {
+  const t = tempDb(); seed(t.path, SEED);
+  const s = await startServer(t.path, { DEMO: "1" });
+  try {
+    const unknown = "ck_" + "inconnu" + "0".repeat(20);
+    const ac = new AbortController();
+    const get = await fetch(`${s.base}/mcp`, { method: "GET", headers: { authorization: `Bearer ${unknown}`, accept: "text/event-stream" }, signal: ac.signal }).catch(() => null);
+    ac.abort();                                   // le GET SSE ne sert qu'à ouvrir un flux : aucun outil appelé
+    if (get) assert.ok(get.status !== 200 || (get.headers.get("content-type") ?? "").includes("text/event-stream"));
+    // Le même jeton reste refusé en POST (401) : pas de session, donc pas d'outil d'écriture.
+    assert.equal((await rpc(s.base, unknown, 1, "tools/call", { name: "indicator_record", arguments: { id: "x", value: 1 } })).status, 401);
   } finally { s.stop(); t.done(); }
 });

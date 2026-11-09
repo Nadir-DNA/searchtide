@@ -11,7 +11,7 @@ import { db, localDay, type Site } from "./db.ts";
 import { collect } from "./collect.ts";
 import { lastDays, overview, searchStats, strikingDistance, trafficStats, type Range } from "./stats.ts";
 import { gscConfigured, listProperties, syncAll, syncSite } from "./gsc.ts";
-import { handleMcp } from "./mcp.ts";
+import { handleMcp, mcpAccess } from "./mcp.ts";
 import { registerBusiness } from "./business.ts";
 import { registerReport } from "./report.ts";
 import { registerProjects } from "./projects.ts";
@@ -126,14 +126,10 @@ app.all("/mcp", async (c) => {
   const bearer = c.req.header("authorization")?.replace(/^Bearer /, "") ?? "";
   const agent = findAgent(bearer);
   if (agent) return handleMcp(c.req.raw, { readOnly: agent.readOnly, agent: agent.name });
-  if (!bearer) {
-    // Sans en-tête : soit la session administrateur (cookie), soit la démonstration anonyme. Ne jamais
-    // présenter un administrateur comme « Démonstration », ni lui retirer ses droits d'écriture.
-    const admin = (await getSignedCookie(c, SECRET, "st_session")) === "admin";
-    return handleMcp(c.req.raw, admin ? { readOnly: false, agent: "Administrateur (session)" } : { readOnly: true, agent: "Démonstration (lecture seule)" });
-  }
-  const readOnly = !!API_KEY_READ && same(bearer, API_KEY_READ);
-  return handleMcp(c.req.raw, { readOnly, agent: API_KEY && same(bearer, API_KEY) ? "Clé principale" : readOnly ? "Clé lecture seule" : "Démonstration (lecture seule)" });
+  // Sans en-tête : session administrateur (cookie) ou démonstration anonyme. Un jeton non reconnu n'atteint
+  // jamais ce point en POST (401 plus haut) ; s'il arrive par GET SSE, il obtient un serveur en lecture seule.
+  const admin = !bearer && (await getSignedCookie(c, SECRET, "st_session")) === "admin";
+  return handleMcp(c.req.raw, mcpAccess(bearer, { admin, apiKey: !!API_KEY && same(bearer, API_KEY), apiKeyRead: !!API_KEY_READ && same(bearer, API_KEY_READ) }));
 });
 
 // ── API privée ──

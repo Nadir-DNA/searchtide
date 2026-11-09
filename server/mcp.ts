@@ -73,3 +73,15 @@ export async function handleMcp(req: Request, opts: { readOnly?: boolean; agent?
   await build(opts.readOnly, opts.agent).connect(transport);
   return transport.handleRequest(req);
 }
+
+/**
+ * Droits MCP selon l'identité de la requête. Tout ce qui n'est pas reconnu explicitement — jeton inconnu,
+ * démonstration anonyme — obtient un serveur en **lecture seule** : jamais d'outils d'écriture par défaut.
+ * L'administrateur (cookie) et la clé principale sont les seuls contextes en écriture.
+ */
+export function mcpAccess(bearer: string, p: { admin: boolean; apiKey: boolean; apiKeyRead: boolean }): { readOnly: boolean; agent: string } {
+  if (!bearer && p.admin) return { readOnly: false, agent: "Administrateur (session)" };
+  if (p.apiKey) return { readOnly: false, agent: "Clé principale" };
+  if (p.apiKeyRead) return { readOnly: true, agent: "Clé lecture seule" };
+  return { readOnly: true, agent: bearer ? "Lecture seule (jeton non reconnu)" : "Démonstration (lecture seule)" };
+}
