@@ -1,8 +1,9 @@
 // Sécurité de l'instance : limite des essais de connexion, double authentification (TOTP), sauvegardes.
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { mkdirSync, readdirSync, rmSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { db } from "./db.ts";
+import { bootFiles } from "./bootstrap.ts";
 
 /** 5 échecs en 15 minutes par adresse IP, puis blocage jusqu'à la fin de la fenêtre. */
 export function loginLimiter(max = 5, windowMs = 15 * 60 * 1000) {
@@ -50,10 +51,20 @@ export function verifyTotp(secret: string, code: string, now = Date.now()) {
 /** Copie cohérente de la base (même pendant l'écriture), en gardant les `keep` plus récentes. */
 export function backup(dir: string, keep = 14, now = new Date()) {
   mkdirSync(dir, { recursive: true });
-  const file = join(dir, `searchtide-${now.toISOString().slice(0, 10)}.db`);
+  const day = now.toISOString().slice(0, 10);
+  const file = join(dir, `searchtide-${day}.db`);
   rmSync(file, { force: true });
   db.exec(`VACUUM INTO '${file.replace(/'/g, "''")}'`);
-  const old = readdirSync(dir).filter((f) => /^searchtide-\d{4}-\d{2}-\d{2}\.db$/.test(f)).sort().slice(0, -keep);
-  for (const f of old) rmSync(join(dir, f));
+  // Le coffre dépend de SECRET : sans lui, une base restaurée rend toutes les connexions indéchiffrables.
+  // On sauvegarde donc aussi les fichiers de démarrage générés (T24), avec les mêmes droits.
+  const boot = bootFiles(process.env.DATABASE_PATH ?? "data/searchtide.db");
+  for (const [src, suffix] of [[boot.secret, "secret"], [boot.password, "admin-password"]] as const) {
+    if (!existsSync(src)) continue;
+    const dest = join(dir, `searchtide-${day}.${suffix}`);
+    copyFileSync(src, dest);
+    chmodSync(dest, 0o600);
+  }
+  const days = [...new Set(readdirSync(dir).filter((f) => /^searchtide-\d{4}-\d{2}-\d{2}\.(db|secret|admin-password)$/.test(f)).map((f) => f.slice(11, 21)))].sort();
+  for (const d of days.slice(0, -keep)) for (const suffix of ["db", "secret", "admin-password"]) rmSync(join(dir, `searchtide-${d}.${suffix}`), { force: true });
   return file;
 }
