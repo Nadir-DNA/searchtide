@@ -9,7 +9,9 @@ import type { McpServer } from "@modelcontextprotocol/server";
 import { db, localDay } from "./db.ts";
 import { lastDays, previous, type Range } from "./stats.ts";
 import { migrate } from "./migrations.ts";
-import { connections, getConnection, getSecrets } from "./connections.ts";
+import { collectVia } from "./connectors/use.ts";
+import { realCtx } from "./connectors/registry.ts";
+import { stripeMetric } from "./connectors/stripe.ts";
 import { googleToken } from "./gsc.ts";
 
 db.exec(`
@@ -125,73 +127,13 @@ async function pgValue(c: z.infer<typeof configs.pg>, d?: string) {
   } catch (e) { await client.query("ROLLBACK").catch(() => {}); throw e; } finally { client.release(); }
 }
 
-/** Minuit à Paris pour un jour AAAA-MM-JJ, en secondes Unix (gère l'heure d'été). */
-export function parisMidnight(d: string) {
-  const utc = Date.parse(d + "T00:00:00Z");
-  const p = Object.fromEntries(new Intl.DateTimeFormat("en-GB", { timeZone: process.env.DAY_TZ ?? "Europe/Paris", hour: "numeric", hourCycle: "h23" }).formatToParts(utc).map((x) => [x.type, x.value]));
-  return utc / 1000 - Number(p.hour) * 3600;
-}
+export { parisMidnight, monthlyNet } from "./connectors/stripe.ts";
 
-// Clé d'organisation (sk_org_…) : un seul secret pour toutes les entreprises, le compte visé passe dans Stripe-Context
-async function stripe(key: string, path: string, params: Record<string, string>, account?: string) {
-  const headers: Record<string, string> = { Authorization: `Bearer ${key}` };
-  if (key.startsWith("sk_org_")) {
-    if (!account) throw new Error("Clé d'organisation Stripe : indiquez le compte (acct_…) de l'entreprise");
-    Object.assign(headers, { "Stripe-Context": account, "Stripe-Version": "2025-03-31.basil" });
-  } else if (account) headers["Stripe-Account"] = account;
-  const items: Row[] = [];
-  let after: string | undefined;
-  do {
-    const q = new URLSearchParams({ ...params, limit: "100", ...(after && { starting_after: after }) });
-    const res = await fetch(`https://api.stripe.com/v1/${path}?${q}`, { headers });
-    const j = await res.json() as Row;
-    if (!res.ok) throw new Error(`Stripe ${res.status} : ${j.error?.message ?? "erreur"}`);
-    items.push(...j.data);
-    after = j.has_more ? j.data.at(-1)?.id : undefined;
-  } while (after && items.length < 10_000);
-  return items;
-}
 async function stripeValue(c: z.infer<typeof configs.stripe>, d?: string) {
-  // Sans variable d'environnement : clé de la connexion enregistrée (déchiffrée à la demande, jamais écrite ailleurs)
-  let account = c.account;
-  let key: string;
-  if (c.env) {
-    key = secret(c.env);
-  } else {
-    const conn = (c.connection_id ? getConnection(c.connection_id) : connections("stripe")[0]) as Row | undefined;
-    if (!conn) throw new Error("Aucun compte Stripe connecté : ajoutez Stripe dans Connexions");
-    const s = getSecrets(conn);
-    key = String(s.key ?? s.access_token ?? "");
-    account = undefined; // la clé appartient au compte : jamais d'en-tête Stripe-Account
-    if (!key) throw new Error("Cette connexion n'a pas de clé : reconnectez Stripe");
-  }
-  // Bornes du jour civil à Paris (00:00 → 24:00), en secondes
-  const start = d ? parisMidnight(d) : 0;
-  const range: Record<string, string> = d ? { "created[gte]": String(start), "created[lt]": String(start + 86400) } : {};
-  if (c.metric === "revenue") {
-    // Net encaissé : ventes moins frais Stripe et remboursements (mouvements du solde, dans la devise du compte)
-    const txs = await stripe(key, "balance_transactions", range, account);
-    return txs.filter((x) => ["charge", "payment", "refund", "payment_refund", "adjustment", "payment_failure_refund"].includes(x.type)).reduce((n, x) => n + x.net, 0) / 100;
-  }
-  if (c.metric === "new_customers") return (await stripe(key, "customers", range, account)).length;
-  const subs = await stripe(key, "subscriptions", { status: "active", "expand[]": "data.discounts" }, account);
-  if (c.metric === "active_subscriptions") return subs.length;
-  return subs.reduce((n, s) => n + monthlyNet(s), 0) / 100;
-}
-
-/** Revenu mensuel d'un abonnement, remises déduites (un coupon à 100 % compte pour 0), en centimes. */
-export function monthlyNet(s: Row) {
-  const perMonth: Record<string, number> = { day: 30, week: 52 / 12, month: 1, year: 1 / 12 };
-  const it0 = s.items.data[0]?.price?.recurring;
-  const toMonth = (perMonth[it0?.interval] ?? 1) / (it0?.interval_count ?? 1);
-  const gross = s.items.data.reduce((m: number, it: Row) => m + (it.price?.unit_amount ?? 0) * (it.quantity ?? 1), 0);
-  let net = gross;
-  for (const d of (s.discounts ?? []) as Row[]) {
-    if (typeof d !== "object" || !d.coupon) continue;
-    if (d.coupon.percent_off) net *= 1 - d.coupon.percent_off / 100;
-    if (d.coupon.amount_off) net -= d.coupon.amount_off;
-  }
-  return Math.max(net, 0) * toMonth;
+  // Ancien mode : un indicateur qui désigne une variable d'environnement la garde (clé d'organisation sk_org_ comprise)
+  if (c.env) return stripeMetric({ key: secret(c.env), account: c.account }, c.metric, d, realCtx());
+  // Sinon : la connexion enregistrée dans l'interface (clé restreinte déchiffrée à la demande, aucun Stripe-Account)
+  return collectVia("stripe", c.connection_id, c.metric, {}, d);
 }
 
 async function httpValue(c: z.infer<typeof configs.http>) {
