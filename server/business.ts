@@ -6,7 +6,8 @@ import type { McpServer } from "@modelcontextprotocol/server";
 import { db, localDay } from "./db.ts";
 import { migrate } from "./migrations.ts";
 
-if (process.env.DEMO === "1") throw new Error("Le module privé (CRM) est incompatible avec DEMO=1 : les données seraient lisibles sans mot de passe");
+/** Le CRM contient des données de contacts : en démonstration (lecture ouverte à tous) il n'expose ni route ni outil MCP. */
+export const crmEnabled = () => process.env.DEMO !== "1";
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS contacts (
@@ -241,6 +242,7 @@ export function inboundLead(input: Row) {
 }
 
 export function registerBusiness(app: Hono) {
+  if (!crmEnabled()) return;
   // Formulaires des sites → CRM, avec une clé dédiée qui ne permet que cela (hors de /api, donc hors de l'authentification admin)
   const INBOUND_KEY = process.env.INBOUND_KEY ?? "";
   app.post("/inbound/lead", async (c) => {
@@ -300,6 +302,7 @@ export function registerBusiness(app: Hono) {
 const json = (data: unknown) => ({ content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] });
 
 export function registerBusinessTools(server: McpServer, readOnly = false) {
+  if (!crmEnabled()) return;
   server.registerTool("crm_summary", { description: "Résumé CRM : contacts par étape, relances dues, valeur du pipeline, publications de la semaine." },
     async () => json(businessSummary()));
   server.registerTool("crm_list_contacts", {

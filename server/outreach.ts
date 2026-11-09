@@ -115,6 +115,7 @@ export async function runSequences(now = new Date(), opts: { transport?: { sendM
 }
 
 export function registerOutreach(app: Hono) {
+  if (process.env.DEMO === "1") return; // prospection et désinscription : jamais en démonstration
   const bad = (e: unknown) => e instanceof z.ZodError ? e.issues.map((i) => `${i.path.join(".")} : ${i.message}`).join(", ") : (e as Error).message;
 
   // Désinscription publique (hors /api) : un clic suffit, sans connexion

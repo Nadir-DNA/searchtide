@@ -114,8 +114,8 @@ function Shell({ me, onLogout }: { me: Me; onLogout: () => void }) {
         if (name?.trim()) { const d = await api<{ id: string }>("/api/dashboards", { method: "POST", json: { name } }); loadDash(); nav({ ...home, view: "page", id: d.id }); }
       }}>Nouvelle page</NavItem>}
       <div className="mt-6 mb-1 px-3 text-xs text-muted">Outils</div>
-      <NavItem icon={Icon.users} active={q.view === "crm"} onClick={() => nav({ ...home, view: "crm" })}>Contacts</NavItem>
-      <NavItem icon={Icon.calendar} active={q.view === "pubs"} onClick={() => nav({ ...home, view: "pubs" })}>Publications</NavItem>
+      {!me.demo && <NavItem icon={Icon.users} active={q.view === "crm"} onClick={() => nav({ ...home, view: "crm" })}>Contacts</NavItem>}
+      {!me.demo && <NavItem icon={Icon.calendar} active={q.view === "pubs"} onClick={() => nav({ ...home, view: "pubs" })}>Publications</NavItem>}
       <NavItem icon={Icon.mail} active={q.view === "report"} onClick={() => nav({ ...home, view: "report" })}>Rapport hebdo</NavItem>
       {!me.demo && <NavItem icon={Icon.bot} active={q.view === "agents"} onClick={() => nav({ ...home, view: "agents" })}>Agents IA</NavItem>}
       {!me.demo && <NavItem icon={Icon.link} active={q.view === "connections"} onClick={() => nav({ ...home, view: "connections" })}>Connexions</NavItem>}
