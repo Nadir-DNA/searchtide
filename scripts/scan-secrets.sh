@@ -19,11 +19,12 @@ report_tree() { # nom, ERE
 # 1. Clés de fournisseurs (formats connus)
 report_tree "clés Stripe (sk_/rk_/pk_/whsec_)" '(sk|rk|pk)_(live|test|org)_[A-Za-z0-9]{8,}|whsec_[A-Za-z0-9]{8,}'
 report_tree "clés privées et jetons (PEM, AKIA, GitHub, Slack, Google)" 'BEGIN [A-Z ]*PRIVATE KEY|AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AIza[0-9A-Za-z_-]{30,}'
+report_tree "clés d'agent Searchtide (ck_)" 'ck_[A-Za-z0-9_-]{20,}'
 report_tree "URL de base avec identifiants (postgres/mysql/mongo/redis)" '(postgres(ql)?|mysql|mongodb(\+srv)?|redis|amqp)://[^[:space:]/:@]+:[^[:space:]/@]+@'
 
 # 2. Historique : mêmes motifs de clés, sur toutes les révisions (une clé supprimée reste dans les anciens commits)
 hist=$(for c in $(git rev-list --all); do
-  git grep -InE '(sk|rk|pk)_(live|test|org)_[A-Za-z0-9]{8,}|whsec_[A-Za-z0-9]{8,}|BEGIN [A-Z ]*PRIVATE KEY|AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{20,}|AIza[0-9A-Za-z_-]{30,}' "$c" 2>/dev/null
+  git grep -InE '(sk|rk|pk)_(live|test|org)_[A-Za-z0-9]{8,}|whsec_[A-Za-z0-9]{8,}|BEGIN [A-Z ]*PRIVATE KEY|AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{20,}|AIza[0-9A-Za-z_-]{30,}|ck_[A-Za-z0-9_-]{20,}' "$c" 2>/dev/null
 done | sed -E 's/^([0-9a-f]{7})[0-9a-f]+:/\1:/' | sort -u)
 if [ -n "$hist" ]; then printf "[MOTIF] clés de fournisseur dans l'historique (commit:fichier:ligne)\n"; printf '%s\n' "$hist" | sed 's/^/    /'; hits=$((hits+1));
 else printf "[ok] clés de fournisseur absentes de toutes les révisions\n"; fi

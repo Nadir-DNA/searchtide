@@ -89,7 +89,7 @@ test("MCP : clé absente ou inconnue refusée ; la démonstration anonyme n'a pa
   try {
     const none = await rpc(s.base, undefined, 1, "initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "anon", version: "1" } });
     assert.equal(none.status, 401);
-    const wrong = await rpc(s.base, "ck_" + "inconnue_" + "0".repeat(24), 2, "tools/list");
+    const wrong = await rpc(s.base, "ck_" + "inconnue_" + "0".repeat(24), 2, "tools/list");   // clé factice construite à l'exécution
     assert.equal(wrong.status, 401);
     // Même en DEMO, la lecture anonyme passe par l'API REST mais jamais par le MCP.
     assert.equal((await fetch(`${s.base}/api/sites`)).status, 200);
@@ -126,5 +126,39 @@ test("MCP (E1) : connections_list ne renvoie ni réglage ni secret, même en JSO
     assert.match(text, /Boîte privée/);
     // L'indice (« hint ») est prévu par R11 et peut citer l'adresse et l'hôte ; jamais les réglages ni le secret.
     for (const interdit of ["PASSE-FACTICE-MCP", "settings", "\"user\"", "\"port\"", "\"host\"", "\"pass\""]) assert.doesNotMatch(text, new RegExp(interdit), interdit);
+  } finally { s.stop(); t.done(); }
+});
+
+test("MCP : la session administrateur (cookie) garde les écritures et n'est pas étiquetée démonstration", async () => {
+  const t = tempDb(); seed(t.path, SEED);
+  const s = await startServer(t.path);
+  try {
+    const cookie = await login(s.base);
+    const list = await fetch(`${s.base}/mcp`, { method: "POST", headers: { ...headers(), Cookie: cookie }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }) });
+    const text = await list.text();
+    assert.equal(list.status, 200);
+    const names = toolNames(message(text, list.headers.get("content-type") ?? "", 1));
+    for (const n of ["indicator_record", "dashboard_create", "widget_add"]) assert.ok(names.includes(n), `${n} attendu pour l'administrateur`);
+    // Le libellé journalisé ne doit pas faire passer un administrateur pour la démonstration.
+    await fetch(`${s.base}/mcp`, { method: "POST", headers: { ...headers(), Cookie: cookie }, body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "projects_kpis", arguments: { days: 7 } } }) });
+    const log = await (await fetch(`${s.base}/api/agents/log?limit=5`, { headers: { Cookie: cookie } })).json();
+    assert.equal(log[0].agent, "Administrateur (session)");
+    assert.notEqual(log[0].agent, "Démonstration (lecture seule)");
+  } finally { s.stop(); t.done(); }
+});
+
+test("REST : une clé d'agent en lecture seule reçoit 403 sur une écriture, 200 en lecture", async () => {
+  const t = tempDb(); seed(t.path, SEED);
+  const s = await startServer(t.path);
+  try {
+    const cookie = await login(s.base);
+    const agent = await createKey(s.base, cookie, "Lecteur REST", true);
+    const auth = { Authorization: `Bearer ${agent.key}` };
+    const write = await fetch(`${s.base}/api/projects`, { method: "POST", headers: { ...auth, "content-type": "application/json" }, body: JSON.stringify({ name: "Interdit" }) });
+    const writeText = await write.text();
+    assert.equal(write.status, 403, writeText);
+    assert.match(writeText, /lecture seule/i);
+    assert.equal((await fetch(`${s.base}/api/projects`, { headers: auth })).status, 200);
+    assert.equal((await fetch(`${s.base}/api/agents`, { method: "POST", headers: { ...auth, "content-type": "application/json" }, body: JSON.stringify({ name: "Autre" }) })).status, 403);
   } finally { s.stop(); t.done(); }
 });

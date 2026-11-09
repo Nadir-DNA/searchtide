@@ -122,12 +122,18 @@ async function auth(c: Context, next: Next) {
 app.use("/api/*", auth);
 app.use("/mcp", auth);
 
-app.all("/mcp", (c) => {
+app.all("/mcp", async (c) => {
   const bearer = c.req.header("authorization")?.replace(/^Bearer /, "") ?? "";
   const agent = findAgent(bearer);
   if (agent) return handleMcp(c.req.raw, { readOnly: agent.readOnly, agent: agent.name });
-  if (!bearer) return handleMcp(c.req.raw, { readOnly: true, agent: "Démonstration (lecture seule)" });   // DEMO anonyme : jamais d'écriture
-  return handleMcp(c.req.raw, { readOnly: !!API_KEY_READ && same(bearer, API_KEY_READ), agent: API_KEY && same(bearer, API_KEY) ? "Clé principale" : "Clé lecture seule" });
+  if (!bearer) {
+    // Sans en-tête : soit la session administrateur (cookie), soit la démonstration anonyme. Ne jamais
+    // présenter un administrateur comme « Démonstration », ni lui retirer ses droits d'écriture.
+    const admin = (await getSignedCookie(c, SECRET, "st_session")) === "admin";
+    return handleMcp(c.req.raw, admin ? { readOnly: false, agent: "Administrateur (session)" } : { readOnly: true, agent: "Démonstration (lecture seule)" });
+  }
+  const readOnly = !!API_KEY_READ && same(bearer, API_KEY_READ);
+  return handleMcp(c.req.raw, { readOnly, agent: API_KEY && same(bearer, API_KEY) ? "Clé principale" : readOnly ? "Clé lecture seule" : "Démonstration (lecture seule)" });
 });
 
 // ── API privée ──
