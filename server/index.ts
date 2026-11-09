@@ -4,6 +4,7 @@ import { serveStatic } from "@hono/node-server/serve-static";
 import { getConnInfo } from "@hono/node-server/conninfo";
 import { getSignedCookie, setSignedCookie, deleteCookie } from "hono/cookie";
 import { existsSync, readFileSync } from "node:fs";
+import { bootFiles, bootValue } from "./bootstrap.ts";
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import { db, localDay, type Site } from "./db.ts";
 import { collect } from "./collect.ts";
@@ -24,6 +25,15 @@ import { registerOutreach } from "./outreach.ts";
 import { backup, loginLimiter, verifyTotp } from "./security.ts";
 import { markAdmin, markClient } from "./admin.ts";
 
+const PRODUCTION = process.env.NODE_ENV === "production";
+const DB_PATH = process.env.DATABASE_PATH ?? "data/searchtide.db";
+const boot = bootFiles(DB_PATH);
+// T24 : au premier lancement en production (image Docker), SECRET et ADMIN_PASSWORD sont générés et rangés à côté de la base.
+// Une variable d'environnement reste prioritaire ; en développement, SECRET garde sa valeur de travail.
+const generatedSecret = PRODUCTION && !process.env.SECRET ? bootValue(undefined, boot.secret, 32, "hex") : null;
+if (generatedSecret) process.env.SECRET = generatedSecret.value;
+const generatedPassword = PRODUCTION && !process.env.ADMIN_PASSWORD ? bootValue(undefined, boot.password, 12, "password") : null;
+if (generatedPassword) process.env.ADMIN_PASSWORD = generatedPassword.value;
 const SECRET = process.env.SECRET ?? "dev-secret";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? "";
 const API_KEY = process.env.API_KEY ?? "";
@@ -34,9 +44,11 @@ const TOTP_SECRET = process.env.TOTP_SECRET ?? "";
 const BACKUP_DIR = process.env.BACKUP_DIR ?? (process.env.DATABASE_PATH?.startsWith("/data/") ? "/data/backups" : "data/backups");
 // Démo publique : lecture ouverte à tous, écriture toujours protégée
 const DEMO = process.env.DEMO === "1";
-if (process.env.NODE_ENV === "production" && (SECRET === "dev-secret" || !ADMIN_PASSWORD)) {
-  throw new Error("SECRET et ADMIN_PASSWORD sont obligatoires en production");
+if (PRODUCTION && (SECRET === "dev-secret" || SECRET.length < 32 || !ADMIN_PASSWORD)) {
+  throw new Error("SECRET (32 caractères au moins) et ADMIN_PASSWORD sont obligatoires en production");
 }
+if (generatedSecret?.created) console.log(`[Searchtide] SECRET généré et enregistré dans ${generatedSecret.file} (droits 600).`);
+if (generatedPassword?.created) console.log(`[Searchtide] Mot de passe administrateur généré : ${generatedPassword.value}\n[Searchtide]   enregistré dans ${generatedPassword.file} (droits 600) ; définissez ADMIN_PASSWORD pour le choisir.`);
 
 const same = (a: string, b: string) => a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 const tracker = readFileSync(new URL("./tracker.js", import.meta.url), "utf8");
