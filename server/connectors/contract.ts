@@ -30,6 +30,7 @@ export function recordingCtx(fx: Fixture): { ctx: Ctx; seen: Seen } {
     end: async () => {},
   };
   const ctx = realCtx({
+    now: () => new Date("2026-11-09T10:00:00Z"),
     fetch: (async (u: any, i: RequestInit = {}) => {
       const url = String(u);
       seen.http.push({ method: (i.method ?? "GET").toUpperCase(), url });

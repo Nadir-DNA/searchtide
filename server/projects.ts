@@ -9,10 +9,11 @@ import type { McpServer } from "@modelcontextprotocol/server";
 import { db, localDay } from "./db.ts";
 import { lastDays, previous, type Range } from "./stats.ts";
 import { migrate } from "./migrations.ts";
-import { collectVia } from "./connectors/use.ts";
-import { realCtx } from "./connectors/registry.ts";
+import { collectVia, currentCtx } from "./connectors/use.ts";
+import { connections } from "./connections.ts";
 import { stripeMetric } from "./connectors/stripe.ts";
-import { googleToken } from "./gsc.ts";
+import { serviceAccount } from "./gsc.ts";
+import { playMetric } from "./connectors/google.ts";
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS projects (
@@ -72,7 +73,7 @@ const configs = {
   site: z.object({ domain: z.string(), metric: z.enum(["visitors", "pageviews", "clicks", "impressions"]) }),
   manual: z.object({}),
   pagespeed: z.object({ url: z.string().url(), metric: z.enum(["performance", "seo", "lcp", "cls"]), strategy: z.enum(["mobile", "desktop"]).default("mobile"), env: z.string().regex(ENV).default("PAGESPEED_KEY") }),
-  play: z.object({ env: z.string().regex(ENV).default("PLAY_BUCKET"), package: z.string().regex(/^[a-z][a-z0-9_.]+$/), metric: z.enum(["daily_installs", "active_installs", "rating"]) }),
+  play: z.object({ env: z.string().regex(ENV).optional(), connection_id: z.string().optional(), package: z.string().regex(/^[a-z][a-z0-9_.]+$/), metric: z.enum(["daily_installs", "active_installs", "rating"]) }),
 };
 export type Source = keyof typeof configs;
 const indicatorFields = z.object({
@@ -131,7 +132,7 @@ export { parisMidnight, monthlyNet } from "./connectors/stripe.ts";
 
 async function stripeValue(c: z.infer<typeof configs.stripe>, d?: string) {
   // Ancien mode : un indicateur qui désigne une variable d'environnement la garde (clé d'organisation sk_org_ comprise)
-  if (c.env) return stripeMetric({ key: secret(c.env), account: c.account }, c.metric, d, realCtx());
+  if (c.env) return stripeMetric({ key: secret(c.env), account: c.account }, c.metric, d, currentCtx());
   // Sinon : la connexion enregistrée dans l'interface (clé restreinte déchiffrée à la demande, aucun Stripe-Account)
   return collectVia("stripe", c.connection_id, c.metric, {}, d);
 }
@@ -158,31 +159,14 @@ async function pagespeedValue(c: z.infer<typeof configs.pagespeed>) {
   return Math.round(l.audits["cumulative-layout-shift"].numericValue * 1000) / 1000;
 }
 
-// Google Play : rapports CSV mensuels déposés par la Play Console dans son espace Cloud Storage (UTF-16)
-async function playCsv(bucket: string, object: string) {
-  const res = await fetch(`https://storage.googleapis.com/storage/v1/b/${encodeURIComponent(bucket)}/o/${encodeURIComponent(object)}?alt=media`,
-    { headers: { Authorization: `Bearer ${await googleToken("https://www.googleapis.com/auth/devstorage.read_only")}` } });
-  if (res.status === 404) return [];
-  if (!res.ok) throw new Error(`Google Play ${res.status} : ${(await res.text()).slice(0, 200)}`);
-  const buf = Buffer.from(await res.arrayBuffer());
-  const text = buf[0] === 0xff && buf[1] === 0xfe ? buf.subarray(2).toString("utf16le") : buf.toString("utf8");
-  const [head, ...lines] = text.split(/\r?\n/).filter((l) => l.trim());
-  const cols = head.split(",").map((x) => x.trim());
-  return lines.map((l) => Object.fromEntries(l.split(",").map((v, i) => [cols[i], v.trim()])));
-}
+// Google Play : par la connexion Google (bucket renseigné dans la connexion), ou, ancien mode, par la variable d'environnement
+// qui contient le bucket (config.env, défaut PLAY_BUCKET) avec GOOGLE_SERVICE_ACCOUNT_JSON.
 async function playValue(c: z.infer<typeof configs.play>, d?: string) {
-  const bucket = secret(c.env).replace(/^gs:\/\//, "").replace(/\/.*$/, "");
-  const month = (d ?? localDay()).slice(0, 7).replace("-", "");
-  const kind = c.metric === "rating" ? "ratings" : "installs";
-  let rows = await playCsv(bucket, `stats/${kind}/${kind}_${c.package}_${month}_overview.csv`);
-  if (!rows.length && !d) { // début de mois : rapport pas encore publié, on lit le mois précédent
-    const prev = new Date(Date.UTC(+month.slice(0, 4), +month.slice(4) - 2, 1)).toISOString().slice(0, 7).replace("-", "");
-    rows = await playCsv(bucket, `stats/${kind}/${kind}_${c.package}_${prev}_overview.csv`);
-  }
-  if (!rows.length) throw new Error("Aucun rapport Google Play pour ce mois (vérifiez le nom du paquet et l'accès du compte de service)");
-  const col = c.metric === "rating" ? "Total Average Rating" : c.metric === "active_installs" ? "Active Device Installs" : "Daily User Installs";
-  const row = d ? rows.find((r) => r.Date === d) : rows.at(-1);
-  return row ? Number(row[col]) || 0 : 0;
+  if (c.connection_id || (!c.env && connections("google").length)) return collectVia("google", c.connection_id, c.metric, { package: c.package }, d);
+  const bucket = secret(c.env ?? "PLAY_BUCKET");
+  const sa = serviceAccount();
+  if (!sa) throw new Error("Google n'est pas connecté : ajoutez Google dans Connexions");
+  return playMetric({ sa, bucket, pkg: c.package, metric: c.metric, day: d, today: localDay() }, currentCtx());
 }
 
 /** Série d'un site suivi, calculée à la lecture depuis les tables existantes. */

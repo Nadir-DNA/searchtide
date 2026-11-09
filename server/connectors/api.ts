@@ -47,7 +47,7 @@ function split(c: Connector, values: Record<string, unknown>, keep?: { config: R
     if (!v && keep && f.secret) continue; // « laisser vide pour garder la clé actuelle »
     if (!v && f.default !== undefined) v = f.default;
     if (!v) { if (f.required && !(keep && (f.secret ? keep.secrets[f.key] : keep.config[f.key]))) return { error: `Champ requis : ${f.label}` }; if (!f.secret) delete config[f.key]; continue; }
-    if (f.type === "json") { try { const j = JSON.parse(v); if (!j || typeof j !== "object") throw 0; } catch { return { error: `${f.label} : ce n'est pas un JSON valide.` }; } }
+    if (f.type === "json") { try { const j = JSON.parse(v); if (!j || typeof j !== "object") throw 0; v = JSON.stringify(j); } catch { return { error: `${f.label} : ce n'est pas un JSON valide.` }; } }
     if (f.type === "number" && !Number.isFinite(Number(v))) return { error: `${f.label} : nombre attendu.` };
     if (f.type === "select" && !f.options?.some((o) => o.value === v)) return { error: `${f.label} : choix inconnu.` };
     if (f.secret) secrets[f.key] = v; else config[f.key] = f.type === "number" ? Number(v) : v;

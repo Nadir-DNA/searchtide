@@ -1,46 +1,30 @@
-import { createSign } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { db, type Site } from "./db.ts";
+import { connections, getSecrets } from "./connections.ts";
+import { SC_SCOPE, googleAccessToken, parseServiceAccount, type ServiceAccount } from "./connectors/google.ts";
+import { currentCtx } from "./connectors/use.ts";
 
-type ServiceAccount = { client_email: string; private_key: string };
-
-function serviceAccount(): ServiceAccount | null {
+/** Compte de service à utiliser : la connexion Google de l'interface, sinon GOOGLE_SERVICE_ACCOUNT_JSON (chemin du fichier ou contenu). */
+export function serviceAccount(): ServiceAccount | null {
+  const conn = connections("google")[0];
+  if (conn) { try { return parseServiceAccount(String(getSecrets(conn).json)); } catch { /* illisible : repli sur la variable */ } }
   const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
   if (!raw) return null;
-  // Accepte le JSON directement ou le chemin du fichier téléchargé depuis Google Cloud
   return JSON.parse(raw.trim().startsWith("{") ? raw : readFileSync(raw, "utf8"));
 }
 
-export const gscConfigured = () => !!process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+export const gscConfigured = () => connections("google").length > 0 || !!process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
 
-const cache = new Map<string, { token: string; exp: number }>();
-
-/** Jeton OAuth du compte de service (JWT signé RS256, sans dépendance Google), pour une portée donnée. */
-export async function googleToken(scope = "https://www.googleapis.com/auth/webmasters.readonly"): Promise<string> {
-  const cached = cache.get(scope);
-  if (cached && cached.exp > Date.now() + 60_000) return cached.token;
+/** Jeton OAuth du compte de service pour une portée donnée. */
+export async function googleToken(scope = SC_SCOPE): Promise<string> {
   const sa = serviceAccount();
-  if (!sa) throw new Error("GOOGLE_SERVICE_ACCOUNT_JSON n'est pas configuré");
-  const now = Math.floor(Date.now() / 1000);
-  const b64 = (o: object) => Buffer.from(JSON.stringify(o)).toString("base64url");
-  const unsigned = `${b64({ alg: "RS256", typ: "JWT" })}.${b64({
-    iss: sa.client_email, scope,
-    aud: "https://oauth2.googleapis.com/token", iat: now, exp: now + 3600,
-  })}`;
-  const jwt = `${unsigned}.${createSign("RSA-SHA256").update(unsigned).sign(sa.private_key, "base64url")}`;
-  const res = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    body: new URLSearchParams({ grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer", assertion: jwt }),
-  });
-  const data = await res.json() as { access_token?: string; expires_in?: number; error_description?: string };
-  if (!data.access_token) throw new Error(`Google OAuth : ${data.error_description ?? res.status}`);
-  cache.set(scope, { token: data.access_token, exp: Date.now() + (data.expires_in ?? 3600) * 1000 });
-  return data.access_token;
+  if (!sa) throw new Error("Google n'est pas connecté : ajoutez Google dans Connexions");
+  return googleAccessToken(sa, scope, currentCtx());
 }
 const accessToken = () => googleToken();
 
 async function gscFetch(path: string, body?: object) {
-  const res = await fetch(`https://searchconsole.googleapis.com/webmasters/v3/${path}`, {
+  const res = await currentCtx().fetch(`https://searchconsole.googleapis.com/webmasters/v3/${path}`, {
     method: body ? "POST" : "GET",
     headers: { Authorization: `Bearer ${await accessToken()}`, "Content-Type": "application/json" },
     body: body ? JSON.stringify(body) : undefined,

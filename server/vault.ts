@@ -70,13 +70,19 @@ export function scrub(text: string, secrets: Iterable<string>): string {
   return out;
 }
 
-/** Toutes les valeurs textuelles d'un objet de secrets (à plat), pour `scrub`. */
+/** Clés d'un objet JSON secret dont la valeur est sensible (le reste, comme client_email ou project_id, peut être affiché). */
+const SENSITIVE_KEY = /private|secret|token|pass|key/i;
+
+/** Valeurs à masquer dans un objet de secrets. Une chaîne JSON (fichier de compte de service) est masquée en entier ; ses seules valeurs sensibles le sont aussi séparément. */
 export function secretValues(obj: unknown): string[] {
   const out: string[] = [];
-  const walk = (v: unknown) => {
-    if (typeof v === "string") { out.push(v); if (v.startsWith("{")) try { walk(JSON.parse(v)); } catch { /* pas du JSON */ } }
-    else if (v && typeof v === "object") Object.values(v).forEach(walk);
+  const walk = (v: unknown, sensitive: boolean) => {
+    if (typeof v === "string") {
+      if (sensitive) out.push(v);
+      if (v.startsWith("{")) try { walk(JSON.parse(v), false); } catch { /* pas du JSON */ }
+    } else if (v && typeof v === "object") for (const [k, x] of Object.entries(v)) walk(x, sensitive || SENSITIVE_KEY.test(k));
   };
-  walk(obj);
+  // Les valeurs de premier niveau d'un objet de secrets sont toutes sensibles
+  if (obj && typeof obj === "object") for (const x of Object.values(obj)) walk(x, true); else walk(obj, true);
   return out;
 }
