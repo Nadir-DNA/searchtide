@@ -27,7 +27,9 @@ const forbidden = (c: Context) => c.json({ error: "Réservé à l'administrateur
 /** Vue d'une connexion pour les clients : indice et statut, jamais de secret. */
 function view(r: Row) {
   return { id: r.id, kind: r.kind, label: r.label, hint: r.config?.hint ?? "", status: r.status, status_detail: r.status_detail,
-    tested_at: r.tested_at, livemode: !!r.livemode, test_mode: r.config?.test === true, created_at: r.created_at };
+    tested_at: r.tested_at, livemode: !!r.livemode, test_mode: r.config?.test === true, created_at: r.created_at,
+    // Réglages non secrets (hôte, région…) pour préremplir « Remplacer la clé » ; les secrets n'y sont jamais.
+    settings: Object.fromEntries(Object.entries(r.config ?? {}).filter(([k]) => k !== "hint" && k !== "test")) };
 }
 export const listForClients = () => connections().map(view);
 
@@ -40,6 +42,7 @@ function split(c: Connector, values: Record<string, unknown>, keep?: { config: R
   const config: Row = { ...(keep?.config ?? {}) }, secrets: Row = { ...(keep?.secrets ?? {}) };
   for (const f of c.fields) {
     const raw = values[f.key];
+    if (raw === undefined && keep) continue; // champ non envoyé : on garde la valeur actuelle
     let v = typeof raw === "string" ? raw.trim() : raw == null ? "" : String(raw);
     if (!v && keep && f.secret) continue; // « laisser vide pour garder la clé actuelle »
     if (!v && f.default !== undefined) v = f.default;

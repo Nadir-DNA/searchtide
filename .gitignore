@@ -7,3 +7,6 @@ data/
 google*.json
 .taste-skill/
 docker-compose.override.yml
+
+test-results
+playwright-report
