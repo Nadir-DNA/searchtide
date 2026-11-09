@@ -21,7 +21,7 @@ import { findAgent, registerAgents } from "./agents.ts";
 import { registerDashboards } from "./dashboards.ts";
 import { registerOutreach } from "./outreach.ts";
 import { backup, loginLimiter, verifyTotp } from "./security.ts";
-import { markAdmin } from "./admin.ts";
+import { markAdmin, markClient } from "./admin.ts";
 
 const SECRET = process.env.SECRET ?? "dev-secret";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? "";
@@ -82,15 +82,17 @@ app.post("/api/logout", (c) => { deleteCookie(c, "st_session", { path: "/" }); r
 
 async function auth(c: Context, next: Next) {
   const bearer = c.req.header("authorization")?.replace(/^Bearer /, "");
-  if (API_KEY && bearer && same(bearer, API_KEY)) return next();
+  if (API_KEY && bearer && same(bearer, API_KEY)) { markClient(c); return next(); }
   // Clé d'agent : mêmes droits que la clé principale (ou lecture seule), mais elle ne peut pas gérer les clés
   const agent = findAgent(bearer);
   if (agent) {
+    markClient(c);
     if (c.req.path.startsWith("/api/agents") && c.req.method !== "GET") return c.json({ error: "Les clés d'agent se gèrent depuis l'interface" }, 403);
     if (!agent.readOnly || c.req.method === "GET" || c.req.path === "/mcp") return next();
     return c.json({ error: "Clé en lecture seule" }, 403);
   }
   if (API_KEY_READ && bearer && same(bearer, API_KEY_READ)) {
+    markClient(c);
     // Lecture seule : GET, et MCP avec les seuls outils de lecture (voir la route /mcp)
     if (c.req.method === "GET" || c.req.path === "/mcp") return next();
     return c.json({ error: "Clé en lecture seule" }, 403);

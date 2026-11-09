@@ -1,10 +1,10 @@
 // Tests T9 : API des connecteurs et des connexions, avec un connecteur fictif et un fournisseur SIMULÉ (aucun réseau).
 // CA6 aucun secret dans les réponses · CA7 secret masqué dans erreurs et journaux · CA11 échec → aucune ligne · CA13 doublon · CA14 droits.
-import { test, beforeEach } from "node:test";
+import { test, beforeEach, after } from "node:test";
 import assert from "node:assert/strict";
 import { Hono } from "hono";
 import { db } from "../db.ts";
-import { markAdmin } from "../admin.ts";
+import { markAdmin, markClient } from "../admin.ts";
 import { connections, getSecrets } from "../connections.ts";
 import { SECRET_MESSAGE } from "../vault.ts";
 import { registerConnections, listForClients, setConnectorContext } from "./api.ts";
@@ -46,11 +46,15 @@ const sim = realCtx({
 });
 
 const admin = new Hono(); admin.use("*", (c, n) => { markAdmin(c); return n(); }); registerConnections(admin);
-const anon = new Hono(); registerConnections(anon); // sans session : clé d'API ou agent
+// Clé d'API ou agent MCP : ils lisent la liste, ils n'écrivent pas
+const anon = new Hono(); anon.use("*", (c, n) => { markClient(c); return n(); }); registerConnections(anon);
+// Lecture ouverte de la démonstration : aucun identifiant
+const open = new Hono(); registerConnections(open);
 const post = (app: Hono, path: string, body: unknown, method = "POST") => app.request(path, { method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
 const count = () => (db.prepare("SELECT COUNT(*) AS n FROM connections").get() as any).n;
 
 register(fake); register(single);
+after(() => { unregister("fakeprov"); unregister("soloprov"); });
 setConnectorContext(sim);
 beforeEach(() => { reply = { status: 200, body: { name: "Compte démo" } }; seen.length = 0; process.env.SECRET = "t".repeat(40); db.exec("DELETE FROM connections"); });
 
@@ -189,5 +193,38 @@ test("mode DEMO : l'écriture est désactivée", async () => {
   process.env.DEMO = "1";
   try { const r = await post(admin, "/api/connections", { kind: "fakeprov", values: { key: KEY } }); assert.equal(r.status, 403); assert.match((await r.json()).error, /démonstration/); }
   finally { delete process.env.DEMO; }
-  unregister("fakeprov"); unregister("soloprov");
+});
+
+// ───────── E1 : réglages réservés à l'administrateur (R11) ─────────
+test("E1 : l'administrateur voit indice, réglages non secrets et détail du statut ; une clé d'API ou un agent ne voient que id, type, libellé, indice, statut", async () => {
+  const created = await (await post(admin, "/api/connections", { kind: "fakeprov", label: "Mon compte", values: { key: KEY, region: "eu" } })).json();
+  assert.deepEqual(created.connection.settings, { region: "eu" });
+  db.prepare("UPDATE connections SET status = 'error', status_detail = 'Démo : délai dépassé' WHERE id = ?").run(created.connection.id);
+  for (const path of ["/api/connections", "/api/connectors"]) {
+    const a = await (await admin.request(path)).json();
+    const ac = (path === "/api/connections" ? a.list : a.connectors.find((x: any) => x.id === "fakeprov").connections)[0];
+    assert.deepEqual(ac.settings, { region: "eu" }, `${path} (admin)`); assert.equal(ac.status_detail, "Démo : délai dépassé"); assert.ok(ac.hint);
+    const k = await (await anon.request(path)).json();
+    const kc = (path === "/api/connections" ? k.list : k.connectors.find((x: any) => x.id === "fakeprov").connections)[0];
+    assert.equal(kc.settings, undefined, `${path} (clé d'API) ne renvoie aucun réglage`); assert.equal(kc.status_detail, null, "ni détail du statut");
+    assert.deepEqual(Object.keys(kc).sort(), ["created_at", "hint", "id", "kind", "label", "livemode", "status", "status_detail", "test_mode", "tested_at"]);
+    assert.equal(kc.hint, ac.hint); assert.equal(kc.label, "Mon compte");
+  }
+  const mcp = listForClients();
+  assert.equal((mcp[0] as any).settings, undefined); assert.equal(mcp[0].status_detail, null); assert.ok(mcp[0].hint);
+  assert.doesNotMatch(JSON.stringify(mcp), /"region"|délai dépassé/);
+});
+
+test("E1 : lecture ouverte de la démonstration (aucun identifiant) → ni indice, ni réglage, ni connexion", async () => {
+  await post(admin, "/api/connections", { kind: "fakeprov", label: "Compte privé", values: { key: KEY, region: "eu" } });
+  process.env.DEMO = "1";
+  try {
+    const list = await (await open.request("/api/connections")).json();
+    assert.deepEqual(list.list, []);
+    const cat = await (await open.request("/api/connectors")).json();
+    const m = cat.connectors.find((x: any) => x.id === "fakeprov");
+    assert.deepEqual(m.connections, []); assert.equal(m.status, "none"); assert.equal(cat.admin, false);
+    const text = JSON.stringify(cat) + JSON.stringify(list);
+    assert.doesNotMatch(text, /Compte privé|"hint":"rk_|"settings"|"region":"eu"/);
+  } finally { delete process.env.DEMO; }
 });

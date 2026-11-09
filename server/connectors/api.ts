@@ -3,7 +3,7 @@
 import type { Context, Hono } from "hono";
 import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
-import { isAdmin } from "../admin.ts";
+import { isAdmin, viewerOf, type Viewer } from "../admin.ts";
 import { connections, createConnection, findByFingerprint, getConnection, getSecrets, markStatus, removeConnection, setSecrets } from "../connections.ts";
 import { db } from "../db.ts";
 import { SECRET_MESSAGE, VaultError, fingerprint, scrub, secretValid, secretValues } from "../vault.ts";
@@ -24,14 +24,22 @@ const RANK: Record<string, number> = { reconnect: 3, error: 2, connected: 1 };
 
 const forbidden = (c: Context) => c.json({ error: "Réservé à l'administrateur : connectez-vous avec le mot de passe de l'instance." }, 403);
 
-/** Vue d'une connexion pour les clients : indice et statut, jamais de secret. */
-function view(r: Row) {
-  return { id: r.id, kind: r.kind, label: r.label, hint: r.config?.hint ?? "", status: r.status, status_detail: r.status_detail,
-    tested_at: r.tested_at, livemode: !!r.livemode, test_mode: r.config?.test === true, created_at: r.created_at,
-    // Réglages non secrets (hôte, région…) pour préremplir « Remplacer la clé » ; les secrets n'y sont jamais.
+/**
+ * Vue d'une connexion, selon qui regarde (R11) :
+ *  - administrateur (session) : tout sauf les secrets — indice, réglages non secrets (hôte, identifiant, domaine, bucket…), détail du statut ;
+ *  - client (clé d'API, agent MCP) : id, type, libellé, indice, statut — ni réglages ni détail ;
+ *  - anonyme (lecture ouverte de la démonstration) : rien (la liste est vide).
+ */
+function view(r: Row, who: Viewer = "client") {
+  const base = { id: r.id, kind: r.kind, label: r.label, status: r.status, tested_at: r.tested_at, livemode: !!r.livemode, test_mode: r.config?.test === true, created_at: r.created_at };
+  if (who === "client") return { ...base, hint: r.config?.hint ?? "", status_detail: null };
+  return { ...base, hint: r.config?.hint ?? "", status_detail: r.status_detail,
+    // Réglages non secrets pour préremplir « Remplacer la clé » ; les secrets n'y sont jamais.
     settings: Object.fromEntries(Object.entries(r.config ?? {}).filter(([k]) => k !== "hint" && k !== "test")) };
 }
-export const listForClients = () => connections().map(view);
+/** Liste pour les clients non administrateurs (outil MCP `connections_list`, clés d'API). */
+export const listForClients = () => connections().map((r) => view(r, "client"));
+const listFor = (who: Viewer) => (who === "anon" ? [] : connections().map((r) => view(r, who)));
 
 function worst(rows: Row[]): string {
   return rows.reduce((w, r) => (RANK[r.status] > RANK[w] ? r.status : w), "connected");
@@ -66,20 +74,21 @@ const statusOf = (r: TestResult): "connected" | "error" | "reconnect" =>
 export function registerConnections(app: Hono) {
   // Catalogue : manifestes + connexions de chacun. Aucune fonction, aucun secret.
   app.get("/api/connectors", (c) => {
-    const rows = connections();
+    const who = viewerOf(c);
+    const rows = who === "anon" ? [] : connections();
     return c.json({
       vault: { ok: secretValid(), message: secretValid() ? null : SECRET_MESSAGE },
       demo: DEMO(),
       admin: isAdmin(c),
       connectors: all().map((m) => {
         const mine = rows.filter((r) => r.kind === m.id);
-        return { ...publicManifest(m), connections: mine.map(view), status: mine.length ? worst(mine) : m.builtin ? "builtin" : "none" };
+        return { ...publicManifest(m), connections: mine.map((r) => view(r, who)), status: mine.length ? worst(mine) : m.builtin ? "builtin" : "none" };
       }),
       later: LATER,
     });
   });
 
-  app.get("/api/connections", (c) => c.json({ vault: secretValid(), list: listForClients() }));
+  app.get("/api/connections", (c) => c.json({ vault: secretValid(), list: listFor(viewerOf(c)) }));
 
   app.post("/api/connections", async (c) => {
     if (!isAdmin(c)) return forbidden(c);
@@ -105,7 +114,7 @@ export function registerConnections(app: Hono) {
       const conn = createConnection({ kind: m.id, label, account: result.account, livemode: result.livemode,
         config: { ...cfg.config, hint: m.hint(cfg), ...(result.livemode === false ? { test: true } : {}) }, secrets: cfg.secrets, fingerprintOf: main || undefined });
       markStatus(conn.id, "connected", null);
-      return c.json({ connection: view(getConnection(conn.id)!), test: { label: result.label, detail: result.detail, warnings: result.warnings ?? [] } }, 201);
+      return c.json({ connection: view(getConnection(conn.id)!, "admin"), test: { label: result.label, detail: result.detail, warnings: result.warnings ?? [] } }, 201);
     } catch (e) {
       if (e instanceof VaultError) return c.json({ error: e.message }, 400);
       logSafe(cfg, e); return c.json({ error: "Enregistrement impossible." }, 500);
@@ -122,7 +131,7 @@ export function registerConnections(app: Hono) {
     const b = await c.req.json().catch(() => ({})) as Row;
     const label = b.label === undefined ? conn.label : String(b.label).trim().slice(0, 80) || conn.label;
     const hasValues = b.values && Object.values(b.values).some((v) => String(v ?? "").trim() !== "");
-    if (!hasValues) { db.prepare("UPDATE connections SET label = ? WHERE id = ?").run(label, conn.id); return c.json({ connection: view(getConnection(conn.id)!) }); }
+    if (!hasValues) { db.prepare("UPDATE connections SET label = ? WHERE id = ?").run(label, conn.id); return c.json({ connection: view(getConnection(conn.id)!, "admin") }); }
     if (!secretValid()) return c.json({ error: SECRET_MESSAGE }, 400);
     let old: Row = {};
     try { old = getSecrets(conn); } catch { /* secrets illisibles : on repart des valeurs reçues */ }
@@ -139,7 +148,7 @@ export function registerConnections(app: Hono) {
       db.prepare("UPDATE connections SET label = ?, config = ?, account = ?, livemode = ? WHERE id = ?")
         .run(label, JSON.stringify({ ...cfg.config, hint: m.hint(cfg), ...(result.livemode === false ? { test: true } : {}) }), result.account ?? conn.account, result.livemode ? 1 : 0, conn.id);
       markStatus(conn.id, "connected", null);
-      return c.json({ connection: view(getConnection(conn.id)!), test: { label: result.label, detail: result.detail, warnings: result.warnings ?? [] } });
+      return c.json({ connection: view(getConnection(conn.id)!, "admin"), test: { label: result.label, detail: result.detail, warnings: result.warnings ?? [] } });
     } catch (e) {
       if (e instanceof VaultError) return c.json({ error: e.message }, 400);
       logSafe(cfg, e); return c.json({ error: "Enregistrement impossible." }, 500);
