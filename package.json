@@ -14,7 +14,7 @@
     "dev:web": "vite",
     "build": "vite build",
     "start": "node --env-file-if-exists=.env server/index.ts",
-    "test": "DATABASE_PATH=:memory: node --test server/*.test.ts",
+    "test": "DATABASE_PATH=:memory: node --test server/*.test.ts server/connectors/*.test.ts",
     "typecheck": "tsc --noEmit",
     "2fa": "node scripts/activer-2fa.mjs"
   },
