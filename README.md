@@ -23,6 +23,18 @@ gratuites pour vos sites.
 - **Agents** : serveur MCP (`/mcp`) et API REST protégés par clé.
 - **Léger** : un seul processus Node, une base SQLite, une image Docker.
 
+## Démo
+
+Une commande, des données fictives, aucune clé :
+
+```bash
+docker run -d -p 3030:3030 -e DEMO=1 -v searchtide_demo:/data ghcr.io/nadir-dna/searchtide:v0.2.0
+```
+
+![Vue d'ensemble de la démonstration](docs/demo.png)
+
+Détails et captures : [docs/demo.md](docs/demo.md).
+
 ## Démarrage
 
 ```bash

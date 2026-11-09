@@ -5,6 +5,7 @@ import { getConnInfo } from "@hono/node-server/conninfo";
 import { getSignedCookie, setSignedCookie, deleteCookie } from "hono/cookie";
 import { existsSync, readFileSync } from "node:fs";
 import { bootFiles, bootValue } from "./bootstrap.ts";
+import { seedDemo } from "./demo-data.ts";
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import { db, localDay, type Site } from "./db.ts";
 import { collect } from "./collect.ts";
@@ -44,6 +45,10 @@ const TOTP_SECRET = process.env.TOTP_SECRET ?? "";
 const BACKUP_DIR = process.env.BACKUP_DIR ?? (process.env.DATABASE_PATH?.startsWith("/data/") ? "/data/backups" : "data/backups");
 // Démo publique : lecture ouverte à tous, écriture toujours protégée
 const DEMO = process.env.DEMO === "1";
+if (DEMO) {
+  try { if (seedDemo()) console.log("[Searchtide] Démonstration : données fictives créées (exemple.com, exemple-boutique.com)."); }
+  catch (e) { console.error("[démonstration] données fictives non créées :", (e as Error).message); }
+}
 if (PRODUCTION && (SECRET === "dev-secret" || SECRET.length < 32 || !ADMIN_PASSWORD)) {
   throw new Error("SECRET (32 caractères au moins) et ADMIN_PASSWORD sont obligatoires en production");
 }

@@ -17,7 +17,8 @@
     "test": "DATABASE_PATH=:memory: node --test server/*.test.ts server/connectors/*.test.ts",
     "typecheck": "tsc --noEmit",
     "2fa": "node scripts/activer-2fa.mjs",
-    "e2e": "npm run build && playwright test"
+    "e2e": "npm run build && playwright test",
+    "demo": "DEMO=1 DATABASE_PATH=data/demo.db node --no-warnings --env-file-if-exists=.env server/index.ts"
   },
   "dependencies": {
     "@hono/node-server": "^2.1.6",
