@@ -62,7 +62,7 @@ test("mcp : les outils CRM n'existent que si le module CRM est actif", async () 
   try {
     let names = await tools(s.base, KEY);
     assert.ok(!names.some((n) => n.startsWith("crm_")), names.join(","));
-    assert.ok(names.includes("modules_list") && names.includes("projects_kpis"));
+    assert.ok(names.includes("modules_list") && names.includes("projects_kpis") && names.includes("jobs_status"));
     s.stop();
     seed(t.path, `const { setEnabled } = await import("@server/modules/state.ts"); setEnabled("crm", true);`);
     s = await startServer(t.path);
@@ -77,5 +77,13 @@ test("mcp : une clé en lecture seule n'a pas module_enable_for_project", async 
     const ro = await tools(s.base, "cle-lecture-de-test-01");
     assert.ok(ro.includes("modules_list") && !ro.includes("module_enable_for_project"));
     assert.ok((await tools(s.base, KEY)).includes("module_enable_for_project"));
+  } finally { s.stop(); t.done(); }
+});
+
+test("api : état des tâches de fond", async () => {
+  const t = tempDb(); seed(t.path, SEED); const s = await startServer(t.path);
+  try {
+    const jobs = await (await fetch(`${s.base}/api/jobs`, { headers: { authorization: `Bearer ${KEY}` } })).json() as any[];
+    assert.deepEqual(jobs.map((j) => j.id).sort(), ["alerts", "backup", "gsc-sync", "indicators", "offsite-backup", "sequences", "weekly-report"]);
   } finally { s.stop(); t.done(); }
 });

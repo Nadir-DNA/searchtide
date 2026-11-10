@@ -2,6 +2,7 @@
 // relevés chaque jour depuis leur source (base Postgres, Stripe, adresse web, site suivi ou saisie à la main).
 // Les secrets ne sont jamais en base : un indicateur nomme la variable d'environnement qui les contient.
 import type { Hono } from "hono";
+import { registerJob } from "./jobs.ts";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/server";
@@ -370,9 +371,8 @@ export function registerProjects(app: Hono) {
   });
   app.delete("/api/annotations/:id", (c) => db.prepare("DELETE FROM annotations WHERE id = ?").run(c.req.param("id")).changes ? c.json({ ok: true }) : c.json({ error: "Repère introuvable" }, 404));
 
-  // Relevé au démarrage puis toutes les 3 h
-  setTimeout(() => void collectAll(), 20_000);
-  setInterval(() => void collectAll(), 3 * 3600 * 1000).unref();
+  // Relevé au démarrage (premier tic de l'ordonnanceur) puis toutes les 3 h
+  registerJob("projets", { id: "indicators", every: "3h", run: async () => { await collectAll(); } });
 }
 
 const json = (data: unknown) => ({ content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] });

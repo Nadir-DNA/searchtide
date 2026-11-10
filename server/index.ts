@@ -1,4 +1,5 @@
 import { Hono, type Context, type Next } from "hono";
+import { jobsStatus, registerJob, startJobs } from "./jobs.ts";
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { getConnInfo } from "@hono/node-server/conninfo";
@@ -214,25 +215,17 @@ registerPortfolio(app);
 registerAgents(app);
 registerDashboards(app);
 registerModules(app);
+app.get("/api/jobs", (c) => c.json(jobsStatus()));
 registerOutreach(app);
 
 // ── Interface (build Vite) ──
 app.use("/*", serveStatic({ root: "./web/dist" }));
 app.get("*", serveStatic({ path: "./web/dist/index.html" }));
 
-// Synchro Search Console : au démarrage puis toutes les 6 h
-const SYNC_MS = 6 * 3600 * 1000;
-setTimeout(() => void syncAll(), 10_000);
-setInterval(() => void syncAll(), SYNC_MS).unref();
-
-// Sauvegarde quotidienne (vers 2 h UTC) dans BACKUP_DIR, 14 jours gardés
-let lastBackup = "";
-setInterval(() => {
-  const d = new Date();
-  if (d.getUTCHours() !== 2 || lastBackup === d.toISOString().slice(0, 10)) return;
-  lastBackup = d.toISOString().slice(0, 10);
-  try { console.log(`Sauvegarde : ${backup(BACKUP_DIR)}`); } catch (e) { console.error("[sauvegarde]", (e as Error).message); }
-}, 10 * 60 * 1000).unref();
+// Tâches de fond (ordonnanceur unique, table jobs) : Search Console toutes les 6 h, sauvegarde locale vers 2 h UTC (14 jours gardés)
+registerJob("google", { id: "gsc-sync", every: "6h", run: syncAll });
+registerJob("projets", { id: "backup", every: "daily@02:00", run: async () => { console.log(`Sauvegarde : ${backup(BACKUP_DIR)}`); } });
+startJobs();
 
 const port = Number(process.env.PORT ?? 3030);
 // Écoute locale par défaut : sans HOST explicite, rien n'est joignable depuis le réseau.
