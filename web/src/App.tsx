@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { ActivateLink } from "./modules/ActivatePrompt";
 import { api, AuthError, type Overview as OverviewData, type Search, type Site, type Traffic } from "./api";
 import { BarChart, Donut, fillDays } from "./chart";
-import { CrmView, PubsView, ReportView } from "./business";
+import { CrmView } from "./modules/crm";
+import { PubsView } from "./modules/publications";
+import { ReportView } from "./modules/notifications/ReportView";
 import { ManageProject, ProjectView, type Project } from "./projects";
 import { Onboarding, SKIP_KEY } from "./onboarding";
 import { PortfolioView } from "./portefeuille";
@@ -9,12 +12,13 @@ import { ConnectionsView } from "./connections";
 import { AgentsView } from "./agents";
 import { DashboardView, type Dashboards } from "./dashboard";
 import { SettingsView } from "./settings";
+import { ModulesView } from "./modules/ModulesView";
+import { useModules } from "./modules";
+import { TodayView } from "./today";
+import { SetupView, TrafficView } from "./modules/analytics";
+import { SearchView } from "./modules/google";
 import { Button, Card, Delta, EmptyBox, Icon, KpiCard, Mark, Segmented, ShareList, Skeleton, Svg, Table, fmt, inputCls } from "./ui";
 
-const CHANNELS: Record<string, string> = {
-  direct: "Accès direct", search: "Moteurs de recherche", social: "Réseaux sociaux", ai: "Assistants IA",
-  referral: "Autres sites", email: "Email", paid: "Publicité",
-};
 const PERIODS = [["7", "7 j"], ["28", "28 j"], ["90", "3 mois"], ["365", "12 mois"]] as const;
 
 type Me = { gsc: boolean; demo: boolean };
@@ -102,43 +106,62 @@ function Shell({ me, onLogout }: { me: Me; onLogout: () => void }) {
   // Réinitialise les filtres propres à chaque vue
   const home = { site: undefined, tab: undefined, view: undefined, id: undefined, q: undefined, project: undefined, source: undefined, month: undefined };
 
+  const mods = useModules();
+  const crmOn = mods.active("crm"), pubsOn = mods.active("publications");
+  const pinned = projects.filter((p) => p.pinned);
+  const pin = async (p: Project) => { await api(`/api/projects/${p.id}`, { method: "PATCH", json: { pinned: !p.pinned } }); loadProjects(); };
+  const projectItem = (p: Project) => (
+    <NavItem key={p.id} icon={<circle cx="8" cy="8" r="3" fill={p.color ?? "currentColor"} stroke="none" />} active={q.view === "project" && q.id === p.id} onClick={() => nav({ ...home, view: "project", id: p.id })}>
+      <span className="truncate">{p.name}</span>
+    </NavItem>
+  );
   const sidebar = (
-    <nav aria-label="Navigation" className="flex flex-1 flex-col gap-1 px-4 pb-5">
-      {me.demo || !dash ? <NavItem icon={Icon.grid} active={!q.site && !q.view} onClick={() => nav(home)}>Vue d'ensemble</NavItem>
-        : dash.dashboards.map((d, i) => (
-          <NavItem key={d.id} icon={Icon.grid} active={!q.site && (q.view === "page" ? q.id === d.id : !q.view && i === 0)} onClick={() => nav(i === 0 ? home : { ...home, view: "page", id: d.id })}>
-            <span className="truncate">{d.name}</span>
-          </NavItem>
-        ))}
-      {!me.demo && <NavItem icon={Icon.plus} active={false} onClick={async () => {
-        const name = prompt("Nom de la nouvelle page");
-        if (name?.trim()) { const d = await api<{ id: string }>("/api/dashboards", { method: "POST", json: { name } }); loadDash(); nav({ ...home, view: "page", id: d.id }); }
-      }}>Nouvelle page</NavItem>}
-      <div className="mt-6 mb-1 px-3 text-xs text-muted">Outils</div>
-      <NavItem icon={Icon.grid} active={q.view === "portfolio"} onClick={() => nav({ ...home, view: "portfolio" })}>Portefeuille</NavItem>
-      {!me.demo && <NavItem icon={Icon.users} active={q.view === "crm"} onClick={() => nav({ ...home, view: "crm" })}>Contacts</NavItem>}
-      {!me.demo && <NavItem icon={Icon.calendar} active={q.view === "pubs"} onClick={() => nav({ ...home, view: "pubs" })}>Publications</NavItem>}
-      <NavItem icon={Icon.mail} active={q.view === "report"} onClick={() => nav({ ...home, view: "report" })}>Rapport hebdo</NavItem>
-      {!me.demo && <NavItem icon={Icon.bot} active={q.view === "agents"} onClick={() => nav({ ...home, view: "agents" })}>Agents IA</NavItem>}
-      {!me.demo && <NavItem icon={Icon.book} active={q.view === "start"} onClick={() => nav({ ...home, view: "start" })}>Démarrage</NavItem>}
-      {!me.demo && <NavItem icon={Icon.link} active={q.view === "connections"} onClick={() => nav({ ...home, view: "connections" })}>Connexions</NavItem>}
-      <div className="mt-6 mb-1 px-3 text-xs text-muted">Projets</div>
-      {projects.map((p) => (
-        <NavItem key={p.id} icon={<circle cx="8" cy="8" r="3" fill={p.color ?? "currentColor"} stroke="none" />} active={q.view === "project" && q.id === p.id} onClick={() => nav({ ...home, view: "project", id: p.id })}>
-          <span className="truncate">{p.name}</span>
-        </NavItem>
-      ))}
-      <NavItem icon={Icon.plus} active={q.view === "newproject"} onClick={() => nav({ ...home, view: "newproject" })}>Nouveau projet</NavItem>
-      <div className="mt-6 mb-1 px-3 text-xs text-muted">Sites</div>
-      {sites?.map((s) => (
-        <NavItem key={s.id} icon={Icon.globe} active={s.domain === q.site} onClick={() => nav({ site: s.domain, view: undefined })}>
-          <span className="truncate">{s.domain}</span>
-          {s.today > 0 && <span className="num ml-auto text-xs text-muted" title="Visiteurs aujourd'hui">{fmt(s.today)}</span>}
-        </NavItem>
-      ))}
-      {!me.demo && <NavItem icon={Icon.plus} active={q.view === "add"} onClick={() => nav({ site: undefined, view: "add" })}>Ajouter un site</NavItem>}
+    <nav aria-label="Navigation" className="flex flex-1 flex-col gap-1 overflow-y-auto px-4 pb-5">
+      <ul aria-label="Rubriques" className="space-y-1">
+        <li><NavItem icon={Icon.check} active={!q.site && (!q.view || q.view === "today")} onClick={() => nav(home)}>Aujourd'hui</NavItem></li>
+        <li>
+          <NavGroup id="tableaux" label="Tableaux" icon={Icon.grid} active={q.view === "page"}>
+            {(dash?.dashboards ?? []).map((d) => (
+              <NavItem key={d.id} icon={Icon.grid} active={q.view === "page" && (q.id ? q.id === d.id : d === dash!.dashboards[0])} onClick={() => nav({ ...home, view: "page", id: d.id })}><span className="truncate">{d.name}</span></NavItem>
+            ))}
+            {!me.demo && <NavItem icon={Icon.plus} active={false} onClick={async () => {
+              const name = prompt("Nom de la nouvelle page");
+              if (name?.trim()) { const d = await api<{ id: string }>("/api/dashboards", { method: "POST", json: { name } }); loadDash(); nav({ ...home, view: "page", id: d.id }); }
+            }}>Nouvelle page</NavItem>}
+          </NavGroup>
+        </li>
+        <li>
+          <NavGroup id="projets" label="Projets" icon={Icon.users} active={["projects", "portfolio", "project", "newproject", "crm", "pubs"].includes(q.view ?? "")}
+            pinned={pinned.length > 0 && <ul aria-label="Projets épinglés" className="space-y-1">{pinned.map((p) => <li key={p.id}>{projectItem(p)}</li>)}</ul>}>
+            <NavItem icon={Icon.grid} active={q.view === "projects" || q.view === "portfolio"} onClick={() => nav({ ...home, view: "projects" })}>Tous les projets</NavItem>
+            {projects.map((p) => (
+              <div key={p.id} className="group flex items-center">
+                <div className="min-w-0 flex-1">{projectItem(p)}</div>
+                <button type="button" onClick={() => pin(p)} aria-label={`${p.pinned ? "Désépingler" : "Épingler"} ${p.name}`} aria-pressed={!!p.pinned}
+                  className={`grid size-8 shrink-0 place-items-center rounded-lg text-sm hover:text-ink ${p.pinned ? "text-accent" : "text-muted opacity-60 group-hover:opacity-100 focus-visible:opacity-100"}`}>{p.pinned ? "★" : "☆"}</button>
+              </div>
+            ))}
+            <NavItem icon={Icon.plus} active={q.view === "newproject"} onClick={() => nav({ ...home, view: "newproject" })}>Nouveau projet</NavItem>
+            {!me.demo && crmOn && <NavItem icon={Icon.users} active={q.view === "crm"} onClick={() => nav({ ...home, view: "crm" })}>Contacts</NavItem>}
+            {!me.demo && pubsOn && <NavItem icon={Icon.calendar} active={q.view === "pubs"} onClick={() => nav({ ...home, view: "pubs" })}>Publications</NavItem>}
+          </NavGroup>
+        </li>
+        <li>
+          <NavGroup id="sites" label="Suivi des sites" icon={Icon.globe} active={!!q.site || q.view === "add"}>
+            {sites?.map((s) => (
+              <NavItem key={s.id} icon={Icon.globe} active={s.domain === q.site} onClick={() => nav({ site: s.domain, view: undefined })}>
+                <span className="truncate">{s.domain}</span>
+                {s.today > 0 && <span className="num ml-auto text-xs text-muted" title="Visiteurs aujourd'hui">{fmt(s.today)}</span>}
+              </NavItem>
+            ))}
+            {!me.demo && <NavItem icon={Icon.plus} active={q.view === "add"} onClick={() => nav({ site: undefined, view: "add" })}>Ajouter un site</NavItem>}
+          </NavGroup>
+        </li>
+        {!me.demo && <li><NavItem icon={Icon.link} active={q.view === "modules" || q.view === "connections"} onClick={() => nav({ ...home, view: "modules" })}>Modules</NavItem></li>}
+        {!me.demo && <li><NavItem icon={Icon.bot} active={q.view === "agents"} onClick={() => nav({ ...home, view: "agents" })}>Agents</NavItem></li>}
+        <li><NavItem icon={Icon.gear} active={q.view === "settings" || q.view === "report"} onClick={() => nav({ ...home, view: "settings" })}>Réglages</NavItem></li>
+      </ul>
       <div className="mt-auto space-y-1 pt-6">
-        <NavItem icon={Icon.gear} active={q.view === "settings"} onClick={() => nav({ ...home, view: "settings" })}>Réglages</NavItem>
         <a href="https://github.com/Nadir-DNA/searchtide" target="_blank" rel="noreferrer" className="flex h-10 items-center gap-3 rounded-xl px-3 text-sm text-muted hover:text-ink"><Svg>{Icon.book}</Svg>Documentation</a>
         {!me.demo && <button onClick={() => api("/api/logout", { method: "POST" }).then(onLogout)} className="flex h-10 w-full items-center gap-3 rounded-xl px-3 text-sm text-muted hover:text-ink"><Svg>{Icon.out}</Svg>Déconnexion</button>}
         <div className="flex items-center justify-between rounded-2xl border border-border bg-surface px-3 py-2 text-sm">
@@ -175,24 +198,42 @@ function Shell({ me, onLogout }: { me: Me; onLogout: () => void }) {
           : q.view === "crm" ? <CrmView tab={q.tab ?? ""} go={go} q={q} />
           : q.view === "pubs" ? <PubsView q={q} go={go} />
           : q.view === "report" ? <ReportView />
-          : q.view === "settings" ? <SettingsView />
+          : q.view === "settings" ? <SettingsView go={go} />
           : q.view === "agents" ? <AgentsView />
+          : q.view === "modules" ? <ModulesView open={q.open} go={go} />
           : q.view === "connections" ? <ConnectionsView />
           : q.view === "start" ? <Onboarding go={go} />
-          : q.view === "portfolio" ? <PortfolioView days={days} go={go} />
-          : q.view === "project" && q.id ? <ProjectView key={q.id} id={q.id} days={days} go={go} />
+          : q.view === "projects" || q.view === "portfolio" ? <PortfolioView days={days} go={go} />
+          : q.view === "project" && q.id ? <ProjectView key={q.id} id={q.id} days={days} go={go} tab={q.tab ?? "vue"} me={me} onPinned={loadProjects} />
           : q.view === "newproject" ? <ManageProject project={null} onClose={() => go(home)} onSaved={(p) => { loadProjects(); if (p) go({ ...home, view: "project", id: p.id }); }} />
           : q.view === "add" ? <AddSite onAdded={(s) => { load(); go({ site: s.domain, tab: "setup", view: undefined }); }} />
           : site ? <SiteView key={site.id} site={site} me={me} days={days} tab={q.tab ?? "traffic"} go={go} onChange={load} />
+          : q.view === "page" ? (me.demo ? <Overview days={days} demo={me.demo} go={go} /> : !dash ? <KpiSkeleton /> : (() => {
+            const d = dash.dashboards.find((x) => x.id === q.id) || dash.dashboards[0];
+            return <DashboardView key={d.id} dash={d} catalog={dash.catalog} sizes={dash.sizes} days={days} go={go} onChanged={loadDash} />;
+          })())
           : !sites.length && !projects.length && !me.demo && !localStorage.getItem(SKIP_KEY) ? <Onboarding go={go} />
           : me.demo ? <Overview days={days} demo={me.demo} go={go} />
-          : !dash ? <KpiSkeleton />
-          : (() => {
-            const d = (q.view === "page" && dash.dashboards.find((x) => x.id === q.id)) || dash.dashboards[0];
-            return <DashboardView key={d.id} dash={d} catalog={dash.catalog} sizes={dash.sizes} days={days} go={go} onChanged={loadDash} />;
-          })()}
+          : <TodayView go={go} banner={!sites.length && !projects.length ? <p className="mb-4 text-sm text-muted">Démarrage pas terminé. <button onClick={() => go({ view: "start" })} className="text-ink underline">Reprendre le démarrage</button></p> : null} />}
       </div>
     </div>
+  );
+}
+
+/** Rubrique dépliante ; son état ouvert/fermé est retenu par navigateur. Repliée, ses favoris (pinned) restent visibles. */
+function NavGroup({ id, label, icon, active, pinned, children }: { id: string; label: string; icon: ReactNode; active: boolean; pinned?: ReactNode; children: ReactNode }) {
+  const key = `st-nav-${id}`;
+  const [open, setOpen] = useState(() => { try { const v = localStorage.getItem(key); return v ? v === "1" : active; } catch { return active; } });
+  const toggle = () => { const v = !open; setOpen(v); try { localStorage.setItem(key, v ? "1" : "0"); } catch { /* navigation privée */ } };
+  return (
+    <>
+      <button onClick={toggle} aria-expanded={open} className={`flex h-9 w-full items-center gap-3 rounded-lg px-3 text-left text-sm transition-colors ${active && !open ? "bg-active text-ink" : "text-muted hover:bg-raised hover:text-ink"}`}>
+        <Svg>{icon}</Svg><span className="flex-1">{label}</span>
+        <svg viewBox="0 0 16 16" className={`size-3.5 transition-transform ${open ? "rotate-90" : ""}`} aria-hidden><path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" strokeWidth="1.5" /></svg>
+      </button>
+      {pinned && !open && <div className="mt-1 pl-3">{pinned}</div>}
+      {open && <div className="mt-1 space-y-1 border-l border-rule pl-3 ml-5">{children}</div>}
+    </>
   );
 }
 
@@ -320,7 +361,8 @@ function AddSite({ onAdded }: { onAdded: (s: Site) => void }) {
 function SiteView({ site, me, days, tab, go, onChange }: {
   site: Site; me: Me; days: number; tab: string; go: (n: Record<string, string | undefined>) => void; onChange: () => void;
 }) {
-  const tabs = [["traffic", "Trafic"], ["search", "Recherche Google"], ["setup", "Installation"]] as const;
+  // L'onglet Recherche n'existe que si le module Google est actif et connecté (la démonstration le montre toujours)
+  const tabs = [["traffic", "Trafic"], ...(me.gsc || me.demo ? [["search", "Recherche Google"] as const] : []), ["setup", "Installation"]] as const;
   return (
     <>
       <Header title={site.domain} days={tab === "setup" ? undefined : days} go={go} demo={me.demo}
@@ -329,202 +371,9 @@ function SiteView({ site, me, days, tab, go, onChange }: {
         <Segmented label="Sections du site" value={tab as (typeof tabs)[number][0]} onChange={(v) => go({ tab: v === "traffic" ? undefined : v })} options={tabs} />
       </div>
       {tab === "search" ? <SearchView site={site} me={me} days={days} onChange={onChange} onSetup={() => go({ tab: "setup" })} />
-        : tab === "setup" ? <SetupView site={site} me={me} onChange={onChange} />
+        : tab === "setup" ? <SetupView site={site} me={me} onChange={onChange} go={go} />
         : <TrafficView site={site} days={days} onSetup={() => go({ tab: "setup" })} />}
     </>
   );
 }
 
-const regionNames = new Intl.DisplayNames(["fr"], { type: "region" });
-const countryName = (code: string) => { try { return regionNames.of(code) ?? code; } catch { return code; } };
-
-function TrafficView({ site, days, onSetup }: { site: Site; days: number; onSetup: () => void }) {
-  const { data: t, error, reload } = useData<Traffic>(`/api/sites/${site.id}/traffic?days=${days}`);
-  const [metric, setMetric] = useState<"visitors" | "pageviews">("visitors");
-  const [tech, setTech] = useState<"devices" | "browsers">("devices");
-  if (error) return <ErrorLine error={error} retry={reload} />;
-  if (!t) return <KpiSkeleton />;
-  if (!t.totals.pageviews && !t.previous.pageviews) {
-    return (
-      <EmptyBox>
-        Aucune visite sur cette période. Si vous venez d'ajouter le site, collez le script de suivi puis ouvrez une page du site.{" "}
-        <button onClick={onSetup} className="text-ink underline">Voir le script</button>
-      </EmptyBox>
-    );
-  }
-  const chart = fillDays(t.daily, t.range.from, t.range.to, (d) => d[metric]);
-  const metricName = metric === "visitors" ? "Visiteurs par jour" : "Pages vues";
-  return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <KpiCard label="Visites" hint="Visiteurs uniques de chaque jour, additionnés" value={fmt(t.totals.visitors)} delta={<Delta now={t.totals.visitors} before={t.previous.visitors} />} active={metric === "visitors"} onClick={() => setMetric("visitors")} />
-        <KpiCard label="Pages vues" value={fmt(t.totals.pageviews)} delta={<Delta now={t.totals.pageviews} before={t.previous.pageviews} />} active={metric === "pageviews"} onClick={() => setMetric("pageviews")} />
-        <KpiCard label="Pages par visiteur" value={t.totals.visitors ? fmt(t.totals.pageviews / t.totals.visitors, 1) : "—"} />
-        <KpiCard label="Venus d'assistants IA" value={fmt(t.totals.ai)} delta={<Delta now={t.totals.ai} before={t.previous.ai} />}
-          hint={t.totals.visitors ? `${fmt((t.totals.ai / t.totals.visitors) * 100)} % des visiteurs` : undefined} />
-      </div>
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-        <Card title={metricName} action={
-          <Segmented label="Série" value={metric} onChange={setMetric} options={[["visitors", "Visiteurs"], ["pageviews", "Pages vues"]] as const} />
-        }>
-          <BarChart label={metricName} days={chart.days} values={chart.values} />
-        </Card>
-        <Card title="Provenance">
-          <Donut total={t.totals.visitors} totalLabel="visiteurs" parts={t.channels.map((c) => ({ label: CHANNELS[c.key] ?? c.key, value: c.visitors }))} />
-        </Card>
-      </div>
-      <div className="grid gap-4 lg:grid-cols-3">
-        <Card title="Pages"><ShareList label="Page" rows={t.pages} empty="Aucune page vue sur cette période." /></Card>
-        <Card title="Sites référents"><ShareList label="Site" rows={t.referrers} empty="Aucun lien depuis un autre site sur cette période." /></Card>
-        <Card title="Assistants IA"><ShareList label="Assistant" rows={t.aiReferrers} empty="Personne n'est arrivé depuis ChatGPT, Perplexity, Claude ou Gemini sur cette période." /></Card>
-        <Card title="Pays"><ShareList label="Pays" rows={t.countries} map={countryName} empty="Pays inconnus : placez l'instance derrière Cloudflare pour les obtenir." /></Card>
-        <Card title="Appareils" action={<Segmented label="Détail" value={tech} onChange={setTech} options={[["devices", "Type"], ["browsers", "Navigateur"]] as const} />}>
-          <ShareList label={tech === "devices" ? "Appareil" : "Navigateur"} rows={t[tech]} empty="Aucune donnée." />
-        </Card>
-        <Card title="Campagnes"><ShareList label="utm_campaign" rows={t.campaigns} empty="Aucune visite avec un paramètre utm_campaign sur cette période." /></Card>
-      </div>
-    </div>
-  );
-}
-
-function SearchView({ site, me, days, onChange, onSetup }: { site: Site; me: Me; days: number; onChange: () => void; onSetup: () => void }) {
-  const linked = me.gsc && !!site.gsc_property;
-  const { data: s, error, reload } = useData<Search>(`/api/sites/${site.id}/search?days=${days}`);
-  const [metric, setMetric] = useState<"clicks" | "impressions">("clicks");
-  const [syncing, setSyncing] = useState(false);
-  const [syncError, setSyncError] = useState("");
-  async function sync() {
-    setSyncing(true); setSyncError("");
-    try { await api(`/api/sites/${site.id}/sync`, { method: "POST" }); reload(); onChange(); }
-    catch (e) { setSyncError((e as Error).message); }
-    setSyncing(false);
-  }
-  if (!linked) {
-    return (
-      <EmptyBox>
-        Ce site n'est pas encore relié à Google Search Console : c'est elle qui donne les mots-clés, les clics et la position de chaque page.{" "}
-        <button onClick={onSetup} className="text-ink underline">Relier Search Console</button>
-      </EmptyBox>
-    );
-  }
-  if (error) return <ErrorLine error={error} retry={reload} />;
-  if (!s) return <KpiSkeleton />;
-  // Google publie avec 2-3 jours de retard : l'axe s'arrête au dernier jour publié au lieu de tomber à zéro
-  const chart = fillDays(s.daily, s.range.from, s.daily.at(-1)?.day ?? s.range.to, (d) => d[metric]);
-  const buckets = [["Top 3", 0, 3.5], ["4 à 10", 3.5, 10.5], ["11 à 20", 10.5, 20.5], ["Au-delà", 20.5, Infinity]] as const;
-  const queryCols = (label: string) => [
-    { label, className: "w-1/2", render: (r: Search["queries"][number]) => r.query },
-    { label: "Clics", num: true, render: (r: Search["queries"][number]) => fmt(r.clicks) },
-    { label: "Impr.", num: true, render: (r: Search["queries"][number]) => fmt(r.impressions) },
-    { label: "Position", num: true, render: (r: Search["queries"][number]) => fmt(r.position, 1) },
-  ];
-  return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-3 text-sm text-muted">
-        <span className={`size-2 rounded-full ${site.sync_error ? "bg-negative" : "bg-accent"}`} aria-hidden />
-        <span>{site.synced_at ? `Importé le ${new Date(site.synced_at).toLocaleString("fr-FR", { dateStyle: "medium", timeStyle: "short" })}` : "Pas encore importé"} · Google publie avec 2 à 3 jours de retard</span>
-        {!me.demo && <Button variant="secondary" onClick={sync} disabled={syncing} className="ml-auto">{syncing ? "Import en cours…" : "Importer maintenant"}</Button>}
-      </div>
-      {(syncError || site.sync_error) && <p role="alert" className="text-sm text-negative">{syncError || site.sync_error}</p>}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <KpiCard label="Clics" value={fmt(s.totals.clicks)} delta={<Delta now={s.totals.clicks} before={s.previous.clicks} />} active={metric === "clicks"} onClick={() => setMetric("clicks")} />
-        <KpiCard label="Impressions" value={fmt(s.totals.impressions)} delta={<Delta now={s.totals.impressions} before={s.previous.impressions} />} active={metric === "impressions"} onClick={() => setMetric("impressions")} />
-        <KpiCard label="Taux de clic" value={s.totals.ctr != null ? `${fmt(s.totals.ctr, 1)} %` : "—"} />
-        <KpiCard label="Position moyenne" value={fmt(s.totals.position, 1)} delta={<Delta now={s.totals.position} before={s.previous.position} lowerIsBetter />} hint="Plus c'est bas, mieux c'est" />
-      </div>
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-        <Card title={metric === "clicks" ? "Clics" : "Impressions"} action={
-          <Segmented label="Série" value={metric} onChange={setMetric} options={[["clicks", "Clics"], ["impressions", "Impressions"]] as const} />
-        }>
-          <BarChart label={metric === "clicks" ? "Clics" : "Impressions"} days={chart.days} values={chart.values} />
-        </Card>
-        <Card title="Positions des mots-clés">
-          <Donut total={s.queries.length} totalLabel="mots-clés" parts={buckets.map(([label, lo, hi]) => ({ label, value: s.queries.filter((q) => q.position > lo && q.position <= hi).length })).filter((p) => p.value)} />
-        </Card>
-      </div>
-      <Card title="À travailler en priorité" action={<span className="text-sm text-muted">Position 4 à 20, déjà des impressions</span>}>
-        <Table rows={s.opportunities.slice(0, 8)} empty="Aucun mot-clé entre la 4e et la 20e position sur cette période." cols={queryCols("Mot-clé")} />
-      </Card>
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card title="Mots-clés"><Table rows={s.queries.slice(0, 8)} empty="Aucun mot-clé sur cette période." cols={queryCols("Mot-clé")} /></Card>
-        <Card title="Pages">
-          <Table rows={s.pages.slice(0, 8)} empty="Aucune page sur cette période." cols={[
-            { label: "Page", className: "w-1/2", render: (r) => r.page.replace(/^https?:\/\/[^/]+/, "") || "/" },
-            { label: "Clics", num: true, render: (r) => fmt(r.clicks) },
-            { label: "Impr.", num: true, render: (r) => fmt(r.impressions) },
-            { label: "Position", num: true, render: (r) => fmt(r.position, 1) },
-          ]} />
-        </Card>
-      </div>
-    </div>
-  );
-}
-
-function SettingCard({ title, sub, children }: { title: string; sub: ReactNode; children: ReactNode }) {
-  return (
-    <Card>
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:gap-10">
-        <div><h2 className="text-lg font-light">{title}</h2><p className="mt-1 text-sm text-muted">{sub}</p></div>
-        <div className="min-w-0">{children}</div>
-      </div>
-    </Card>
-  );
-}
-
-function Copyable({ text }: { text: string }) {
-  const [done, setDone] = useState(false);
-  return (
-    <div className="flex items-start gap-2">
-      <pre className="min-w-0 flex-1 overflow-x-auto rounded-xl border border-border bg-raised px-3 py-2.5 font-mono text-xs leading-5"><code>{text}</code></pre>
-      <Button variant="secondary" onClick={() => navigator.clipboard.writeText(text).then(() => { setDone(true); setTimeout(() => setDone(false), 1500); })}>
-        {done ? "Copié" : "Copier"}
-      </Button>
-    </div>
-  );
-}
-
-function SetupView({ site, me, onChange }: { site: Site; me: Me; onChange: () => void }) {
-  const [props, setProps] = useState<string[] | null>(null);
-  const [error, setError] = useState("");
-  useEffect(() => { if (me.gsc && !me.demo) api<string[]>("/api/gsc/properties").then(setProps).catch((e) => setError(e.message)); }, [me]);
-  async function link(gsc_property: string) {
-    await api(`/api/sites/${site.id}`, { method: "PATCH", json: { gsc_property } });
-    onChange();
-  }
-  async function remove() {
-    if (!confirm(`Supprimer ${site.domain} et toutes ses statistiques ? Cette action est définitive.`)) return;
-    await api(`/api/sites/${site.id}`, { method: "DELETE" });
-    location.search = "";
-  }
-  return (
-    <div className="space-y-4">
-      <SettingCard title="Script de suivi" sub={<>À coller dans le &lt;head&gt; de chaque page. Sans cookie : aucune bannière de consentement n'est nécessaire.</>}>
-        <Copyable text={`<script defer src="${location.origin}/script.js" data-site="${site.domain}"></script>`} />
-        <p className="mt-3 text-xs text-muted">Pour ne pas compter vos propres visites, ouvrez une fois <a className="text-ink underline" href={`https://${site.domain}/?searchtide=ignore`} target="_blank" rel="noreferrer">{site.domain}/?searchtide=ignore</a> sur chacun de vos appareils (<code className="font-mono">?searchtide=track</code> pour annuler).</p>
-        <p className="mt-3 text-xs text-muted">Pour compter une action : <code className="font-mono">searchtide("inscription")</code> en JavaScript, ou l'attribut <code className="font-mono">data-searchtide="clic-cta"</code> sur un bouton.</p>
-      </SettingCard>
-      <SettingCard title="Google Search Console" sub="Mots-clés, clics, impressions et position de chaque page. Importés automatiquement toutes les 6 heures.">
-        {!me.gsc ? (
-          <p className="text-sm">Non configuré sur cette instance : renseignez <code className="font-mono text-xs">GOOGLE_SERVICE_ACCOUNT_JSON</code> puis redémarrez (voir la documentation).</p>
-        ) : error ? <p role="alert" className="text-sm text-negative">{error}</p> : (
-          <label className="block text-sm">Propriété Search Console
-            <select className={`${inputCls} mt-2`} value={site.gsc_property ?? ""} disabled={me.demo} onChange={(e) => link(e.target.value)}>
-              <option value="">Non reliée</option>
-              {site.gsc_property && !props?.includes(site.gsc_property) && <option value={site.gsc_property}>{site.gsc_property}</option>}
-              {props?.map((p) => <option key={p} value={p}>{p}</option>)}
-            </select>
-            {props?.length === 0 && <span className="mt-2 block text-xs text-muted">Aucune propriété visible : ajoutez l'email du compte de service comme utilisateur du site dans Search Console.</span>}
-          </label>
-        )}
-      </SettingCard>
-      <SettingCard title="Agents IA" sub="Vos agents (Claude, Cursor…) lisent les statistiques par le serveur MCP de l'instance, avec la clé API_KEY.">
-        <Copyable text={`claude mcp add --transport http searchtide ${location.origin}/mcp --header "Authorization: Bearer VOTRE_CLE"`} />
-      </SettingCard>
-      {!me.demo && (
-        <SettingCard title="Supprimer le site" sub="Efface le site et toutes ses statistiques. Définitif.">
-          <button onClick={remove} className="h-9 rounded-full border border-negative/40 px-4 text-sm font-medium text-negative hover:bg-negative-bg">Supprimer {site.domain}</button>
-        </SettingCard>
-      )}
-    </div>
-  );
-}

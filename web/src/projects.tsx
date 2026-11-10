@@ -2,9 +2,10 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { api, type Overview as OverviewData, type Site } from "./api";
 import { ErrorLine, Header, KpiSkeleton, useData } from "./App";
-import { STAGES } from "./business";
+import { STAGES } from "./modules/shared";
 import { BarChart } from "./chart";
 import { SourcesCard } from "./sources";
+import { ProjectTabBar, ProjectTabBody } from "./projects/ProjectTabs";
 import { useCatalog } from "./connections";
 import { Button, Card, Delta, EmptyBox, KpiCard, Pill, Table, fmt, inputCls } from "./ui";
 
@@ -16,7 +17,7 @@ export type Indicator = {
 };
 export type Project = {
   id: string; name: string; color: string | null; url: string | null; sites: string[]; crm_key: string | null; indicators: Indicator[];
-  funnel: { id: string; label: string; value: number | null; rate: number | null }[];
+  funnel: { id: string; label: string; value: number | null; rate: number | null }[]; pinned?: boolean;
 };
 type Go = (n: Record<string, string | undefined>) => void;
 
@@ -64,7 +65,7 @@ export function ProjectCards({ days, go }: { days: number; go: Go }) {
 }
 
 // ── Page d'un projet ──
-export function ProjectView({ id, days, go }: { id: string; days: number; go: Go }) {
+export function ProjectView({ id, days, go, tab = "vue", me = { gsc: false, demo: false }, onPinned }: { id: string; days: number; go: Go; tab?: string; me?: { gsc: boolean; demo: boolean }; onPinned?: () => void }) {
   const { data: p, error, reload } = useData<Project>(`/api/projects/${id}?days=${days}`);
   const [selected, setSelected] = useState<string | null>(null);
   const [manage, setManage] = useState(false);
@@ -77,8 +78,13 @@ export function ProjectView({ id, days, go }: { id: string; days: number; go: Go
     <>
       <Header title={<span className="flex items-center gap-3"><span className="size-3 rounded-full" style={{ background: p.color ?? "var(--color-accent)" }} aria-hidden />{p.name}</span>}
         sub={p.url ? <a href={p.url} target="_blank" rel="noreferrer" className="hover:text-ink">{p.url.replace(/^https?:\/\//, "")} ↗</a> : undefined} days={days} go={go}>
+        <Button variant="secondary" aria-pressed={!!p.pinned} onClick={async () => { await api(`/api/projects/${p.id}`, { method: "PATCH", json: { pinned: !p.pinned } }); reload(); onPinned?.(); }}>
+          {p.pinned ? "★ Épinglé" : "☆ Épingler"}
+        </Button>
         <Button variant="secondary" onClick={() => setManage(true)}>Gérer le projet</Button>
       </Header>
+      <ProjectTabBar project={p} tab={tab} go={go} />
+      {tab !== "vue" ? <ProjectTabBody project={p} tab={tab} days={days} go={go} me={me} onChanged={reload} /> :
       <div className="space-y-4">
         {p.indicators.length ? (
           <>
@@ -96,6 +102,7 @@ export function ProjectView({ id, days, go }: { id: string; days: number; go: Go
                   : <EmptyBox>{current.last_error ? `Le relevé a échoué : ${current.last_error}` : current.source === "manual" ? "Aucune valeur saisie sur la période." : "Pas encore de données sur la période."}</EmptyBox>}
               </Card>
             )}
+            <Milestones projectId={p.id} key={notes?.length ?? 0} />
             <AddNote projectId={p.id} onAdded={reloadNotes} count={notes?.length ?? 0} />
           </>
         ) : <EmptyBox>Aucun indicateur. <button onClick={() => setManage(true)} className="text-ink underline">Ajouter le premier</button></EmptyBox>}
@@ -110,7 +117,7 @@ export function ProjectView({ id, days, go }: { id: string; days: number; go: Go
           <ProjectSites project={p} days={days} go={go} />
           <ProjectCrm project={p} go={go} />
         </div>
-      </div>
+      </div>}
       {manage && <ManageProject project={p} onClose={() => setManage(false)} onSaved={reload} onDeleted={() => go({ view: undefined, id: undefined })} />}
     </>
   );
@@ -156,18 +163,35 @@ function Funnel({ steps, days }: { steps: Project["funnel"]; days: number }) {
   );
 }
 
+/** Jalons des 30 prochains jours avec le nombre de jours restants. */
+function Milestones({ projectId }: { projectId: string }) {
+  const { data } = useData<{ id: string; day: string; label: string; daysLeft: number }[]>(`/api/milestones?project=${projectId}&days=30`);
+  if (!data?.length) return null;
+  return (
+    <ul aria-label="Jalons à venir" className="flex flex-wrap gap-2">
+      {data.map((m) => (
+        <li key={m.id} className={`rounded-full border px-3 py-1 text-sm ${m.daysLeft <= 7 ? "border-accent" : "border-border"}`}>
+          <span className="num font-medium">{m.daysLeft === 0 ? "Aujourd'hui" : `J-${m.daysLeft}`}</span> · {m.label}
+          <span className="ml-1.5 text-xs text-muted">{new Date(m.day).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function AddNote({ projectId, onAdded, count }: { projectId: string; onAdded: () => void; count: number }) {
   const [open, setOpen] = useState(false);
   async function add(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const f = Object.fromEntries(new FormData(e.currentTarget));
-    await api("/api/annotations", { method: "POST", json: { ...f, project_id: projectId } });
+    await api("/api/annotations", { method: "POST", json: { ...f, milestone: f.milestone === "on", project_id: projectId } });
     setOpen(false); onAdded();
   }
   return open ? (
     <form onSubmit={add} className="flex flex-wrap items-center gap-2 text-sm">
       <input name="day" type="date" required defaultValue={new Date().toISOString().slice(0, 10)} className={`${inputCls.replace("h-10 w-full", "h-9")} w-40`} aria-label="Date" />
-      <input name="label" required placeholder="Ex. nouvelle page d'accueil en ligne" className={`${inputCls.replace("h-10 w-full", "h-9")} min-w-0 flex-1`} aria-label="Repère" />
+      <input name="label" required placeholder="Ex. lancement de la version 2" className={`${inputCls.replace("h-10 w-full", "h-9")} min-w-0 flex-1`} aria-label="Repère" />
+      <label className="flex items-center gap-1.5 text-muted"><input type="checkbox" name="milestone" className="size-4" />Jalon (compte à rebours)</label>
       <Button variant="secondary">Ajouter</Button>
       <button type="button" onClick={() => setOpen(false)} className="text-muted hover:text-ink">Annuler</button>
     </form>

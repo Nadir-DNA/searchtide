@@ -1,5 +1,7 @@
 // Vue d'ensemble multi-projets : une ligne par projet (trafic, Google, argent, contacts, objectifs) et ce qui demande une action.
 import type { Hono } from "hono";
+import { isEnabled } from "./modules/state.ts";
+import { jobAlerts } from "./jobs.ts";
 import { db, localDay } from "./db.ts";
 import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
@@ -108,7 +110,7 @@ export function portfolio(r: Range, weights: Weights = getWeights()) {
   if (loose.length) projects.push({ id: "", name: "Autres sites", color: null, url: null, sites: loose.map((s) => s.domain), crm_key: null, indicators: [], funnel: [] });
 
   const daily = new Map<string, Row>();
-  const alerts: { tone: "bad" | "warn" | "info"; project: string | null; text: string; to: Record<string, string> }[] = [];
+  const alerts: { tone: "bad" | "warn" | "info"; kind?: "objectif"; project: string | null; text: string; to: Record<string, string> }[] = [];
   const rows = projects.map((x) => {
     const ss = (x.sites as string[]).map((d) => byDomain.get(d)).filter(Boolean) as Row[];
     const ids = ss.map((s) => s.id);
@@ -136,7 +138,7 @@ export function portfolio(r: Range, weights: Weights = getWeights()) {
       if (silent == null || silent >= 3) alerts.push({ tone: "warn", project: x.id, text: silent == null ? `${s.domain} · aucune visite reçue : script de suivi absent ?` : `${s.domain} · aucune visite depuis ${silent} jours`, to: { site: s.domain, tab: "setup" } });
     }
     if (before.visitors >= 20 && now.visitors < before.visitors * 0.7) alerts.push({ tone: "warn", project: x.id, text: `${x.name} · visites en baisse de ${Math.round((1 - now.visitors / before.visitors) * 100)} %`, to });
-    for (const g of goals) if (g.projection < g.target && g.elapsed / g.total >= 0.5) alerts.push({ tone: "warn", project: x.id, text: `${x.name} · objectif « ${g.label} » en retard (${g.pct} %)`, to });
+    for (const g of goals) if (g.projection < g.target && g.elapsed / g.total >= 0.5) alerts.push({ tone: "warn", kind: "objectif", project: x.id, text: `${x.name} · objectif « ${g.label} » en retard (${g.pct} %)`, to });
 
     // Score de santé (04-produit §6) : tendance, objectifs, fiabilité des données, conversion, action
     const days = (d: string | null) => (d ? Math.round((Date.parse(today) - Date.parse(d)) / 86400000) : null);
@@ -191,9 +193,13 @@ export function portfolio(r: Range, weights: Weights = getWeights()) {
     };
   });
   const sum = (k: keyof (typeof rows)[number]) => rows.reduce((n, x) => n + (x[k] as number), 0);
+  const search = isEnabled("google") && rows.some((x) => x.hasSearch);
+  const withRevenue = rows.some((x) => x.measures.revenue || x.hasMoney);
+  const crm = isEnabled("crm");
   const todo = (db.prepare("SELECT COUNT(*) AS n FROM contacts WHERE next_at <= ? AND opt_out = 0 AND stage NOT IN ('won', 'lost')").get(today) as Row).n;
-  if (todo) alerts.unshift({ tone: "info", project: null, text: `${todo} relance${todo > 1 ? "s" : ""} à faire aujourd'hui`, to: { view: "crm", tab: "todo" } });
+  // Les relances ne sont plus une alerte : le module CRM les propose comme action dans le fil « Aujourd'hui » (today.ts)
   const pubs = all("SELECT id, title, project, network, status FROM publications WHERE day = ? ORDER BY title", today);
+  alerts.push(...jobAlerts());
   for (const x of pubs.filter((x) => x.status !== "published")) alerts.push({ tone: "info", project: null, text: `À publier aujourd'hui · ${x.title}${x.network ? ` (${x.network})` : ""}`, to: { view: "pubs" } });
 
   // Colonnes proposées : les mesures présentes dans au moins un projet, dans l'ordre du dictionnaire
@@ -201,8 +207,11 @@ export function portfolio(r: Range, weights: Weights = getWeights()) {
   return {
     range: r, today, columns,
     totals: {
-      visitors: sum("visitors"), visitorsPrev: sum("visitorsPrev"), clicks: sum("clicks"), clicksPrev: sum("clicksPrev"),
-      revenue: sum("revenue"), revenuePrev: sum("revenuePrev"), mrr: sum("mrr"), leads: sum("leads"), leadsPrev: sum("leadsPrev"), open: sum("open"), todo,
+      visitors: sum("visitors"), visitorsPrev: sum("visitorsPrev"),
+      // null = aucune source active pour cette mesure : l'interface affiche « — », jamais 0
+      clicks: search ? sum("clicks") : null, clicksPrev: search ? sum("clicksPrev") : null,
+      revenue: withRevenue ? sum("revenue") : null, revenuePrev: withRevenue ? sum("revenuePrev") : null, mrr: withRevenue ? sum("mrr") : null,
+      leads: crm ? sum("leads") : null, leadsPrev: crm ? sum("leadsPrev") : null, open: crm ? sum("open") : null, todo: crm ? todo : null,
     },
     projects: rows,
     daily: [...daily.values()].sort((a, b) => a.day.localeCompare(b.day)),

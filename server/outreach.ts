@@ -2,6 +2,7 @@
 // Garde-fous : jamais d'envoi à un contact « ne plus contacter », lien de désinscription dans chaque message,
 // plafond quotidien, envois automatiques en semaine de 9 h à 18 h (heure de Paris).
 import type { Hono } from "hono";
+import { registerJob } from "./jobs.ts";
 import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { mailSetup } from "./connectors/channels.ts";
 import { z } from "zod";
@@ -172,5 +173,5 @@ export function registerOutreach(app: Hono) {
   });
   app.get("/api/contacts/:id/enrollments", (c) => c.json(db.prepare("SELECT e.*, s.name FROM enrollments e JOIN sequences s ON s.id = e.sequence_id WHERE contact_id = ?").all(c.req.param("id"))));
 
-  setInterval(() => { if (mailReady()) void runSequences().catch((e) => console.error("[séquences]", e.message)); }, 30 * 60 * 1000).unref();
+  registerJob("prospection", { id: "sequences", every: "30m", run: async () => { if (mailReady()) await runSequences(); } });
 }

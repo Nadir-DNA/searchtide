@@ -63,7 +63,35 @@ function HealthWeights() {
   );
 }
 
-export function SettingsView() {
+type Job = { id: string; module: string; every: string; last_run: number | null; duration_ms: number | null; ok: number | null; error: string | null; fails: number };
+const JOB_LABEL: Record<string, string> = {
+  "gsc-sync": "Import Search Console", indicators: "Relevé des indicateurs", backup: "Sauvegarde locale", "offsite-backup": "Sauvegarde externe",
+  alerts: "Alertes", "weekly-report": "Rapport hebdomadaire", sequences: "Séquences de relance",
+};
+const EVERY: Record<string, string> = { "30m": "toutes les 30 min", "3h": "toutes les 3 h", "6h": "toutes les 6 h", "daily@02:00": "chaque nuit, 2 h UTC", "daily@02:30": "chaque nuit, 2 h 30 UTC" };
+
+/** Tâches de fond : dernière exécution et erreur de chacune (alerte dans « À traiter » après 3 échecs de suite). */
+function JobsCard() {
+  const { data } = useData<Job[]>("/api/jobs");
+  return (
+    <Card title="Tâches de fond">
+      {!data?.length ? <EmptyBox>Aucune tâche pour l'instant.</EmptyBox> : (
+        <ul className="divide-y divide-rule">
+          {data.map((j) => (
+            <li key={j.id} className="flex min-h-11 flex-wrap items-center gap-x-3 gap-y-1 py-2 text-sm">
+              <span className="min-w-0 flex-1">{JOB_LABEL[j.id] ?? j.id}<span className="ml-2 text-xs text-muted">{EVERY[j.every] ?? j.every}</span></span>
+              <span className="num text-xs text-muted">{j.last_run ? when(j.last_run) : "pas encore lancée"}</span>
+              {j.ok == null ? <Pill>En attente</Pill> : j.ok ? <Pill tone="positive">OK</Pill> : <Pill tone="negative">{j.fails > 1 ? `${j.fails} échecs` : "Échec"}</Pill>}
+              {!j.ok && j.error && <p className="w-full text-xs text-negative">{j.error}</p>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  );
+}
+
+export function SettingsView({ go }: { go?: (n: Record<string, string | undefined>) => void } = {}) {
   const { data: o, error, reload } = useData<Ops>("/api/ops");
   const { data: auth } = useData<{ totp: boolean }>("/api/auth-config");
   const [msg, setMsg] = useState<Record<string, string>>({});
@@ -116,6 +144,11 @@ export function SettingsView() {
           <p className="mt-2 text-sm text-muted">Dernière copie externe : {o.backups.offsite ? `${when(o.backups.offsite.at)} · ${Math.round(o.backups.offsite.bytes / 1024)} Ko` : "aucune pour l'instant"}</p>
           <p className="mt-1 text-sm text-muted">Copies locales : {o.backups.local.length ? o.backups.local.join(", ") : "aucune pour l'instant"}</p>
           <div className="mt-4 flex items-center gap-3"><Button variant="secondary" onClick={() => run("backup", "/api/ops/backup", "Sauvegarde envoyée")}>Sauvegarder maintenant</Button><span className="text-sm text-muted">{msg.backup}</span></div>
+        </Card>
+        <div className="lg:col-span-2"><JobsCard /></div>
+        <Card title="Rapport hebdomadaire">
+          <p className="text-sm">Chaque lundi à 8 h, le point de la semaine par e-mail (module Notifications).</p>
+          {go && <div className="mt-4"><Button variant="secondary" onClick={() => go({ view: "report" })}>Voir le rapport de la semaine</Button></div>}
         </Card>
         <Card title="Sécurité">
           <ul className="space-y-2 text-sm">

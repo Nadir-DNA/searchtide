@@ -1,5 +1,6 @@
 // Exploitation : notifications (téléphone via ntfy, e-mail), sauvegarde hors du PC, alertes sur les chiffres.
 import type { Hono } from "hono";
+import { registerJob } from "./jobs.ts";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { mailSetup, ntfySetup } from "./connectors/channels.ts";
@@ -94,13 +95,9 @@ export function registerOps(app: Hono) {
   app.post("/api/ops/test-notification", async (c) => { await notify("Test du tableau de bord", "Les notifications fonctionnent."); return c.json({ ok: true }); });
 
   // Sauvegarde externe vers 2 h 30 UTC, alertes toutes les 30 min
-  let lastOffsite = "";
-  setInterval(() => {
-    const d = new Date();
-    if (d.getUTCHours() === 2 && d.getUTCMinutes() >= 30 && lastOffsite !== d.toISOString().slice(0, 10)) {
-      lastOffsite = d.toISOString().slice(0, 10);
-      offsiteBackup().catch((e) => notify("Sauvegarde externe en échec", (e as Error).message, "high"));
-    }
-  }, 10 * 60 * 1000).unref();
-  setInterval(() => void checkAlerts().catch((e) => console.error("[alertes]", e.message)), 30 * 60 * 1000).unref();
+  registerJob("projets", { id: "offsite-backup", every: "daily@02:30", run: async () => {
+    if (!process.env.BACKUP_URL || !process.env.BACKUP_TOKEN) return; // pas de sauvegarde externe configurée : rien à faire
+    try { await offsiteBackup(); } catch (e) { await notify("Sauvegarde externe en échec", (e as Error).message, "high"); throw e; }
+  } });
+  registerJob("notifications", { id: "alerts", every: "30m", run: async () => { await checkAlerts(); } });
 }

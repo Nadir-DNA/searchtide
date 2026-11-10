@@ -9,6 +9,8 @@ import { db } from "./db.ts";
 
 const SEED = `import { saveProject, saveIndicator, record } from "@server/projects.ts";
 import { createConnection } from "@server/connections.ts";
+import { setEnabled } from "@server/modules/state.ts";
+setEnabled("crm", true); setEnabled("publications", true);
 const p = saveProject(null, { name: "Projet MCP", sites: [] });
 const i = saveIndicator(null, p.id, { label: "Inscriptions", mode: "daily", source: "manual", config: {} });
 record(i.id, new Date().toISOString().slice(0, 10), 42);

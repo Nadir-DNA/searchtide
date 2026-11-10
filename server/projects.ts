@@ -2,12 +2,16 @@
 // relevés chaque jour depuis leur source (base Postgres, Stripe, adresse web, site suivi ou saisie à la main).
 // Les secrets ne sont jamais en base : un indicateur nomme la variable d'environnement qui les contient.
 import type { Hono } from "hono";
+import { registerJob } from "./jobs.ts";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/server";
 import { db, localDay } from "./db.ts";
 import { lastDays, previous, type Range } from "./stats.ts";
 import { migrate } from "./migrations.ts";
+import { hiddenIndicators, indicatorModule, isEnabled, setEnabled, setProjectModule } from "./modules/state.ts";
+import { isAdmin } from "./admin.ts";
+import { getModule } from "./modules/index.ts";
 import { collectVia, currentCtx } from "./connectors/use.ts";
 import { connections } from "./connections.ts";
 import { stripeMetric } from "./connectors/stripe.ts";
@@ -62,6 +66,9 @@ CREATE TABLE annotations (
 CREATE INDEX annotations_day ON annotations(day);
 `);
 
+migrate("2026-11-10-favoris", "ALTER TABLE projects ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0");
+migrate("2026-11-10-jalons", "ALTER TABLE annotations ADD COLUMN milestone INTEGER NOT NULL DEFAULT 0; ALTER TABLE annotations ADD COLUMN source TEXT NOT NULL DEFAULT 'manuel';");
+
 type Row = Record<string, any>;
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 const day = (t: number) => new Date(t).toISOString().slice(0, 10);
@@ -77,17 +84,20 @@ const configs = {
   supabase: z.object({ metric: z.enum(["users_total", "signups_on", "signed_in", "db_size_bytes"]), days: z.number().int().min(1).max(365).optional() }),
   stripe: z.object({ env: envName.optional(), connection_id: z.string().optional(), metric: z.enum(["revenue", "new_customers", "active_subscriptions", "mrr"]), account: z.string().regex(/^acct_\w+$/).optional() }),
   http: z.object({ url: z.string().url(), path: z.string().max(200).default(""), env: envName.optional(), connection_id: z.string().optional() }),
-  site: z.object({ domain: z.string(), metric: z.enum(["visitors", "pageviews", "clicks", "impressions"]) }),
+  site: z.object({ domain: z.string(), metric: z.enum(["visitors", "pageviews", "clicks", "impressions", "ai_visitors", "event"]), event: z.string().min(1).max(80).optional() })
+    .refine((c) => c.metric !== "event" || c.event, "Nom de l'événement requis"),
   manual: z.object({ role: z.enum(["revenue", "contacts"]).optional() }),
   pagespeed: z.object({ url: z.string().url(), metric: z.enum(["performance", "seo", "lcp", "cls"]), strategy: z.enum(["mobile", "desktop"]).default("mobile"), env: envName.optional(), connection_id: z.string().optional() }),
   play: z.object({ env: envName.optional(), connection_id: z.string().optional(), package: z.string().regex(/^[a-z][a-z0-9_.]+$/), metric: z.enum(["daily_installs", "active_installs", "rating"]) }),
+  // KPI calculé : premier terme, puis chaque terme appliqué par son opération, le tout multiplié par scale (100 pour un %)
+  formula: z.object({ terms: z.array(z.object({ indicator: z.string().min(1), op: z.enum(["+", "-", "*", "/"]) })).min(2).max(6), scale: z.number().finite().positive().optional() }),
 };
 export type Source = keyof typeof configs;
 const indicatorFields = z.object({
   label: z.string().trim().min(1).max(100),
   unit: z.string().trim().max(10).nullish().transform((v) => v || null),
   mode: z.enum(["daily", "total"]),
-  source: z.enum(["pg", "supabase", "stripe", "http", "site", "manual", "pagespeed", "play"]),
+  source: z.enum(["pg", "supabase", "stripe", "http", "site", "manual", "pagespeed", "play", "formula"]),
   config: z.record(z.string(), z.unknown()).default({}),
   position: z.number().int().default(0),
   goal: z.number().finite().positive().nullish().transform((v) => v ?? null),
@@ -104,10 +114,11 @@ const projectFields = z.object({
   crm_key: z.string().trim().max(50).nullish().transform((v) => v || null),
   position: z.number().int().default(0),
   funnel: z.array(z.string()).max(8).default([]),   // indicateurs dans l'ordre de l'entonnoir
+  pinned: z.boolean().default(false),               // favori : toujours visible dans le menu
 });
 
 const decodeInd = (r: Row): Row => ({ ...r, config: JSON.parse(r.config) });
-const decodeProj = (r: Row): Row => ({ ...r, sites: JSON.parse(r.sites), funnel: JSON.parse(r.funnel ?? "[]") });
+const decodeProj = (r: Row): Row => ({ ...r, sites: JSON.parse(r.sites), funnel: JSON.parse(r.funnel ?? "[]"), pinned: !!r.pinned });
 const getInd = (id: string) => { const r = db.prepare("SELECT * FROM indicators WHERE id = ?").get(id) as Row | undefined; return r && decodeInd(r); };
 
 // ── Connecteurs ──
@@ -165,6 +176,10 @@ function siteSeries(c: z.infer<typeof configs.site>, r: Range): Record<string, n
   if (!s) return {};
   const rows = c.metric === "visitors" || c.metric === "pageviews"
     ? db.prepare(`SELECT day, ${c.metric === "visitors" ? "COUNT(DISTINCT visitor)" : "COUNT(*)"} AS v FROM events WHERE site_id = ? AND type = 'pageview' AND day BETWEEN ? AND ? GROUP BY day`).all(s.id, r.from, r.to)
+    : c.metric === "ai_visitors"
+    ? db.prepare("SELECT day, COUNT(DISTINCT visitor) AS v FROM events WHERE site_id = ? AND type = 'pageview' AND channel = 'ai' AND day BETWEEN ? AND ? GROUP BY day").all(s.id, r.from, r.to)
+    : c.metric === "event"
+    ? db.prepare("SELECT day, COUNT(*) AS v FROM events WHERE site_id = ? AND type = 'event' AND name = ? AND day BETWEEN ? AND ? GROUP BY day").all(s.id, c.event!, r.from, r.to)
     : db.prepare(`SELECT day, SUM(${c.metric}) AS v FROM gsc_rows WHERE site_id = ? AND query = '' AND page = '' AND day BETWEEN ? AND ? GROUP BY day`).all(s.id, r.from, r.to);
   return Object.fromEntries((rows as Row[]).map((x) => [x.day, x.v]));
 }
@@ -180,6 +195,7 @@ export async function measure(ind: Row, d = localDay()) {
     case "site": return siteSeries(configs.site.parse(ind.config), { from: d, to: d })[d] ?? 0;
     case "pagespeed": return pagespeedValue(configs.pagespeed.parse(ind.config));
     case "play": return playValue(configs.play.parse(ind.config), at);
+    case "formula": { const v = formulaSeries(configs.formula.parse(ind.config), ind.project_id, { from: d, to: d })[d]; if (v == null) throw new Error("Pas de valeur calculable ce jour-là"); return v; }
     default: throw new Error("Indicateur saisi à la main : rien à relever");
   }
 }
@@ -191,7 +207,7 @@ export function record(id: string, d: string, value: number) { upsert.run(id, d,
 
 /** Relève un indicateur : hier et aujourd'hui pour un chiffre journalier (ou `backfill` jours), aujourd'hui pour un niveau. */
 export async function collect(ind: Row, backfill = 0) {
-  if (ind.source === "manual" || ind.source === "site") return { values: 0 };
+  if (ind.source === "manual" || ind.source === "site" || ind.source === "formula") return { values: 0 };
   const today = localDay();
   const targets = canBackfill(ind) ? days({ from: day(Date.now() - Math.max(backfill, 1) * 86400000), to: today }) : [today];
   let values = 0;
@@ -205,15 +221,72 @@ export async function collect(ind: Row, backfill = 0) {
   return { values };
 }
 export async function collectAll() {
-  for (const r of db.prepare("SELECT * FROM indicators WHERE source NOT IN ('manual', 'site')").all() as Row[]) {
+  for (const r of db.prepare("SELECT * FROM indicators WHERE source NOT IN ('manual', 'site', 'formula')").all() as Row[]) {
     // PageSpeed et Google Play changent au plus une fois par jour : inutile d'interroger plus souvent
     if ((r.source === "pagespeed" || r.source === "play") && r.last_run && !r.last_error && Date.now() - r.last_run < 20 * 3600 * 1000) continue;
     await collect(decodeInd(r)).catch((e) => console.error(`[indicateurs] ${r.label} :`, e.message));
   }
 }
 
+// ── KPI calculés ──
+export type Formula = { terms: { indicator: string; op: "+" | "-" | "*" | "/" }[]; scale?: number };
+function checkTerms(f: Formula, projectId: string, self: string) {
+  for (const t of f.terms) {
+    const o = db.prepare("SELECT project_id, source FROM indicators WHERE id = ?").get(t.indicator) as Row | undefined;
+    if (!o) throw new Error(`Indicateur « ${t.indicator} » introuvable`);
+    if (o.project_id !== projectId) throw new Error("Une formule ne peut citer qu'un indicateur de son projet, pas d'un autre projet.");
+    if (o.source === "formula" || t.indicator === self) throw new Error("Une formule ne peut pas citer une autre formule.");
+  }
+}
+const apply = (terms: Formula["terms"], vals: (number | null)[], scale = 1): number | null => {
+  let acc = vals[0];
+  for (let i = 1; i < terms.length && acc != null; i++) {
+    const v = vals[i];
+    if (v == null) return null;
+    const op = terms[i].op;
+    if (op === "/" && v === 0) return null;
+    acc = op === "+" ? acc + v : op === "-" ? acc - v : op === "*" ? acc * v : acc / v;
+  }
+  return acc == null ? null : Math.round(acc * scale * 10000) / 10000;
+};
+/** Opérandes d'une formule ; null et le nom de l'indicateur manquant si l'un a disparu. */
+function operands(f: Formula): { rows: Row[]; missing: string | null } {
+  const rows: Row[] = [];
+  for (const t of f.terms) {
+    const r = db.prepare("SELECT * FROM indicators WHERE id = ?").get(t.indicator) as Row | undefined;
+    if (!r) return { rows: [], missing: t.indicator };
+    rows.push(decodeInd(r));
+  }
+  return { rows, missing: null };
+}
+const storedSeries = (ind: Row, span: Range): Record<string, number> => ind.source === "site" ? siteSeries(ind.config, span)
+  : Object.fromEntries((db.prepare("SELECT day, value FROM metrics WHERE indicator_id = ? AND day BETWEEN ? AND ?").all(ind.id, span.from, span.to) as Row[]).map((x) => [x.day, x.value]));
+
+/** Valeur jour par jour : un terme sans valeur ce jour-là, ou une division par zéro, donne null. */
+export function formulaSeries(cfg: Formula, _projectId: string, r: Range): Record<string, number | null> {
+  const { rows, missing } = operands(cfg);
+  if (missing) return Object.fromEntries(days(r).map((d) => [d, null]));
+  const series = rows.map((o) => storedSeries(o, r));
+  return Object.fromEntries(days(r).map((d) => [d, apply(cfg.terms, series.map((x) => x[d] ?? null), cfg.scale)]));
+}
+
+function formulaView(ind: Row, r: Range): ReturnType<typeof plainView> {
+  const cfg = ind.config as Formula;
+  const { rows, missing } = operands(cfg);
+  const error = missing ? `Indicateur « ${missing} » introuvable` : null;
+  if (error !== (ind.last_error ?? null)) db.prepare("UPDATE indicators SET last_error = ? WHERE id = ?").run(error, ind.id);
+  const s = formulaSeries(cfg, ind.project_id, r);
+  // Sur une période, la formule s'applique aux valeurs de période de chaque terme (5 inscriptions / 150 visites), pas à la somme des jours
+  const period = (rr: Range): number | null => missing ? null : apply(cfg.terms, rows.map((o) => indicatorView(o, rr).value), cfg.scale);
+  return { id: ind.id, label: ind.label, unit: ind.unit, mode: ind.mode, source: ind.source, config: ind.config, position: ind.position,
+    last_run: ind.last_run, last_error: error, value: period(r), previous: period(previous(r)), series: days(r).map((d) => ({ day: d, value: s[d] ?? null })), goal: null };
+}
+
 // ── Lecture : valeur sur la période, période précédente et série pour les courbes ──
-export function indicatorView(ind: Row, r: Range) {
+export function indicatorView(ind: Row, r: Range): ReturnType<typeof plainView> {
+  return ind.source === "formula" ? formulaView(ind, r) : plainView(ind, r);
+}
+function plainView(ind: Row, r: Range) {
   const p = previous(r);
   const span = { from: p.from, to: r.to };
   const stored = ind.source === "site" ? siteSeries(ind.config, span)
@@ -254,7 +327,9 @@ export function goalProgress(ind: Row, now = new Date()) {
 export function listProjects(r: Range): Row[] {
   return (db.prepare("SELECT * FROM projects ORDER BY position, name").all() as Row[]).map((p) => {
     const proj = decodeProj(p);
-    const indicators = (db.prepare("SELECT * FROM indicators WHERE project_id = ? ORDER BY position, created_at").all(p.id) as Row[]).map((i) => indicatorView(decodeInd(i), r));
+    const hidden = hiddenIndicators(p.id); // module retiré du projet : masqué, jamais supprimé
+    const indicators = (db.prepare("SELECT * FROM indicators WHERE project_id = ? ORDER BY position, created_at").all(p.id) as Row[])
+      .filter((i) => !hidden.has(i.id)).map((i) => indicatorView(decodeInd(i), r));
     // Entonnoir : chaque étape avec son taux de passage depuis l'étape précédente
     const steps = (proj.funnel as string[]).map((id) => indicators.find((i) => i.id === id)).filter(Boolean) as Row[];
     const funnel = steps.map((s, k) => ({ id: s.id, label: s.label, value: s.value,
@@ -271,29 +346,50 @@ export function saveProject(id: string | null, input: unknown) {
   if (id && !cur) return null;
   const v = projectFields.parse({ ...(cur && decodeProj(cur)), ...(input as Row) });
   const pid = id ?? randomUUID();
-  db.prepare(`INSERT INTO projects (id, name, color, url, sites, crm_key, position, funnel, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(id) DO UPDATE SET name = excluded.name, color = excluded.color, url = excluded.url, sites = excluded.sites, crm_key = excluded.crm_key, position = excluded.position, funnel = excluded.funnel`)
-    .run(pid, v.name, v.color, v.url, JSON.stringify(v.sites), v.crm_key, v.position, JSON.stringify(v.funnel), cur?.created_at ?? Date.now());
+  db.prepare(`INSERT INTO projects (id, name, color, url, sites, crm_key, position, funnel, pinned, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET name = excluded.name, color = excluded.color, url = excluded.url, sites = excluded.sites, crm_key = excluded.crm_key, position = excluded.position, funnel = excluded.funnel, pinned = excluded.pinned`)
+    .run(pid, v.name, v.color, v.url, JSON.stringify(v.sites), v.crm_key, v.position, JSON.stringify(v.funnel), v.pinned ? 1 : 0, cur?.created_at ?? Date.now());
   return decodeProj(db.prepare("SELECT * FROM projects WHERE id = ?").get(pid) as Row);
 }
-export function saveIndicator(id: string | null, projectId: string | null, input: unknown) {
+export function saveIndicator(id: string | null, projectId: string | null, input: unknown, admin = true) {
   const cur = id ? getInd(id) : undefined;
   if (id && !cur) return null;
   const v = indicatorFields.parse({ ...cur, ...(input as Row) });
   const iid = id ?? randomUUID();
+  if (v.source === "formula") checkTerms(v.config as Formula, cur?.project_id ?? projectId!, iid);
   db.prepare(`INSERT INTO indicators (id, project_id, label, unit, mode, source, config, position, goal, goal_period, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET label = excluded.label, unit = excluded.unit, mode = excluded.mode, source = excluded.source, config = excluded.config,
     position = excluded.position, goal = excluded.goal, goal_period = excluded.goal_period`)
     .run(iid, cur?.project_id ?? projectId, v.label, v.unit, v.mode, v.source, JSON.stringify(v.config), v.position, v.goal, v.goal ? v.goal_period ?? "month" : null, cur?.created_at ?? Date.now());
+  // Un nouvel indicateur active son module pour le projet : sinon il serait aussitôt masqué
+  if (!cur) { const m = indicatorModule({ source: v.source, config: v.config }); if (!getModule(m)?.core) { if (!isEnabled(m)) { if (!admin) throw new Error(`Activez d'abord ${getModule(m)?.name ?? m} dans Modules.`); setEnabled(m, true); } setProjectModule(projectId!, m, true); } }
   // Changer la source ou la requête rend l'historique faux
   if (cur && (cur.source !== v.source || JSON.stringify(cur.config) !== JSON.stringify(v.config))) db.prepare("DELETE FROM metrics WHERE indicator_id = ?").run(iid);
   return getInd(iid)!;
 }
 
+/** Note ou jalon (date à venir avec compte à rebours) ; source : manuel, agent ou id de module. */
+export function saveMilestone(b: { project_id?: string | null; day: string; label: string; milestone?: boolean }, source = "manuel") {
+  if (!DAY.test(b.day ?? "") || typeof b.label !== "string" || !b.label.trim()) throw new Error("Date (AAAA-MM-JJ) et texte requis");
+  const id = randomUUID();
+  db.prepare("INSERT INTO annotations (id, project_id, day, label, milestone, source, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+    .run(id, b.project_id || null, b.day, b.label.trim().slice(0, 200), b.milestone ? 1 : 0, source, Date.now());
+  return { id };
+}
+
+/** Jalons des prochains jours (aujourd'hui compris), du plus proche au plus lointain. */
+export function upcomingMilestones(projectId?: string, withinDays = 7) {
+  const today = localDay();
+  const to = day(Date.parse(today) + withinDays * 86400000);
+  return (db.prepare(`SELECT id, project_id, day, label FROM annotations WHERE milestone = 1 AND day BETWEEN ? AND ? ${projectId ? "AND (project_id = ? OR project_id IS NULL)" : ""} ORDER BY day`)
+    .all(...[today, to, ...(projectId ? [projectId] : [])]) as Row[]).map((m): Row => ({ ...m, daysLeft: Math.round((Date.parse(m.day) - Date.parse(today)) / 86400000) }));
+}
+
 export function annotations(projectId: string | undefined, r: Range) {
   const p = projectId ? db.prepare("SELECT id, crm_key FROM projects WHERE id = ?").get(projectId) as Row | undefined : undefined;
-  const notes = db.prepare(`SELECT id, day, label, 'note' AS kind FROM annotations WHERE day BETWEEN ? AND ? ${p ? "AND (project_id = ? OR project_id IS NULL)" : ""}`)
-    .all(...[r.from, r.to, ...(p ? [p.id] : [])]) as Row[];
+  // Un jalon reste un jalon tant que sa date n'est pas passée ; ensuite c'est une note sur la courbe
+  const notes = db.prepare(`SELECT id, day, label, CASE WHEN milestone = 1 AND day >= ? THEN 'jalon' ELSE 'note' END AS kind FROM annotations WHERE day BETWEEN ? AND ? ${p ? "AND (project_id = ? OR project_id IS NULL)" : ""}`)
+    .all(...[localDay(), r.from, r.to, ...(p ? [p.id] : [])]) as Row[];
   const pubs = db.prepare(`SELECT id, day, title AS label, 'publication' AS kind FROM publications WHERE status = 'published' AND day BETWEEN ? AND ? ${p?.crm_key ? "AND project = ?" : p ? "AND 0" : ""}`)
     .all(...[r.from, r.to, ...(p?.crm_key ? [p.crm_key] : [])]) as Row[];
   return [...notes, ...pubs].sort((a, b) => a.day.localeCompare(b.day));
@@ -316,14 +412,14 @@ export function registerProjects(app: Hono) {
   app.post("/api/projects/:id/indicators", async (c) => {
     if (!db.prepare("SELECT 1 FROM projects WHERE id = ?").get(c.req.param("id"))) return c.json({ error: "Projet introuvable" }, 404);
     try {
-      const ind = saveIndicator(null, c.req.param("id"), await c.req.json())!;
+      const ind = saveIndicator(null, c.req.param("id"), await c.req.json(), isAdmin(c))!;
       await collect(ind, 90).catch(() => {}); // l'erreur éventuelle reste visible sur l'indicateur
       return c.json(getInd(ind.id), 201);
     } catch (e) { return c.json({ error: bad(e) }, 400); }
   });
   app.patch("/api/indicators/:id", async (c) => {
     try {
-      const ind = saveIndicator(c.req.param("id"), null, await c.req.json());
+      const ind = saveIndicator(c.req.param("id"), null, await c.req.json(), isAdmin(c));
       if (!ind) return c.json({ error: "Indicateur introuvable" }, 404);
       await collect(ind, 90).catch(() => {});
       return c.json(getInd(ind.id));
@@ -354,19 +450,17 @@ export function registerProjects(app: Hono) {
   });
 
   // Repères des courbes : notes datées et publications du projet
+  app.get("/api/milestones", (c) => c.json(upcomingMilestones(c.req.query("project") || undefined, Math.min(Number(c.req.query("days")) || 30, 365))));
   app.get("/api/annotations", (c) => c.json(annotations(c.req.query("project"), rangeOf(c.req.query()))));
   app.post("/api/annotations", async (c) => {
     const b = await c.req.json().catch(() => ({}));
-    if (!DAY.test(b.day ?? "") || typeof b.label !== "string" || !b.label.trim()) return c.json({ error: "Date (AAAA-MM-JJ) et texte requis" }, 400);
-    const id = randomUUID();
-    db.prepare("INSERT INTO annotations (id, project_id, day, label, created_at) VALUES (?, ?, ?, ?, ?)").run(id, b.project_id || null, b.day, b.label.trim().slice(0, 200), Date.now());
-    return c.json({ id }, 201);
+    try { return c.json(saveMilestone({ project_id: b.project_id, day: b.day, label: b.label, milestone: !!b.milestone }), 201); }
+    catch (e) { return c.json({ error: (e as Error).message }, 400); }
   });
   app.delete("/api/annotations/:id", (c) => db.prepare("DELETE FROM annotations WHERE id = ?").run(c.req.param("id")).changes ? c.json({ ok: true }) : c.json({ error: "Repère introuvable" }, 404));
 
-  // Relevé au démarrage puis toutes les 3 h
-  setTimeout(() => void collectAll(), 20_000);
-  setInterval(() => void collectAll(), 3 * 3600 * 1000).unref();
+  // Relevé au démarrage (premier tic de l'ordonnanceur) puis toutes les 3 h
+  registerJob("projets", { id: "indicators", every: "3h", run: async () => { await collectAll(); } });
 }
 
 const json = (data: unknown) => ({ content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] });
@@ -376,6 +470,14 @@ export function registerProjectTools(server: McpServer, readOnly = false) {
     inputSchema: z.object({ days: z.number().int().min(1).max(500).default(28) }),
   }, async ({ days }) => json(listProjects(lastDays(days)).map((p) => ({ name: p.name, crm_key: p.crm_key, sites: p.sites,
     indicators: p.indicators.map((i: Record<string, any>) => ({ id: i.id, label: i.label, unit: i.unit, mode: i.mode, value: i.value, previous: i.previous, error: i.last_error })) }))));
+  server.registerTool("milestones_list", {
+    description: "Jalons à venir (lancements, échéances) avec le nombre de jours restants ; tous projets ou un seul.",
+    inputSchema: z.object({ project: z.string().optional().describe("id du projet (facultatif)"), days: z.number().int().min(1).max(365).default(30) }),
+  }, async ({ project, days }) => json(upcomingMilestones(project, days)));
+  if (!readOnly) server.registerTool("milestone_save", {
+    description: "Ajoute un jalon (date à venir, compte à rebours dans « Aujourd'hui » à J-7) ou une note sur les courbes (milestone: false).",
+    inputSchema: z.object({ project: z.string().optional().describe("id du projet ; absent = tous les projets"), day: z.string().describe("AAAA-MM-JJ"), label: z.string(), milestone: z.boolean().default(true) }),
+  }, async ({ project, day: d, label, milestone }) => json(saveMilestone({ project_id: project ?? null, day: d, label, milestone }, "agent")));
   if (!readOnly) server.registerTool("indicator_record", {
     description: "Enregistre à la main la valeur d'un indicateur pour un jour (ex. abonnés TikTok). Donne l'id obtenu avec projects_kpis.",
     inputSchema: z.object({ id: z.string(), value: z.number(), day: z.string().regex(DAY).optional() }),

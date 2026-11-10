@@ -1,19 +1,62 @@
 import { readFileSync } from "node:fs";
 import { db, type Site } from "./db.ts";
-import { connections, getSecrets } from "./connections.ts";
+import { connections, createConnection, getSecrets } from "./connections.ts";
+import "./modules/state.ts";
 import { SC_SCOPE, googleAccessToken, parseServiceAccount, type ServiceAccount } from "./connectors/google.ts";
 import { currentCtx } from "./connectors/use.ts";
 
-/** Compte de service à utiliser : la connexion Google de l'interface, sinon GOOGLE_SERVICE_ACCOUNT_JSON (chemin du fichier ou contenu). */
+/** Compte de service à utiliser : la connexion Google (Modules). La variable GOOGLE_SERVICE_ACCOUNT_JSON n'est plus lue, voir convertGoogleEnv(). */
 export function serviceAccount(): ServiceAccount | null {
   const conn = connections("google")[0];
-  if (conn) { try { return parseServiceAccount(String(getSecrets(conn).json)); } catch { /* illisible : repli sur la variable */ } }
-  const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
-  if (!raw) return null;
-  return JSON.parse(raw.trim().startsWith("{") ? raw : readFileSync(raw, "utf8"));
+  if (!conn) return null;
+  try { return parseServiceAccount(String(getSecrets(conn).json)); } catch { return null; }
 }
 
-export const gscConfigured = () => connections("google").length > 0 || !!process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+export const gscConfigured = () => connections("google").length > 0;
+
+/** Au démarrage : l'ancienne variable GOOGLE_SERVICE_ACCOUNT_JSON (contenu ou chemin) devient une connexion Google, une seule fois. */
+export function convertGoogleEnv(): "converti" | "absent" | "deja-connecte" {
+  const NAME = "google-env-converted";
+  const mark = () => db.prepare("INSERT OR IGNORE INTO migrations (name, applied_at) VALUES (?, ?)").run(NAME, Date.now());
+  // Une connexion supprimée ensuite ne doit pas revenir au redémarrage si la variable est restée dans .env
+  if (db.prepare("SELECT 1 FROM migrations WHERE name = ?").get(NAME)) return "deja-connecte";
+  if (connections("google").length) { mark(); return "deja-connecte"; }
+  const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim();
+  if (!raw) return "absent";
+  const json = raw.startsWith("{") ? raw : readFileSync(raw, "utf8");
+  const sa = parseServiceAccount(json);
+  // PLAY_BUCKET suit, sinon les indicateurs Play de l'ancien mode perdraient leur bucket
+  const playBucket = process.env.PLAY_BUCKET?.trim();
+  createConnection({ kind: "google", label: sa.client_email, account: sa.client_email, config: { hint: sa.client_email, ...(playBucket ? { playBucket } : {}) }, secrets: { json }, fingerprintOf: json });
+  mark();
+  console.log("[google] GOOGLE_SERVICE_ACCOUNT_JSON converti en connexion ; la variable n'est plus lue.");
+  return "converti";
+}
+
+/** Propriété Search Console d'un site : réglage Google du projet (ou d'un projet qui contient le site), sinon la colonne du site. */
+export function gscPropertyFor(domain: string, projectId?: string): string | null {
+  const rows = db.prepare(`SELECT pm.project_id, pm.settings FROM project_modules pm JOIN projects p ON p.id = pm.project_id
+    WHERE pm.module_id = 'google' AND pm.enabled = 1 AND EXISTS (SELECT 1 FROM json_each(p.sites) WHERE value = ?)`).all(domain) as { project_id: string; settings: string }[];
+  const pick = (r?: { settings: string }) => r ? (JSON.parse(r.settings).gsc_property?.[domain] as string | undefined) : undefined;
+  const own = projectId ? pick(rows.find((r) => r.project_id === projectId)) : undefined;
+  const any = rows.map(pick).find(Boolean);
+  const site = db.prepare("SELECT gsc_property FROM sites WHERE domain = ?").get(domain) as { gsc_property: string | null } | undefined;
+  return own ?? any ?? site?.gsc_property ?? null;
+}
+
+/** Change la propriété Search Console d'un site (null : aucune), partout où elle est lue. */
+export function setSiteGscProperty(siteId: string, value: string | null) {
+  const s = db.prepare("SELECT domain FROM sites WHERE id = ?").get(siteId) as { domain: string } | undefined;
+  if (!s) return;
+  db.prepare("UPDATE sites SET gsc_property = ? WHERE id = ?").run(value, siteId);
+  const rows = db.prepare(`SELECT pm.project_id, pm.settings FROM project_modules pm JOIN projects p ON p.id = pm.project_id
+    WHERE pm.module_id = 'google' AND EXISTS (SELECT 1 FROM json_each(p.sites) WHERE value = ?)`).all(s.domain) as { project_id: string; settings: string }[];
+  for (const r of rows) {
+    const st = JSON.parse(r.settings);
+    if (value) st.gsc_property = { ...st.gsc_property, [s.domain]: value }; else if (st.gsc_property) delete st.gsc_property[s.domain];
+    db.prepare("UPDATE project_modules SET settings = ? WHERE project_id = ? AND module_id = 'google'").run(JSON.stringify(st), r.project_id);
+  }
+}
 
 /** Jeton OAuth du compte de service pour une portée donnée. */
 export async function googleToken(scope = SC_SCOPE): Promise<string> {
@@ -48,14 +91,15 @@ const saveSync = db.prepare(`INSERT INTO gsc_syncs (site_id, synced_at, last_day
 
 /** Importe les données d'un site. Par défaut les 7 derniers jours ; au premier import, 16 mois. */
 export async function syncSite(site: Site, days?: number): Promise<{ rows: number }> {
-  if (!site.gsc_property) throw new Error("Aucune propriété Search Console pour ce site");
+  const property = gscPropertyFor(site.domain);
+  if (!property) throw new Error("Aucune propriété Search Console pour ce site");
   const last = db.prepare("SELECT last_day FROM gsc_syncs WHERE site_id = ?").get(site.id) as { last_day: string | null } | undefined;
   const span = days ?? (last?.last_day ? 7 : 486);
   const end = new Date(Date.now() - 86400000);
   const day = (d: Date) => d.toISOString().slice(0, 10);
   const startDate = day(new Date(end.getTime() - (span - 1) * 86400000));
   const endDate = day(end);
-  const prop = encodeURIComponent(site.gsc_property);
+  const prop = encodeURIComponent(property);
   let rows = 0, maxDay: string | null = null;
   // Google masque les requêtes rares : sans mot-clé, les totaux par jour et par page restent complets.
   // Trois couches : (query='', page='') = totaux du jour, (query='', page) = par page, (query, page) = détail.
@@ -96,6 +140,6 @@ export async function syncSite(site: Site, days?: number): Promise<{ rows: numbe
 /** Synchronise tous les sites reliés à Search Console (appelé chaque jour). */
 export async function syncAll() {
   if (!gscConfigured()) return;
-  const sites = db.prepare("SELECT * FROM sites WHERE gsc_property IS NOT NULL").all() as Site[];
+  const sites = (db.prepare("SELECT * FROM sites").all() as Site[]).filter((s) => gscPropertyFor(s.domain));
   for (const s of sites) await syncSite(s).catch((e) => console.error(`[gsc] ${s.domain} :`, e.message));
 }

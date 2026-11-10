@@ -1,4 +1,5 @@
 import { Hono, type Context, type Next } from "hono";
+import { jobsStatus, registerJob, startJobs } from "./jobs.ts";
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { getConnInfo } from "@hono/node-server/conninfo";
@@ -10,7 +11,7 @@ import { randomUUID, timingSafeEqual } from "node:crypto";
 import { db, localDay, type Site } from "./db.ts";
 import { collect } from "./collect.ts";
 import { lastDays, overview, searchStats, strikingDistance, trafficStats, type Range } from "./stats.ts";
-import { gscConfigured, listProperties, syncAll, syncSite } from "./gsc.ts";
+import { convertGoogleEnv, gscConfigured, listProperties, setSiteGscProperty, syncAll, syncSite } from "./gsc.ts";
 import { handleMcp, mcpAccess } from "./mcp.ts";
 import { registerBusiness } from "./business.ts";
 import { registerReport } from "./report.ts";
@@ -26,6 +27,10 @@ import { registerDashboards } from "./dashboards.ts";
 import { registerOutreach } from "./outreach.ts";
 import { backup, loginLimiter, verifyTotp } from "./security.ts";
 import { markAdmin, markClient } from "./admin.ts";
+import { activateFromExistingData, isEnabled } from "./modules/state.ts";
+import { registerModules } from "./modules/api.ts";
+import { loadPlugins } from "./modules/plugins.ts";
+import { registerToday } from "./today.ts";
 
 const PRODUCTION = process.env.NODE_ENV === "production";
 const DB_PATH = process.env.DATABASE_PATH ?? "data/searchtide.db";
@@ -147,7 +152,7 @@ const rangeOf = (c: Context): Range => {
   return ok(from) && ok(to) ? { from: from!, to: to! } : lastDays(Math.min(Math.max(Number(days) || 28, 1), 500));
 };
 
-app.get("/api/me", (c) => c.json({ ok: true, gsc: gscConfigured(), demo: DEMO }));
+app.get("/api/me", (c) => c.json({ ok: true, gsc: gscConfigured() && isEnabled("google"), demo: DEMO }));
 app.get("/api/overview", (c) => c.json(overview(rangeOf(c))));
 
 app.get("/api/sites", (c) => c.json(db.prepare(`SELECT s.*, g.synced_at, g.last_day, g.error AS sync_error,
@@ -169,8 +174,8 @@ app.patch("/api/sites/:id", async (c) => {
   const s = getSite(c.req.param("id"));
   if (!s) return c.json({ error: "Site introuvable" }, 404);
   const b = await c.req.json().catch(() => ({}));
-  db.prepare("UPDATE sites SET name = ?, gsc_property = ? WHERE id = ?")
-    .run(String(b.name ?? s.name).slice(0, 100), b.gsc_property === undefined ? s.gsc_property : b.gsc_property || null, s.id);
+  db.prepare("UPDATE sites SET name = ? WHERE id = ?").run(String(b.name ?? s.name).slice(0, 100), s.id);
+  if (b.gsc_property !== undefined) setSiteGscProperty(s.id, b.gsc_property || null);
   return c.json(getSite(s.id));
 });
 
@@ -205,29 +210,26 @@ registerConnections(app);
 registerStripeOAuth(app);
 registerSources(app);
 startVault();
+await loadPlugins();
+try { convertGoogleEnv(); } catch (e) { console.error("[google] GOOGLE_SERVICE_ACCOUNT_JSON illisible, non converti :", (e as Error).message); }
+activateFromExistingData();
 registerOps(app);
 registerPortfolio(app);
 registerAgents(app);
 registerDashboards(app);
+registerModules(app);
+registerToday(app);
+app.get("/api/jobs", (c) => c.json(jobsStatus()));
 registerOutreach(app);
 
 // ── Interface (build Vite) ──
 app.use("/*", serveStatic({ root: "./web/dist" }));
 app.get("*", serveStatic({ path: "./web/dist/index.html" }));
 
-// Synchro Search Console : au démarrage puis toutes les 6 h
-const SYNC_MS = 6 * 3600 * 1000;
-setTimeout(() => void syncAll(), 10_000);
-setInterval(() => void syncAll(), SYNC_MS).unref();
-
-// Sauvegarde quotidienne (vers 2 h UTC) dans BACKUP_DIR, 14 jours gardés
-let lastBackup = "";
-setInterval(() => {
-  const d = new Date();
-  if (d.getUTCHours() !== 2 || lastBackup === d.toISOString().slice(0, 10)) return;
-  lastBackup = d.toISOString().slice(0, 10);
-  try { console.log(`Sauvegarde : ${backup(BACKUP_DIR)}`); } catch (e) { console.error("[sauvegarde]", (e as Error).message); }
-}, 10 * 60 * 1000).unref();
+// Tâches de fond (ordonnanceur unique, table jobs) : Search Console toutes les 6 h, sauvegarde locale vers 2 h UTC (14 jours gardés)
+registerJob("google", { id: "gsc-sync", every: "6h", run: syncAll });
+registerJob("projets", { id: "backup", every: "daily@02:00", run: async () => { console.log(`Sauvegarde : ${backup(BACKUP_DIR)}`); } });
+startJobs();
 
 const port = Number(process.env.PORT ?? 3030);
 // Écoute locale par défaut : sans HOST explicite, rien n'est joignable depuis le réseau.
