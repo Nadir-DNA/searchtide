@@ -51,12 +51,12 @@ export function registerStripeOAuth(app: Hono) {
 }
 
 /** Révoque côté relais (au mieux) puis supprime la connexion locale. */
-export async function revokeRelayToken(id: string) {
+export async function revokeRelayToken(id: string): Promise<boolean> {
   const { db } = await import("./db.ts");
   const row = db.prepare("SELECT config FROM connections WHERE id = ?").get(id) as { config: string } | undefined;
-  if (!row) return false;
+  if (!row) return true;
   let cfg: any = {}; try { cfg = JSON.parse(row.config); } catch {}
-  if (cfg?.relay) {
-    try { const s = getSecrets(id); if (s.token) await relayRevoke(String(s.token)); } catch { /* la suppression locale prime */ }
-  }
+  if (!cfg?.relay) return true;
+  try { const s = getSecrets(id); if (s.token) await relayRevoke(String(s.token)); return true; }
+  catch { return false; }
 }

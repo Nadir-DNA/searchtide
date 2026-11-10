@@ -181,9 +181,9 @@ export function Drawer({ m, catalog, onClose, reload }: { m: Manifest; catalog: 
     if (!confirmRm) return;
     const { conn, usage } = confirmRm;
     try {
-      await api(`/api/connections/${conn.id}`, { method: "DELETE" });
+      const r = await api<{ relayWarning?: boolean }>(`/api/connections/${conn.id}`, { method: "DELETE" });
       setConfirmRm(null);
-      setOut({ kind: "ok", text: `« ${conn.label} » est retiré.`, detail: usage.indicators.length ? `${usage.indicators.length} indicateur${usage.indicators.length > 1 ? "s" : ""} passe${usage.indicators.length > 1 ? "nt" : ""} en « Source retirée », historique conservé.` : undefined });
+      setOut({ kind: "ok", text: `« ${conn.label} » est retiré.`, detail: `${usage.indicators.length ? `${usage.indicators.length} indicateur${usage.indicators.length > 1 ? "s" : ""} passe${usage.indicators.length > 1 ? "nt" : ""} en « Source retirée », historique conservé. ` : ""}${r.relayWarning ? "Révoquée ici ; retirez aussi l'application dans votre Dashboard Stripe." : ""}`.trim() });
       await reload();
       closeRef.current?.focus();
     } catch (e) { setOut({ kind: "error", text: (e as Error).message }); setConfirmRm(null); }

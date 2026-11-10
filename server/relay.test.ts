@@ -63,6 +63,7 @@ test("CA57 : retirer une connexion OAuth marque ses indicateurs « Source retir�
   const app = new Hono(); app.use("*", (ctx, next) => { markAdmin(ctx); return next(); }); registerConnections(app);
   const r = await app.request(`/api/connections/${c.id}`, { method: "DELETE" });
   assert.equal(r.status, 200);
+  assert.equal((await r.json()).relayWarning, true, "relais non configuré → avertissement");
   const row = db.prepare("SELECT last_error FROM indicators WHERE id = ?").get(ind.id) as any;
   assert.match(String(row.last_error), /Source retirée/);
   assert.equal(removeConnection(c.id), false, "déjà supprimée");
