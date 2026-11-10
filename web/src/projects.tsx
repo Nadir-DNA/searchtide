@@ -20,9 +20,9 @@ export type Project = {
 };
 type Go = (n: Record<string, string | undefined>) => void;
 
-const SOURCES = [["pg", "Base de données (Postgres, Supabase)"], ["stripe", "Stripe"], ["site", "Site suivi"], ["pagespeed", "PageSpeed (vitesse du site)"], ["play", "Google Play"], ["http", "Adresse web (JSON)"], ["manual", "Saisie à la main"]] as const;
+const SOURCES = [["pg", "Base de données (Postgres)"], ["supabase", "Supabase"], ["stripe", "Stripe"], ["site", "Site suivi"], ["pagespeed", "PageSpeed (vitesse du site)"], ["play", "Google Play"], ["http", "Adresse web (JSON)"], ["manual", "Saisie à la main"]] as const;
 /** Connecteur qui fournit chaque source d'indicateur. */
-const KIND: Record<string, string> = { stripe: "stripe", pg: "postgres", http: "jsonapi", pagespeed: "pagespeed", play: "google" };
+const KIND: Record<string, string> = { stripe: "stripe", pg: "postgres", supabase: "supabase", http: "jsonapi", pagespeed: "pagespeed", play: "google" };
 const PSI_METRICS = [["performance", "Performance (sur 100)"], ["seo", "SEO technique (sur 100)"], ["lcp", "Affichage du contenu principal (LCP, s)"], ["cls", "Stabilité de la mise en page (CLS)"]] as const;
 const PLAY_METRICS = [["daily_installs", "Installations par jour"], ["active_installs", "Appareils actifs"], ["rating", "Note moyenne"]] as const;
 const STRIPE_METRICS = [["revenue", "Chiffre d'affaires (par jour)"], ["new_customers", "Nouveaux clients (par jour)"], ["active_subscriptions", "Abonnements actifs"], ["mrr", "Revenu mensuel récurrent"]] as const;
@@ -345,6 +345,7 @@ function IndicatorForm({ projectId, ind, sites, onClose, onSaved }: { projectId:
       : source === "http" ? { url: f.url, path: f.path, ...link } : source === "site" ? { domain: f.domain, metric: f.metric }
       : source === "pagespeed" ? { url: f.url, metric: f.metric, strategy: f.strategy, ...link }
       : source === "play" ? { package: f.package, metric: f.metric, ...link }
+      : source === "supabase" ? { metric: f.metric, ...(f.days ? { days: Number(f.days) } : {}), ...link }
       : source === "manual" ? { ...(f.role ? { role: f.role } : {}) } : {};
     return { label: f.label, unit: f.unit, mode: f.mode, source, config, goal: f.goal ? Number(f.goal.replace(",", ".")) : null, goal_period: f.goal_period };
   };
@@ -441,6 +442,15 @@ function IndicatorForm({ projectId, ind, sites, onClose, onSaved }: { projectId:
         <p className="text-xs leading-5 text-muted">
           Le compte de service Google de la connexion est utilisé ; le bucket des rapports Play se règle dans cette connexion (Connexions → Google).
         </p>
+      )}
+      {source === "supabase" && (
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Mesure"><select name="metric" defaultValue={c.metric ?? "users_total"} className={inputCls}>
+            <option value="users_total">Utilisateurs (total)</option><option value="signups_on">Inscriptions par jour</option>
+            <option value="signed_in">Connectés récemment</option><option value="db_size_bytes">Taille de la base</option>
+          </select></Field>
+          {c.metric === "signed_in" || !c.metric ? <Field label="Fenêtre (jours)"><input name="days" type="number" min="1" max="365" defaultValue={c.days ?? 7} className={inputCls} /></Field> : null}
+        </div>
       )}
       {source === "manual" && (
         <>

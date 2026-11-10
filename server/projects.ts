@@ -74,6 +74,7 @@ const envName = z.string().regex(ENV).refine((n) => !RESERVED_ENV.has(n), "Varia
 const configs = {
   pg: z.object({ env: envName.optional(), connection_id: z.string().optional(), sql: z.string().min(1).max(4000) })
     .superRefine((v, ctx) => { try { checkSql(v.sql); } catch (e) { ctx.addIssue({ code: "custom", path: ["sql"], message: (e as Error).message }); } }),
+  supabase: z.object({ metric: z.enum(["users_total", "signups_on", "signed_in", "db_size_bytes"]), days: z.number().int().min(1).max(365).optional() }),
   stripe: z.object({ env: envName.optional(), connection_id: z.string().optional(), metric: z.enum(["revenue", "new_customers", "active_subscriptions", "mrr"]), account: z.string().regex(/^acct_\w+$/).optional() }),
   http: z.object({ url: z.string().url(), path: z.string().max(200).default(""), env: envName.optional(), connection_id: z.string().optional() }),
   site: z.object({ domain: z.string(), metric: z.enum(["visitors", "pageviews", "clicks", "impressions"]) }),
@@ -86,7 +87,7 @@ const indicatorFields = z.object({
   label: z.string().trim().min(1).max(100),
   unit: z.string().trim().max(10).nullish().transform((v) => v || null),
   mode: z.enum(["daily", "total"]),
-  source: z.enum(["pg", "stripe", "http", "site", "manual", "pagespeed", "play"]),
+  source: z.enum(["pg", "supabase", "stripe", "http", "site", "manual", "pagespeed", "play"]),
   config: z.record(z.string(), z.unknown()).default({}),
   position: z.number().int().default(0),
   goal: z.number().finite().positive().nullish().transform((v) => v ?? null),
@@ -173,6 +174,7 @@ export async function measure(ind: Row, d = localDay()) {
   const at = ind.mode === "daily" ? d : undefined;
   switch (ind.source) {
     case "pg": return pgValue(configs.pg.parse(ind.config), ind.mode, at);
+    case "supabase": return collectVia("supabase", ind.config.connection_id, ind.config.metric, { days: ind.config.days }, at);
     case "stripe": return stripeValue(configs.stripe.parse(ind.config), at);
     case "http": return httpValue(configs.http.parse(ind.config));
     case "site": return siteSeries(configs.site.parse(ind.config), { from: d, to: d })[d] ?? 0;
@@ -182,7 +184,7 @@ export async function measure(ind: Row, d = localDay()) {
   }
 }
 const canBackfill = (ind: Row) => ind.mode === "daily" && (ind.source === "stripe" ? ind.config.metric === "revenue" || ind.config.metric === "new_customers"
-  : ind.source === "play" || (ind.source === "pg" && ind.config.sql.includes("$1")));
+  : ind.source === "play" || ind.source === "supabase" || (ind.source === "pg" && ind.config.sql.includes("$1")));
 
 const upsert = db.prepare("INSERT INTO metrics (indicator_id, day, value) VALUES (?, ?, ?) ON CONFLICT DO UPDATE SET value = excluded.value");
 export function record(id: string, d: string, value: number) { upsert.run(id, d, value); }

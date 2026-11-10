@@ -55,6 +55,10 @@ export const FIXTURES: Record<string, Fixture> = {
       return json({ error: { message: "inattendu" } }, 404);
     },
   },
+  supabase: {
+    cfg: { config: { metric: "users_total" }, secrets: { url: "postgres://searchtide_ro.demo:" + "Fixt0reMotDePasseDemo" + "@pooler.exemple.test:5432/postgres" } },
+    params: { signups_on: {}, signed_in: { days: "7" }, db_size_bytes: {}, users_total: {} },
+  },
   postgres: {
     cfg: { config: {}, secrets: { url: "postgres://searchtide_ro:" + "Fixt0reMotDePasseDemo@db.exemple.test:5432/produit" } },
     params: { sql_daily: { sql: "SELECT COUNT(*) FROM users WHERE created_at >= $1::date" }, sql_total: { sql: "SELECT COUNT(*) FROM users" } },
