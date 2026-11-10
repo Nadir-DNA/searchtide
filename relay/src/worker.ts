@@ -81,11 +81,11 @@ const missingSecrets = (env: Env) => SECRETS.filter((k) => !env[k]);
 const OBJECTS: Record<string, { params: RegExp[]; trim: (o: any) => any }> = {
   balance: { params: [], trim: (o) => ({ available: o.available, pending: o.pending }) },
   balance_transactions: {
-    params: [/^limit$/, /^starting_after$/, /^created\[(gte|lte)\]$/, /^type$/],
+    params: [/^limit$/, /^starting_after$/, /^created\[(gte|gt|lte|lt)\]$/, /^type$/],
     trim: (o) => ({ data: (o.data ?? []).map((t: any) => ({ id: t.id, amount: t.amount, fee: t.fee, net: t.net, currency: t.currency, created: t.created, type: t.type })), has_more: !!o.has_more }),
   },
   subscriptions: {
-    params: [/^limit$/, /^starting_after$/, /^status$/, /^created\[(gte|lte)\]$/, /^expand\[\]$/],
+    params: [/^limit$/, /^starting_after$/, /^status$/, /^created\[(gte|gt|lte|lt)\]$/, /^expand\[\]$/],
     trim: (o) => ({ data: (o.data ?? []).map((s: any) => ({
       id: s.id, status: s.status, created: s.created, currency: s.currency, cancel_at_period_end: !!s.cancel_at_period_end,
       items: { data: (s.items?.data ?? []).map((i: any) => ({ quantity: i.quantity, price: { unit_amount: i.price?.unit_amount, recurring: i.price?.recurring ? { interval: i.price.recurring.interval, interval_count: i.price.recurring.interval_count ?? 1 } : null } })) },
@@ -93,7 +93,7 @@ const OBJECTS: Record<string, { params: RegExp[]; trim: (o: any) => any }> = {
     })), has_more: !!o.has_more }),
   },
   customers: {
-    params: [/^limit$/, /^starting_after$/, /^created\[(gte|lte)\]$/],
+    params: [/^limit$/, /^starting_after$/, /^created\[(gte|gt|lte|lt)\]$/],
     trim: (o) => ({ data: (o.data ?? []).map((c: any) => ({ id: c.id, created: c.created, currency: c.currency })), has_more: !!o.has_more }),
   },
   account: { params: [], trim: (o) => ({ id: o.id, business_profile: o.business_profile ? { name: o.business_profile.name } : null, country: o.country, default_currency: o.default_currency, livemode: !!o.livemode }) },
@@ -257,7 +257,12 @@ export async function handle(req: Request, env: Env): Promise<Response> {
     try {
       const basic = btoa(`${env.STRIPE_OAUTH_KEY}:`);
       const r = await fetchOf(env)(DEAUTHORIZE, { method: "POST", headers: { Authorization: `Basic ${basic}`, "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ client_id: env.STRIPE_CLIENT_ID!, stripe_user_id: t.stripeUserId }) });
-      refused = !r.ok;
+      if (!r.ok) {
+        // Application déjà retirée (Dashboard Stripe) : la révocation est idempotente, ce n'est pas un échec.
+        const j = await r.json().catch(() => ({})) as any;
+        const detail = String(j.error_description ?? j.error ?? "");
+        refused = !/not (connected|authorized)|no longer|already|deauthori[sz]ed|revoked/i.test(detail);
+      }
     } catch { refused = true; }
     // Le jeton local disparaît dans tous les cas ; l'instance prévient si Stripe a refusé.
     await store.deleteToken(hash);

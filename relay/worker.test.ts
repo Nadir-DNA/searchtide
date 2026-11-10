@@ -300,3 +300,24 @@ test("T43b : /v1/revoke renvoie une erreur explicite quand Stripe refuse, et sup
   assert.match(body.error, /Dashboard Stripe/);
   assert.equal((await post("/v1/stripe/read", { object: "balance" }, env, { authorization: `Bearer ${f.token}` })).status, 401);
 });
+
+test("Liste blanche : created[gte]/[lt] acceptés pour le CA net, created[foo] refusé", async () => {
+  const { env } = setup();
+  const f = await flow(env, "dates.test", { "cf-connecting-ip": "198.51.100.8" });
+  const h = { authorization: `Bearer ${f.token}`, "cf-connecting-ip": "198.51.100.8" };
+  assert.equal((await post("/v1/stripe/read", { object: "balance_transactions", params: { "created[gte]": "1", "created[lt]": "2" } }, env, h)).status, 200);
+  assert.equal((await post("/v1/stripe/read", { object: "balance_transactions", params: { "created[foo]": "1" } }, env, h)).status, 400);
+});
+
+test("T43b : une application déjà retirée côté Stripe est un succès idempotent", async () => {
+  const { env } = setup({ __fetch: (async (u: any) => {
+    if (String(u).includes("oauth/token")) return Response.json({ stripe_user_id: "acct_TEST", livemode: false });
+    if (String(u).includes("deauthorize")) return new Response(JSON.stringify({ error: "invalid_request", error_description: "This account is not connected to your application." }), { status: 400, headers: { "content-type": "application/json" } });
+    return Response.json({});
+  }) as typeof fetch });
+  const f = await flow(env, "deja.test", { "cf-connecting-ip": "198.51.100.9" });
+  const r = await post("/v1/revoke", {}, env, { authorization: `Bearer ${f.token}`, "cf-connecting-ip": "198.51.100.9" });
+  assert.equal(r.status, 200);
+  assert.equal((await r.json() as any).ok, true);
+  assert.equal((await post("/v1/stripe/read", { object: "balance" }, env, { authorization: `Bearer ${f.token}` })).status, 401);
+});
