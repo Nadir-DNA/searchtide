@@ -1,11 +1,12 @@
 // Pages personnalisables : une grille de blocs choisis dans un catalogue, rangés à la main (« Personnaliser ») ou par les agents IA (MCP).
 import { Fragment, useEffect, useState, type ReactNode } from "react";
+import { TodayCard } from "./today";
 import { ActivatePrompt } from "./modules/ActivatePrompt";
 import { api, type Search, type Site, type Traffic } from "./api";
 import { ErrorLine, Header, KpiSkeleton, useData } from "./App";
 import { PipelineCard, PubsCard } from "./business";
 import { BarChart, fillDays } from "./chart";
-import { Matrix, Pulse, Todo, TrafficByProject, type Portfolio } from "./portfolio";
+import { Matrix, Pulse, TrafficByProject, type Portfolio } from "./portfolio";
 import { GoalBar, val, type Project } from "./projects";
 import { Button, Card, Delta, EmptyBox, KpiCard, Table, fmt, inputCls } from "./ui";
 
@@ -168,7 +169,7 @@ function WidgetBody({ w, o, days, go }: { w: Widget; o: Portfolio; days: number;
   switch (w.type) {
     case "pulse": return <Pulse t={o.totals} days={days} go={go} />;
     case "traffic_by_project": return <TrafficByProject o={o} title={t} />;
-    case "todo": return <Todo alerts={o.alerts} go={go} title={t} />;
+    case "todo": return <TodayCard go={go} title={t} />;
     case "projects_table": return <Matrix rows={o.projects} days={days} range={o.range} go={go} title={t} />;
     case "pipeline": return <PipelineCard go={go} title={t} />;
     case "publications": return <PubsCard go={go} title={t} />;

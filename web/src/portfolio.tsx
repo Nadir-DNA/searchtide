@@ -79,28 +79,6 @@ export function TrafficByProject({ o, title = "Visites par projet" }: { o: Portf
   );
 }
 
-// ── Ce qui demande une action ──
-export function Todo({ alerts, go, title = "À traiter" }: { alerts: Alert[]; go: Go; title?: string }) {
-  const dot = { bad: "bg-negative", warn: "bg-chart-3", info: "bg-chart-2" };
-  return (
-    <Card title={title} action={alerts.length ? <span className="num text-sm text-muted">{alerts.length}</span> : null}>
-      {alerts.length ? (
-        <ul className="-mx-2 max-h-[340px] divide-y divide-rule overflow-y-auto">
-          {alerts.map((a, i) => (
-            <li key={i}>
-              <button onClick={() => go(target(a.to))} className="flex min-h-11 w-full items-center gap-3 rounded-md px-2 py-2 text-left text-sm hover:bg-raised">
-                <span className={`size-2 shrink-0 rounded-full ${dot[a.tone]}`} aria-label={a.tone === "bad" ? "Panne" : a.tone === "warn" ? "À surveiller" : "À faire"} />
-                <span className="min-w-0 flex-1">{a.text}</span>
-                <span className="text-muted" aria-hidden>›</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      ) : <p className="text-sm text-muted">Tout tourne : aucun relevé en panne, aucune relance en retard.</p>}
-    </Card>
-  );
-}
-
 // ── Les projets côte à côte ──
 function MiniSpark({ series, days, color }: { series: Record<string, number>; days: string[]; color: string }) {
   const v = days.map((d) => series[d] ?? 0);

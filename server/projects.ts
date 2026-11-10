@@ -379,7 +379,7 @@ export function upcomingMilestones(projectId?: string, withinDays = 7) {
   const today = localDay();
   const to = day(Date.parse(today) + withinDays * 86400000);
   return (db.prepare(`SELECT id, project_id, day, label FROM annotations WHERE milestone = 1 AND day BETWEEN ? AND ? ${projectId ? "AND (project_id = ? OR project_id IS NULL)" : ""} ORDER BY day`)
-    .all(...[today, to, ...(projectId ? [projectId] : [])]) as Row[]).map((m) => ({ ...m, daysLeft: Math.round((Date.parse(m.day) - Date.parse(today)) / 86400000) }));
+    .all(...[today, to, ...(projectId ? [projectId] : [])]) as Row[]).map((m): Row => ({ ...m, daysLeft: Math.round((Date.parse(m.day) - Date.parse(today)) / 86400000) }));
 }
 
 export function annotations(projectId: string | undefined, r: Range) {

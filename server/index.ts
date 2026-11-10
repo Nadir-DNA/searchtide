@@ -29,6 +29,7 @@ import { backup, loginLimiter, verifyTotp } from "./security.ts";
 import { markAdmin, markClient } from "./admin.ts";
 import { activateFromExistingData, isEnabled } from "./modules/state.ts";
 import { registerModules } from "./modules/api.ts";
+import { registerToday } from "./today.ts";
 
 const PRODUCTION = process.env.NODE_ENV === "production";
 const DB_PATH = process.env.DATABASE_PATH ?? "data/searchtide.db";
@@ -215,6 +216,7 @@ registerPortfolio(app);
 registerAgents(app);
 registerDashboards(app);
 registerModules(app);
+registerToday(app);
 app.get("/api/jobs", (c) => c.json(jobsStatus()));
 registerOutreach(app);
 
