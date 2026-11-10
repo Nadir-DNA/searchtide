@@ -2,6 +2,28 @@
 
 Toutes les versions notables sont consignées ici. Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/).
 
+## [0.3.0] — non publiée
+
+Les intégrations deviennent des **modules** activables par projet ; le projet devient l'objet central. Notes complètes : [docs/release-v0.3.0.md](docs/release-v0.3.0.md).
+
+### Ajouté
+
+- **Modules** : écran Modules, activation pour l'instance puis projet par projet, connexion depuis la page d'un projet ; outils MCP, blocs, onglets et tâches limités aux modules actifs (`modules_list`, `module_enable_for_project`, `module_disable_for_project`).
+- **Catalogue de KPI** d'un projet (`kpi_catalog`, `kpi_add`), nouveaux KPI d'analytics (visites venues des IA, événement nommé) et **KPI calculés** (ratio, somme… de KPI du même projet).
+- **Jalons** avec compte à rebours (`milestones_list`, `milestone_save`).
+- Fil **« Aujourd'hui »** : alertes, actions proposées par les modules, jalons à 7 jours, objectifs en retard ; Fait, Plus tard, Ignorer (`today`, `today_update`).
+- **Tâches de fond** : ordonnanceur unique, état dans Réglages et par MCP (`jobs_status`), alerte après trois échecs consécutifs.
+- **Modules privés** chargés depuis `PLUGINS_DIR`.
+- Menu par rubriques dépliantes (Tableaux, Projets, Suivi des sites), projets **épinglés** toujours visibles.
+- `scripts/verifier-migration.mjs` : compare chiffres, indicateurs et pages avant et après la migration sur une copie de base.
+
+### Modifié
+
+- Une source absente s'affiche « — » avec « Activer … », jamais 0 (chiffre d'affaires, clics, contacts).
+- `GOOGLE_SERVICE_ACCOUNT_JSON` est converti en connexion Google au premier démarrage (avec `PLAY_BUCKET`), puis n'est plus lu ; la propriété Search Console devient un réglage du projet.
+- Les relances quittent les alertes du portefeuille pour le fil « Aujourd'hui ».
+- La carte « Agents IA » d'un site renvoie vers la page Agents (plus de mention d'`API_KEY`).
+
 ## [0.2.3] — 2026-11-10
 
 Passage du relais Searchtide Connect en mode réel et remboursement de la dette technique du webhook.

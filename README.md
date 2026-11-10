@@ -26,7 +26,9 @@ Ouvrez <http://localhost:3030>. Détails et deuxième capture (portefeuille mult
 
 ## Ce que ça fait
 
-- **Plusieurs projets, une vue.** Chaque projet rassemble ses sources, ses indicateurs et un score de santé ; la vue Portefeuille les compare côte à côte.
+- **Plusieurs projets, une vue.** Chaque projet rassemble ses domaines, ses modules, ses KPI (y compris calculés), ses objectifs et ses jalons ; « Tous les projets » les compare côte à côte.
+- **Ce qu'il faut faire aujourd'hui.** Le fil « Aujourd'hui » réunit pannes, échéances, objectifs en retard et actions qui font monter vos chiffres (mots-clés à travailler, relances).
+- **Des modules qu'on active.** Google, Stripe, Produit, Contacts… s'activent pour l'instance puis projet par projet ; un module inactif n'affiche jamais un faux zéro.
 - **Vos clés restent chez vous.** Les secrets des connexions sont chiffrés dans l'instance (AES-256-GCM, clé dérivée de `SECRET`) et ne sont jamais renvoyés par l'API, y compris aux agents.
 - **Vos agents lisent les chiffres, pas les clés.** Un serveur MCP expose le tableau de bord ; les connexions restent réservées à la session administrateur.
 
@@ -77,9 +79,13 @@ Le script de suivi se colle dans le `<head>` du site :
 
 Une erreur de connexion ? Voir la [FAQ](docs/guides/faq.md) : elle reprend les messages que l'application peut afficher.
 
-## Les neuf sources
+## Les modules et leurs sources
 
-Tout se configure dans **Connexions** : un guide court, les champs utiles, puis « Tester » — une connexion n'est enregistrée que si le test réussit.
+Tout s'active dans **Modules** : un module apporte ses KPI, ses onglets de projet, ses blocs de page, ses outils pour les agents et ses tâches de fond. Un module qui dépend d'un service se connecte dans un tiroir (guide court, champs utiles, « Tester » : rien n'est enregistré si le test échoue), depuis Modules ou directement depuis la page d'un projet. Désactiver un module masque ce qu'il apporte et garde ses données.
+
+Modules optionnels sans source externe : **Contacts** (pipeline, relances), **Publications** (calendrier éditorial), **Prospection** (séquences d'e-mails, nécessite Contacts). Modules privés : voir [docs/guides/modules-prives.md](docs/guides/modules-prives.md).
+
+Les sources :
 
 | Source | Ce qu'elle apporte | Authentification | Guide |
 |---|---|---|---|
@@ -153,7 +159,8 @@ Ne joignez jamais ce volume à un ticket ou à une archive de support. Mot de pa
 
 ## Feuille de route
 
-- **0.3** : Connexion avec Stripe hors bêta, une fois le relais stabilisé en production.
+- **0.3** : modules activables par projet, catalogue de KPI et KPI calculés, jalons, fil « Aujourd'hui », modules privés (voir [docs/release-v0.3.0.md](docs/release-v0.3.0.md)).
+- **0.4** : Connexion avec Stripe hors bêta, une fois le relais stabilisé en production.
 - **Ensuite, sans date** : connecteurs reportés (Cloudflare, Gmail en lecture, CRM tiers, sauvegarde distante S3).
 
 ## Contribuer
