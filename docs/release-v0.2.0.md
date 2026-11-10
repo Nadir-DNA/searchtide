@@ -48,7 +48,7 @@ docker logs searchtide    # mot de passe administrateur généré au premier lan
 
 1. **Déplacer `.env` et `google.json` hors du dépôt (T33)**, puis pousser `main`. Le scan de secrets de l'arbre et de tout l'historique est fait ; le déplacement de ces fichiers ne l'est pas encore.
 2. Créer le tag annoté `v0.2.0` : `git tag -a v0.2.0 -m "Searchtide v0.2.0" && git push origin v0.2.0` (utiliser `-s` seulement si une clé GPG est configurée).
-3. Vérifier que le workflow « Image Docker » pousse bien `ghcr.io/nadir-dna/searchtide:v0.2.0` et `:latest` pour les deux architectures. **Nom provisoire** : à confirmer par Nadir avant le tag (Q-N11) ; le workflow suit `github.repository`, seuls `docker-compose.yml` et la documentation citent ce nom.
+3. Vérifier que le workflow « Image Docker » pousse bien `ghcr.io/nadir-dna/searchtide:v0.2.0` et `:latest` pour les deux architectures. Nom confirmé par Nadir (Q-N11) : `ghcr.io/nadir-dna/searchtide` (le workflow suit `github.repository`).
 4. Publier ces notes comme release GitHub (copier ce fichier).
 
 ## Données de l'instance
