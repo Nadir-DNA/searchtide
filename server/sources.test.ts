@@ -128,3 +128,39 @@ test("Search Console rattachée au SITE (sites.gsc_property), sans créer d'indi
   assert.equal(s.sites[0].gsc_property, "sc-domain:exemple.com"); assert.equal(s.google, true);
   assert.equal((db.prepare("SELECT COUNT(*) AS n FROM indicators").get() as any).n, before, "aucun indicateur créé");
 });
+
+test("catalogue : un projet avec analytics, Google et Stripe propose au moins 12 KPI", async () => {
+  const { kpiCatalog } = await import("./sources.ts");
+  const { setProjectModule } = await import("./modules/state.ts");
+  await connect("stripe", { key: KEY }); await connect("google", { json: GOOGLE_JSON, playBucket: "gs://pubsite_prod_rev_00000000000000000001" });
+  db.prepare("INSERT INTO sites (id, domain, name, gsc_property, created_at) VALUES ('cat', 'cat.fr', 'cat.fr', 'sc-domain:cat.fr', 0)").run();
+  const p = saveProject(null, { name: "Cat", sites: ["cat.fr"] })!;
+  setProjectModule(p.id, "stripe", true); setProjectModule(p.id, "google", true);
+  const offers = kpiCatalog(p.id).flatMap((g) => g.offers).filter((o) => o.module !== "projets");
+  assert.ok(offers.length >= 12, String(offers.length));
+  assert.ok(offers.some((o) => o.module === "analytics" && o.kpi === "ai_visitors"));
+});
+
+test("catalogue : un KPI déjà suivi est marqué already, rien d'un module inactif sur le projet", async () => {
+  const { kpiCatalog, addKpi } = await import("./sources.ts");
+  const { setEnabled, setProjectModule } = await import("./modules/state.ts");
+  const c = await connect("stripe", { key: KEY });
+  const p = saveProject(null, { name: "Deja", sites: [] })!;
+  setEnabled("stripe", true); setProjectModule(p.id, "stripe", false);
+  assert.ok(!kpiCatalog(p.id).some((g) => g.module === "stripe"));
+  setProjectModule(p.id, "stripe", true);
+  await addKpi(p.id, { module: "stripe", connection_id: c.id, kpi: "mrr" });
+  const mrr = kpiCatalog(p.id).find((g) => g.module === "stripe")!.offers.find((o) => o.kpi === "mrr")!;
+  assert.equal(mrr.already, true);
+});
+
+test("catalogue : un KPI d'analytics se crée depuis le catalogue (visites venues des IA)", async () => {
+  const { addKpi } = await import("./sources.ts");
+  db.prepare("INSERT INTO sites (id, domain, name, created_at) VALUES ('ai', 'ia.fr', 'ia.fr', 0)").run();
+  const ev = db.prepare("INSERT INTO events (site_id, ts, day, visitor, type, path, channel) VALUES ('ai', 0, '2026-11-09', ?, 'pageview', '/', ?)");
+  ev.run("v1", "ai"); ev.run("v2", "ai"); ev.run("v3", "direct");
+  const p = saveProject(null, { name: "IA", sites: ["ia.fr"] })!;
+  const ind = await addKpi(p.id, { module: "analytics", connection_id: null, kpi: "ai_visitors", params: { domain: "ia.fr" } });
+  assert.equal(ind.label, "Visites venues des IA · ia.fr");
+  assert.equal(await measure(ind, "2026-11-09"), 2);
+});

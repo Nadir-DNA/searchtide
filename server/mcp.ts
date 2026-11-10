@@ -12,6 +12,7 @@ import { registerConnectionTools } from "./connectors/api.ts";
 import { activeModules } from "./modules/state.ts";
 import { registerModuleTools } from "./modules/api.ts";
 import { jobsStatus } from "./jobs.ts";
+import { registerKpiTools } from "./sources.ts";
 
 const INSTRUCTIONS = `Searchtide : tous ses projets (sites, Search Console, Stripe, indicateurs métier, CRM, publications) dans un tableau de bord.
 Commencez par portfolio_overview (et alerts) pour l'état général. Les pages du tableau de bord sont personnalisables :
@@ -75,7 +76,7 @@ const BUILTIN_TOOLS: Record<string, (server: McpServer, readOnly: boolean, agent
   google: googleTools,
   crm: (s, ro) => registerBusinessTools(only(s, (n) => n.startsWith("crm_")), ro),
   publications: (s, ro) => registerBusinessTools(only(s, (n) => n.startsWith("pubs_")), ro),
-  projets: (s, ro) => { registerProjectTools(s, ro); registerPortfolioTools(s); },
+  projets: (s, ro) => { registerProjectTools(s, ro); registerPortfolioTools(s); registerKpiTools(s, ro); },
   pages: (s, ro, agent) => registerDashboardTools(s, ro, agent),
   agents: (s) => {
     registerConnectionTools(s);

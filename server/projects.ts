@@ -80,7 +80,8 @@ const configs = {
   supabase: z.object({ metric: z.enum(["users_total", "signups_on", "signed_in", "db_size_bytes"]), days: z.number().int().min(1).max(365).optional() }),
   stripe: z.object({ env: envName.optional(), connection_id: z.string().optional(), metric: z.enum(["revenue", "new_customers", "active_subscriptions", "mrr"]), account: z.string().regex(/^acct_\w+$/).optional() }),
   http: z.object({ url: z.string().url(), path: z.string().max(200).default(""), env: envName.optional(), connection_id: z.string().optional() }),
-  site: z.object({ domain: z.string(), metric: z.enum(["visitors", "pageviews", "clicks", "impressions"]) }),
+  site: z.object({ domain: z.string(), metric: z.enum(["visitors", "pageviews", "clicks", "impressions", "ai_visitors", "event"]), event: z.string().min(1).max(80).optional() })
+    .refine((c) => c.metric !== "event" || c.event, "Nom de l'événement requis"),
   manual: z.object({ role: z.enum(["revenue", "contacts"]).optional() }),
   pagespeed: z.object({ url: z.string().url(), metric: z.enum(["performance", "seo", "lcp", "cls"]), strategy: z.enum(["mobile", "desktop"]).default("mobile"), env: envName.optional(), connection_id: z.string().optional() }),
   play: z.object({ env: envName.optional(), connection_id: z.string().optional(), package: z.string().regex(/^[a-z][a-z0-9_.]+$/), metric: z.enum(["daily_installs", "active_installs", "rating"]) }),
@@ -168,6 +169,10 @@ function siteSeries(c: z.infer<typeof configs.site>, r: Range): Record<string, n
   if (!s) return {};
   const rows = c.metric === "visitors" || c.metric === "pageviews"
     ? db.prepare(`SELECT day, ${c.metric === "visitors" ? "COUNT(DISTINCT visitor)" : "COUNT(*)"} AS v FROM events WHERE site_id = ? AND type = 'pageview' AND day BETWEEN ? AND ? GROUP BY day`).all(s.id, r.from, r.to)
+    : c.metric === "ai_visitors"
+    ? db.prepare("SELECT day, COUNT(DISTINCT visitor) AS v FROM events WHERE site_id = ? AND type = 'pageview' AND channel = 'ai' AND day BETWEEN ? AND ? GROUP BY day").all(s.id, r.from, r.to)
+    : c.metric === "event"
+    ? db.prepare("SELECT day, COUNT(*) AS v FROM events WHERE site_id = ? AND type = 'event' AND name = ? AND day BETWEEN ? AND ? GROUP BY day").all(s.id, c.event!, r.from, r.to)
     : db.prepare(`SELECT day, SUM(${c.metric}) AS v FROM gsc_rows WHERE site_id = ? AND query = '' AND page = '' AND day BETWEEN ? AND ? GROUP BY day`).all(s.id, r.from, r.to);
   return Object.fromEntries((rows as Row[]).map((x) => [x.day, x.v]));
 }

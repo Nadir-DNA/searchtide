@@ -6,7 +6,9 @@ import type { Field } from "../connectors/types.ts";
 
 export type Size = "quarter" | "third" | "half" | "two-thirds" | "full";
 export type WidgetDef = { label: string; description: string; size: Size; options: Record<string, string> };
-export type KpiOffer = { module: string; connection_id: string | null; kpi: string; label: string; unit?: string; params?: Field[]; already?: boolean };
+export type KpiOffer = { module: string; connection_id: string | null; kpi: string; label: string; unit?: string;
+  /** Champs à remplir au moment d'ajouter (package Play, requête SQL…). */ params?: Field[];
+  /** Valeurs déjà connues (domaine du site, nom d'événement). */ values?: Record<string, string>; already?: boolean };
 export type Action = { key: string; project_id: string; text: string; metric?: string; to: Record<string, string> };
 export type Job = { id: string; every: string; run: () => Promise<void> };
 export type Category = "trafic" | "referencement" | "revenus" | "produit" | "commercial" | "notifications";
