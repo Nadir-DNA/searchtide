@@ -164,7 +164,7 @@ export function portfolio(r: Range, weights: Weights = getWeights()) {
     // Même logique pour les contacts : CRM s'il existe, sinon Stripe (nouveaux clients), sinon saisie « contacts ».
     // M1 : Stripe ne prend la priorité que pour la mesure réellement fournie (revenue / new_customers).
     // Un projet qui n'a que du MRR Stripe garde donc sa saisie manuelle de CA.
-    const stripeRevenue = inds.some((i) => i.source === "stripe" && i.config?.metric === "revenue");
+    const stripeRevenue = inds.some((i) => i.source === "stripe" && i.config?.metric === "revenue" && i.value != null);
     const manualRevenue = manualMeasure(inds, "revenue");
     const revenueMeasure: Measure | null = stripeRevenue
       ? { value: money(inds, "revenue", "value"), previous: money(inds, "revenue", "previous"), unit: inds.find((i) => i.source === "stripe" && i.config?.metric === "revenue")?.unit ?? "€" }

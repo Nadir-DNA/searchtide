@@ -60,3 +60,11 @@ test("CA34 bis : Stripe ne prime que sur la mesure qu'il fournit (MRR seul ne ma
   assert.deepEqual(row.measures.leads, { value: 92, previous: null, unit: null, manual: true }, "les contacts saisis restent visibles");
   assert.equal(row.measures.mrr.value, 29);
 });
+
+test("M2 / CA34 bis : un indicateur Stripe revenue sans valeur ne masque pas la saisie « CA »", () => {
+  const p = saveProject(null, { name: "Revenue vide" })!;
+  saveIndicator(null, p.id, { label: "CA Stripe", mode: "total", source: "stripe", unit: "€", config: { metric: "revenue", connection_id: "c" } });
+  metric(p.id, "revenue", 147, "€");
+  const row = portfolio(lastDays(7)).projects.find((x) => x.id === p.id)!;
+  assert.deepEqual(row.measures.revenue, { value: 147, previous: null, unit: "€", manual: true });
+});
