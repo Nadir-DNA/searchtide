@@ -5,6 +5,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { startServer, login, seed, tempDb } from "./test-server.ts";
 import { mcpAccess } from "./mcp.ts";
+import { db } from "./db.ts";
 
 const SEED = `import { saveProject, saveIndicator, record } from "@server/projects.ts";
 import { createConnection } from "@server/connections.ts";
@@ -189,4 +190,13 @@ test("MCP (GET SSE) : un jeton inconnu en démonstration ne construit pas une se
     // Le même jeton reste refusé en POST (401) : pas de session, donc pas d'outil d'écriture.
     assert.equal((await rpc(s.base, unknown, 1, "tools/call", { name: "indicator_record", arguments: { id: "x", value: 1 } })).status, 401);
   } finally { s.stop(); t.done(); }
+});
+
+test("B4/CA37 : sur une base neuve, read_only vaut 1 par défaut ; une clé explicite à 0 garde ses droits", () => {
+  db.prepare("INSERT INTO agent_keys (id, name, hash, created_at) VALUES (?, ?, ?, ?)").run("b4-default", "Défaut", "hash-b4-1", Date.now());
+  db.prepare("INSERT INTO agent_keys (id, name, hash, read_only, created_at) VALUES (?, ?, ?, ?, ?)").run("b4-explicit", "Explicite", "hash-b4-2", 0, Date.now());
+  const def = db.prepare("SELECT read_only FROM agent_keys WHERE id = ?").get("b4-default") as { read_only: number };
+  const exp = db.prepare("SELECT read_only FROM agent_keys WHERE id = ?").get("b4-explicit") as { read_only: number };
+  assert.equal(def.read_only, 1);
+  assert.equal(exp.read_only, 0, "les clés existantes ne sont pas migrées");
 });

@@ -7,7 +7,7 @@ import { migrate } from "./migrations.ts";
 
 type Row = Record<string, any>;
 migrate("agents-1", `
-  CREATE TABLE agent_keys (id TEXT PRIMARY KEY, name TEXT NOT NULL, hash TEXT NOT NULL UNIQUE, read_only INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, last_used INTEGER);
+  CREATE TABLE agent_keys (id TEXT PRIMARY KEY, name TEXT NOT NULL, hash TEXT NOT NULL UNIQUE, read_only INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL, last_used INTEGER);
   CREATE TABLE agent_log (id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, agent TEXT NOT NULL, tool TEXT NOT NULL, args TEXT, ok INTEGER NOT NULL, error TEXT);
   CREATE INDEX agent_log_ts ON agent_log(ts);
 `);
