@@ -29,6 +29,7 @@ import { backup, loginLimiter, verifyTotp } from "./security.ts";
 import { markAdmin, markClient } from "./admin.ts";
 import { activateFromExistingData, isEnabled } from "./modules/state.ts";
 import { registerModules } from "./modules/api.ts";
+import { loadPlugins } from "./modules/plugins.ts";
 import { registerToday } from "./today.ts";
 
 const PRODUCTION = process.env.NODE_ENV === "production";
@@ -209,6 +210,7 @@ registerConnections(app);
 registerStripeOAuth(app);
 registerSources(app);
 startVault();
+await loadPlugins();
 try { convertGoogleEnv(); } catch (e) { console.error("[google] GOOGLE_SERVICE_ACCOUNT_JSON illisible, non converti :", (e as Error).message); }
 activateFromExistingData();
 registerOps(app);
