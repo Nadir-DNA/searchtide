@@ -6,6 +6,7 @@ import { z } from "zod";
 import { db } from "./db.ts";
 import { migrate } from "./migrations.ts";
 import { allModules, type WidgetDef } from "./modules/index.ts";
+import { isEnabled } from "./modules/state.ts";
 
 type Row = Record<string, any>;
 migrate("dashboards-1", `CREATE TABLE dashboards (id TEXT PRIMARY KEY, name TEXT NOT NULL, icon TEXT, position INTEGER NOT NULL DEFAULT 0,
@@ -13,6 +14,12 @@ migrate("dashboards-1", `CREATE TABLE dashboards (id TEXT PRIMARY KEY, name TEXT
 
 /** Catalogue des blocs : la réunion des blocs déclarés par les modules (server/modules). */
 export const WIDGETS: Record<string, WidgetDef> = Object.fromEntries(allModules().flatMap((m) => Object.entries(m.widgets ?? {})));
+/** Catalogue avec, pour chaque bloc, son module et s'il est disponible (module actif). */
+export function widgetCatalog(): Record<string, WidgetDef & { module: string; moduleName: string; available: boolean }> {
+  const out: Record<string, WidgetDef & { module: string; moduleName: string; available: boolean }> = {};
+  for (const m of allModules()) for (const [k, w] of Object.entries(m.widgets ?? {})) out[k] = { ...w, module: m.id, moduleName: m.name, available: isEnabled(m.id) };
+  return out;
+}
 export const SIZES = ["quarter", "third", "half", "two-thirds", "full"] as const;
 
 const widget = z.object({
@@ -88,7 +95,7 @@ export function editWidgets(id: string, by: string, op:
 const err = (e: unknown) => e instanceof z.ZodError ? e.issues.map((i) => `${i.path.join(".")} : ${i.message}`).join(", ") : (e as Error).message;
 
 export function registerDashboards(app: Hono) {
-  app.get("/api/dashboards", (c) => c.json({ dashboards: listDashboards(), catalog: WIDGETS, sizes: SIZES }));
+  app.get("/api/dashboards", (c) => c.json({ dashboards: listDashboards(), catalog: widgetCatalog(), sizes: SIZES }));
   app.post("/api/dashboards", async (c) => {
     const b = await c.req.json().catch(() => ({}));
     try { return c.json(createDashboard(b.name, b.widgets ?? []), 201); } catch (e) { return c.json({ error: err(e) }, 400); }
@@ -109,7 +116,7 @@ const wInput = z.object({
 
 export function registerDashboardTools(server: McpServer, readOnly: boolean, agent: string) {
   server.registerTool("dashboard_catalog", { description: "Types de blocs disponibles pour les pages de Searchtide, leurs options et les tailles possibles." },
-    async () => json({ widgets: WIDGETS, sizes: SIZES }));
+    async () => json({ widgets: widgetCatalog(), sizes: SIZES }));
   server.registerTool("dashboard_list", { description: "Pages de Searchtide (ordre du menu) avec leurs blocs." }, async () => json(listDashboards()));
   server.registerTool("dashboard_get", { description: "Une page de Searchtide et ses blocs, par id ou par nom.", inputSchema: z.object({ page: z.string() }) },
     async ({ page }) => json(getDashboard(page)));

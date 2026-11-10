@@ -8,6 +8,8 @@ import type { McpServer } from "@modelcontextprotocol/server";
 import { db, localDay } from "./db.ts";
 import { lastDays, previous, type Range } from "./stats.ts";
 import { migrate } from "./migrations.ts";
+import { hiddenIndicators, indicatorModule, isEnabled, setEnabled, setProjectModule } from "./modules/state.ts";
+import { getModule } from "./modules/index.ts";
 import { collectVia, currentCtx } from "./connectors/use.ts";
 import { connections } from "./connections.ts";
 import { stripeMetric } from "./connectors/stripe.ts";
@@ -254,7 +256,9 @@ export function goalProgress(ind: Row, now = new Date()) {
 export function listProjects(r: Range): Row[] {
   return (db.prepare("SELECT * FROM projects ORDER BY position, name").all() as Row[]).map((p) => {
     const proj = decodeProj(p);
-    const indicators = (db.prepare("SELECT * FROM indicators WHERE project_id = ? ORDER BY position, created_at").all(p.id) as Row[]).map((i) => indicatorView(decodeInd(i), r));
+    const hidden = hiddenIndicators(p.id); // module retiré du projet : masqué, jamais supprimé
+    const indicators = (db.prepare("SELECT * FROM indicators WHERE project_id = ? ORDER BY position, created_at").all(p.id) as Row[])
+      .filter((i) => !hidden.has(i.id)).map((i) => indicatorView(decodeInd(i), r));
     // Entonnoir : chaque étape avec son taux de passage depuis l'étape précédente
     const steps = (proj.funnel as string[]).map((id) => indicators.find((i) => i.id === id)).filter(Boolean) as Row[];
     const funnel = steps.map((s, k) => ({ id: s.id, label: s.label, value: s.value,
@@ -285,6 +289,8 @@ export function saveIndicator(id: string | null, projectId: string | null, input
     ON CONFLICT(id) DO UPDATE SET label = excluded.label, unit = excluded.unit, mode = excluded.mode, source = excluded.source, config = excluded.config,
     position = excluded.position, goal = excluded.goal, goal_period = excluded.goal_period`)
     .run(iid, cur?.project_id ?? projectId, v.label, v.unit, v.mode, v.source, JSON.stringify(v.config), v.position, v.goal, v.goal ? v.goal_period ?? "month" : null, cur?.created_at ?? Date.now());
+  // Un nouvel indicateur active son module pour le projet : sinon il serait aussitôt masqué
+  if (!cur) { const m = indicatorModule({ source: v.source, config: v.config }); if (!getModule(m)?.core) { if (!isEnabled(m)) setEnabled(m, true); setProjectModule(projectId!, m, true); } }
   // Changer la source ou la requête rend l'historique faux
   if (cur && (cur.source !== v.source || JSON.stringify(cur.config) !== JSON.stringify(v.config))) db.prepare("DELETE FROM metrics WHERE indicator_id = ?").run(iid);
   return getInd(iid)!;

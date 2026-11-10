@@ -42,3 +42,11 @@ test("état : source d'indicateur → module", () => {
   assert.equal(indicatorModule({ source: "manual", config: {} }), "projets");
   assert.equal(indicatorModule({ source: "stripe", config: {} }), "stripe");
 });
+
+test("état : créer un indicateur active son module pour le projet", () => {
+  const p = saveProject(null, { name: "S" })!;
+  setEnabled("produit", false);
+  const ind = saveIndicator(null, p.id, { label: "Inscrits", mode: "daily", source: "http", config: { url: "https://exemple.com/n.json", path: "n" } })!;
+  assert.equal(enabledFor(p.id, "produit"), true);
+  assert.equal(hiddenIndicators(p.id).has(ind.id), false);
+});

@@ -32,3 +32,13 @@ test("clés d'agent : seule l'empreinte est gardée, journal par agent", () => {
   logCall("Codex", "portfolio_overview", { days: 7 });
   assert.equal(agentLog(5, "Codex")[0].tool, "portfolio_overview");
 });
+
+test("pages : le bloc pipeline est indisponible tant que le CRM est inactif", async () => {
+  const { widgetCatalog } = await import("./dashboards.ts");
+  const { setEnabled } = await import("./modules/state.ts");
+  setEnabled("crm", false);
+  assert.deepEqual([widgetCatalog().pipeline.module, widgetCatalog().pipeline.available], ["crm", false]);
+  assert.equal(widgetCatalog().note.available, true);
+  setEnabled("crm", true);
+  assert.equal(widgetCatalog().pipeline.available, true);
+});

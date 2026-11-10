@@ -4,12 +4,12 @@ import { execFileSync } from "node:child_process";
 import { SECRET_40, seed, tempDb } from "./test-server.ts";
 
 // Lance activateFromExistingData() dans un processus fils sur la base donnée et renvoie l'état obtenu.
-function activate(dbPath: string, env: Record<string, string> = {}) {
+function activate(dbPath: string, env: Record<string, string> = {}, run = true) {
   const root = new URL("./", import.meta.url).href;
   const out = execFileSync(process.execPath, ["--input-type=module", "-e", `
     const { activateFromExistingData } = await import("${root}modules/state.ts");
     const { db } = await import("${root}db.ts");
-    let error = null; try { activateFromExistingData(); } catch (e) { error = e.message; }
+    let error = null; try { if (${run}) activateFromExistingData(); } catch (e) { error = e.message; }
     console.log(JSON.stringify({ error,
       enabled: db.prepare("SELECT id FROM modules WHERE enabled = 1 ORDER BY id").all().map((r) => r.id),
       projectModules: db.prepare("SELECT p.name, m.module_id FROM project_modules m JOIN projects p ON p.id = m.project_id WHERE m.enabled = 1 ORDER BY p.name, m.module_id").all().map((r) => r.name + ":" + r.module_id),
@@ -60,10 +60,10 @@ test("migration : une erreur au milieu laisse la base inchangée", () => {
     seed(t.path, SEED);
     seed(t.path, `const { db } = await import("@server/modules/state.ts").then(() => import("@server/db.ts"));
       db.exec("CREATE TRIGGER casse BEFORE INSERT ON project_modules BEGIN SELECT RAISE(ABORT, 'panne simulée'); END");`);
+    const before = activate(t.path, {}, false);
     const r = activate(t.path);
     assert.match(r.error, /panne simulée/);
-    assert.deepEqual(r.enabled, []);
-    assert.equal(r.projects.length, 1); // pas de projet créé pour b.fr
+    assert.deepEqual({ ...r, error: null }, before); // modules, projets (pas de projet pour b.fr) et migrations inchangés
     assert.equal(r.done, false);
   } finally { t.done(); }
 });

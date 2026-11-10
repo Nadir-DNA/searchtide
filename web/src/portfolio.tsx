@@ -1,5 +1,6 @@
 // Blocs multi-projets des pages : le pouls du portefeuille, les visites par projet, ce qui demande une action, les projets côte à côte.
 import type { ReactNode } from "react";
+import { ActivateLink } from "./modules/ActivatePrompt";
 import { StackedBars } from "./chart";
 import { val } from "./projects";
 import { Card, Delta, EmptyBox, fmt } from "./ui";
@@ -16,7 +17,7 @@ type Row = {
 type Alert = { tone: "bad" | "warn" | "info"; project: string | null; text: string; to: Record<string, string> };
 export type Portfolio = {
   range: { from: string; to: string }; today: string; projects: Row[]; daily: Record<string, any>[]; alerts: Alert[];
-  totals: { visitors: number; visitorsPrev: number; clicks: number; clicksPrev: number; revenue: number; revenuePrev: number; mrr: number; leads: number; leadsPrev: number; open: number; todo: number };
+  totals: { visitors: number; visitorsPrev: number; clicks: number | null; clicksPrev: number | null; revenue: number | null; revenuePrev: number | null; mrr: number | null; leads: number | null; leadsPrev: number | null; open: number | null; todo: number | null };
 };
 
 const colorOf = (p: Row) => p.color ?? "var(--color-chart-4)";
@@ -41,10 +42,14 @@ export function Pulse({ t, days, go }: { t: Portfolio["totals"]; days: number; g
   return (
     <section aria-label="Chiffres du portefeuille" className="grid grid-cols-2 overflow-hidden rounded-2xl border border-border bg-surface lg:grid-cols-5 [&>*]:border-rule max-lg:[&>*:nth-child(odd)]:border-r max-lg:[&>*:nth-child(n+3)]:border-t lg:[&>*:not(:first-child)]:border-l max-lg:[&>*:last-child]:col-span-2 max-lg:[&>*:last-child]:border-r-0">
       {cell("Visites", fmt(t.visitors), <Delta now={t.visitors} before={t.visitorsPrev} />, `sur ${days} jours, tous sites`)}
-      {cell("Clics Google", fmt(t.clicks), <Delta now={t.clicks} before={t.clicksPrev} />, "Search Console, 2-3 j de retard")}
-      {cell("Chiffre d'affaires", eur(t.revenue), <Delta now={t.revenue} before={t.revenuePrev} />, t.mrr ? `MRR ${eur(t.mrr)}` : "encaissé sur Stripe")}
-      {cell("Nouveaux contacts", fmt(t.leads), <Delta now={t.leads} before={t.leadsPrev} />, `${fmt(t.open)} prospects en cours`, () => go(target({ view: "crm" })))}
-      {cell("Relances à faire", fmt(t.todo), null, t.todo ? "aujourd'hui ou en retard" : "rien en attente", () => go(target({ view: "crm", tab: "todo" })))}
+      {t.clicks == null ? cell("Clics Google", "—", null, <ActivateLink module="google" name="Google" go={go} />)
+        : cell("Clics Google", fmt(t.clicks), <Delta now={t.clicks} before={t.clicksPrev} />, "Search Console, 2-3 j de retard")}
+      {t.revenue == null ? cell("Chiffre d'affaires", "—", null, <ActivateLink module="stripe" name="Stripe" go={go} />)
+        : cell("Chiffre d'affaires", eur(t.revenue), <Delta now={t.revenue} before={t.revenuePrev} />, t.mrr ? `MRR ${eur(t.mrr)}` : "encaissé sur Stripe")}
+      {t.leads == null ? cell("Nouveaux contacts", "—", null, <ActivateLink module="crm" name="Contacts" go={go} />)
+        : cell("Nouveaux contacts", fmt(t.leads), <Delta now={t.leads} before={t.leadsPrev} />, `${fmt(t.open ?? 0)} prospects en cours`, () => go(target({ view: "crm" })))}
+      {t.todo == null ? cell("Relances à faire", "—", null, <ActivateLink module="crm" name="Contacts" go={go} />)
+        : cell("Relances à faire", fmt(t.todo), null, t.todo ? "aujourd'hui ou en retard" : "rien en attente", () => go(target({ view: "crm", tab: "todo" })))}
     </section>
   );
 }
