@@ -220,7 +220,7 @@ function Shell({ me, onLogout }: { me: Me; onLogout: () => void }) {
   );
 }
 
-/** Rubrique dépliante ; son état ouvert/fermé est retenu par navigateur. Les favoris (pinned) restent visibles même repliée. */
+/** Rubrique dépliante ; son état ouvert/fermé est retenu par navigateur. Repliée, ses favoris (pinned) restent visibles. */
 function NavGroup({ id, label, icon, active, pinned, children }: { id: string; label: string; icon: ReactNode; active: boolean; pinned?: ReactNode; children: ReactNode }) {
   const key = `st-nav-${id}`;
   const [open, setOpen] = useState(() => { try { const v = localStorage.getItem(key); return v ? v === "1" : active; } catch { return active; } });
@@ -231,7 +231,7 @@ function NavGroup({ id, label, icon, active, pinned, children }: { id: string; l
         <Svg>{icon}</Svg><span className="flex-1">{label}</span>
         <svg viewBox="0 0 16 16" className={`size-3.5 transition-transform ${open ? "rotate-90" : ""}`} aria-hidden><path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" strokeWidth="1.5" /></svg>
       </button>
-      {pinned && <div className="mt-1 pl-3">{pinned}</div>}
+      {pinned && !open && <div className="mt-1 pl-3">{pinned}</div>}
       {open && <div className="mt-1 space-y-1 border-l border-rule pl-3 ml-5">{children}</div>}
     </>
   );
