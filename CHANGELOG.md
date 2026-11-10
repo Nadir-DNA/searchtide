@@ -2,7 +2,22 @@
 
 Toutes les versions notables sont consignées ici. Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/).
 
-## [0.2.0] — préparée le 2026-11-09 (non taguée)
+## [0.2.1] — 2026-11-10
+
+Version corrective : les saisies manuelles entrent dans le Portefeuille, le score ne récompense plus le vide, les clés d'agent sont en lecture seule par défaut et l'adresse du compte de service Google se copie en un clic.
+
+### Corrigé
+
+- Portefeuille : CA et contacts saisis à la main (rôle dans l'éditeur d'indicateur), sans addition avec Stripe ; priorité Stripe seulement si l'indicateur `revenue`/`new_customers` existe **avec une valeur** ; cellule « saisi ».
+- Score : partiel et neutre sous 60 % de couverture brute, libellé « Partiel · N % mesuré », couverture tronquée quand partiel.
+- Clés d'agent : `read_only DEFAULT 1` sur base neuve, clés existantes inchangées.
+- Google : bouton Copier sur l'adresse du compte de service, avec repli si le presse-papiers est indisponible.
+
+### Documentation
+
+- README, CONTRIBUTING et SECURITY réécrits ; 10 guides dans `docs/guides/` ; modèles d'issue et de discussion.
+
+## [0.2.0] — publiée le 2026-11-10
 
 Cette version transforme Searchtide en produit auto-hébergé complet : brancher ses services dans l'interface, sans fichier de configuration.
 
