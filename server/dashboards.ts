@@ -5,32 +5,19 @@ import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { db } from "./db.ts";
 import { migrate } from "./migrations.ts";
+import { allModules, type WidgetDef } from "./modules/index.ts";
 
 type Row = Record<string, any>;
 migrate("dashboards-1", `CREATE TABLE dashboards (id TEXT PRIMARY KEY, name TEXT NOT NULL, icon TEXT, position INTEGER NOT NULL DEFAULT 0,
   widgets TEXT NOT NULL DEFAULT '[]', updated_at INTEGER NOT NULL, updated_by TEXT)`);
 
-/** Catalogue des blocs : ce que l'interface sait afficher et ce que les agents peuvent placer. */
-export const WIDGETS = {
-  pulse: { label: "Chiffres du portefeuille", description: "Visites, clics Google, chiffre d'affaires, nouveaux contacts, relances : tous projets confondus.", size: "full", options: {} },
-  traffic_by_project: { label: "Visites par projet", description: "Barres empilées jour par jour, une couleur par projet.", size: "two-thirds", options: {} },
-  todo: { label: "À traiter", description: "Alertes : relevés en panne, sites muets, baisses, objectifs en retard, relances, publications du jour.", size: "third", options: {} },
-  projects_table: { label: "Projets", description: "Tableau comparatif de tous les projets (visites, Google, CA, contacts, indicateur clé, objectif).", size: "full", options: {} },
-  pipeline: { label: "Pipeline commercial", description: "Contacts par étape, montant en négociation, gagné ce mois.", size: "half", options: {} },
-  publications: { label: "Publications de la semaine", description: "Calendrier éditorial de la semaine en cours.", size: "half", options: {} },
-  project: { label: "Un projet", description: "Les indicateurs d'un projet en chiffres.", size: "full", options: { project: "id ou crm_key du projet (obligatoire)" } },
-  indicator: { label: "Courbe d'un indicateur", description: "Graphique jour par jour d'un indicateur, aux couleurs de son projet.", size: "half", options: { indicator: "id de l'indicateur (obligatoire, voir projects_kpis)" } },
-  goals: { label: "Objectifs", description: "Avancement de tous les objectifs, avec projection au rythme actuel.", size: "half", options: { project: "id ou crm_key pour se limiter à un projet (facultatif)" } },
-  site: { label: "Trafic d'un site", description: "Visiteurs par jour et provenance d'un site suivi.", size: "half", options: { site: "domaine, ex. exemple.com (obligatoire)" } },
-  seo: { label: "Mots-clés à travailler", description: "Mots-clés en position 4 à 20 d'un site, les plus faciles à faire monter.", size: "half", options: { site: "domaine (obligatoire)" } },
-  note: { label: "Note", description: "Texte libre (Markdown simple : titres #, listes -, **gras**, liens). Idéal pour un briefing écrit par un agent.", size: "half", options: { text: "contenu Markdown (obligatoire)" } },
-  agent_log: { label: "Journal des agents", description: "Les derniers appels des agents IA, avec leur nom.", size: "half", options: { agent: "nom d'un agent pour filtrer (facultatif)", limit: "nombre de lignes, 5 à 50 (facultatif)" } },
-} as const;
+/** Catalogue des blocs : la réunion des blocs déclarés par les modules (server/modules). */
+export const WIDGETS: Record<string, WidgetDef> = Object.fromEntries(allModules().flatMap((m) => Object.entries(m.widgets ?? {})));
 export const SIZES = ["quarter", "third", "half", "two-thirds", "full"] as const;
 
 const widget = z.object({
   id: z.string().min(1).max(40).default(() => randomUUID().slice(0, 8)),
-  type: z.enum(Object.keys(WIDGETS) as [keyof typeof WIDGETS, ...(keyof typeof WIDGETS)[]]),
+  type: z.enum(Object.keys(WIDGETS) as [string, ...string[]]),
   size: z.enum(SIZES).optional(),
   title: z.string().max(80).optional(),
   options: z.record(z.string(), z.union([z.string().max(20_000), z.number(), z.boolean()])).default({}),
