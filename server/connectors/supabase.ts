@@ -52,7 +52,6 @@ export const supabase: Connector = {
         try { await client.query(sql, []); available++; } catch (e) { if (missing(e)) throw new ConnectorError("format", "Les fonctions Searchtide manquent : exécutez le bloc SQL du guide, puis testez à nouveau."); throw e; }
       }
       await client.query("ROLLBACK", []);
-      const writes = false; void writes;
       return { ok: true, label: `projet ${ref}`, detail: `projet ${ref}, PostgreSQL ${majorOf(who.v)}, ${available} indicateurs disponibles.`, warnings };
     } catch (e) {
       try { await client?.query("ROLLBACK", []); } catch { /* fermée */ }
