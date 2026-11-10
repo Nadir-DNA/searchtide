@@ -48,7 +48,7 @@ Searchtide lit votre compte Stripe avec une **clé restreinte** (`rk_`). Aucun m
 ## Limites et sécurité
 
 - **Aucune écriture** chez Stripe : pas de remboursement, pas de modification d'abonnement, pas de création de client.
-- **OAuth** (« Connexion avec Stripe ») n'est pas disponible en v0.2.0 : la clé `rk_` est la seule voie. Une connexion en un clic est prévue pour une version ultérieure.
+- **OAuth** (« Connexion avec Stripe ») est une **bêta, comptes de test seulement**, depuis la v0.2.2 (service Searchtide Connect). La clé `rk_` reste la voie recommandée pour un compte réel : lecture seule garantie par Stripe, aucune donnée ne quitte l'instance.
 - La clé est chiffrée dans l'instance et n'est **jamais réaffichée**. Seuls le préfixe et les 4 derniers caractères servent d'indice.
 - Pour retirer : **Retirer** dans la carte. Pensez aussi à supprimer la clé dans Stripe : <https://dashboard.stripe.com/apikeys>.
 - Le mode test et le mode production sont deux connexions distinctes : ne mélangez pas les deux dans un même projet.

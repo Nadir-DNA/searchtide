@@ -17,7 +17,7 @@ One instance, one SQLite file, your keys encrypted on your machine. No hosted se
 Fictional data, no keys, read-only:
 
 ```bash
-docker run -d -p 127.0.0.1:3030:3030 -e DEMO=1 -v searchtide_demo:/data ghcr.io/nadir-dna/searchtide:0.2.0
+docker run -d -p 127.0.0.1:3030:3030 -e DEMO=1 -v searchtide_demo:/data ghcr.io/nadir-dna/searchtide:0.2.2
 ```
 
 Open <http://localhost:3030>. Details and a second screenshot (multi-project portfolio): [docs/demo.md](docs/demo.md).
@@ -35,7 +35,7 @@ Open <http://localhost:3030>. Details and a second screenshot (multi-project por
 ### Docker, one command
 
 ```bash
-docker run -d --name searchtide -p 127.0.0.1:3030:3030 -v searchtide:/data ghcr.io/nadir-dna/searchtide:0.2.0
+docker run -d --name searchtide -p 127.0.0.1:3030:3030 -v searchtide:/data ghcr.io/nadir-dna/searchtide:0.2.2
 docker logs searchtide    # admin password generated on first start
 ```
 

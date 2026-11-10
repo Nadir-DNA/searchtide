@@ -2,6 +2,29 @@
 
 Toutes les versions notables sont consignées ici. Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/).
 
+## [0.2.2] — 2026-11-10
+
+Version d'ajouts : un neuvième connecteur, et une **Connexion avec Stripe** en bêta (comptes de test), servie par le relais Searchtide Connect.
+
+### Ajouté
+
+- **Supabase** (lecture seule) : utilisateurs, inscriptions par jour, connectés sur 7/30 jours, taille de la base, par un rôle Postgres dédié et quatre fonctions d'agrégat ; refus du port 6543 et des superutilisateurs, avertissement sur l'adresse directe.
+- **Connexion avec Stripe (bêta)** : consentement explicite, OAuth via **Searchtide Connect** (`https://connect.nadirdaoudi.com`), jeton stocké dans le coffre, révocation depuis l'instance ou le Dashboard Stripe. En mode test uniquement tant que le compte plateforme n'est pas activé ; la clé restreinte `rk_` reste la voie recommandée.
+- **Relais Searchtide Connect** (dossier `relay/`) : Worker Cloudflare + D1, PKCE, state signé, codes et jetons à usage unique, liste blanche de lectures, webhook `account.application.deauthorized`, quotas par empreinte HMAC d'IP.
+- **Politique de confidentialité du relais** (FR/EN, `GET /privacy`) : empreinte d'IP non réversible conservée au plus une heure pour limiter les abus.
+
+### Corrigé
+
+- Repli propre quand le relais est indisponible : message, bouton désactivé, clé limitée accessible au clavier.
+- Retirer une connexion OAuth marque les indicateurs « Source retirée » et avertit si la révocation distante échoue.
+- MRR identique par clé `rk_` et par relais (`interval_count` et remises conservés).
+- Page d'autorisation : hôte réel de `return_url` ; objets Stripe hors liste blanche refusés (`Object.hasOwn`).
+
+### Documentation
+
+- Notes `docs/release-v0.2.2.md`, guides Stripe et FAQ mis à jour (bêta, comptes de test, relais).
+- `README.md` et `README.en.md` : Supabase, Connexion avec Stripe en bêta, relais.
+
 ## [0.2.1] — 2026-11-10
 
 Version corrective : les saisies manuelles entrent dans le Portefeuille, le score ne récompense plus le vide, les clés d'agent sont en lecture seule par défaut et l'adresse du compte de service Google se copie en un clic.

@@ -361,7 +361,7 @@ function StripeConnect({ onUseKey }: { onUseKey: () => void }) {
   const label = st.mode === "test" ? "Continuer vers Stripe (test)" : "Continuer vers Stripe";
   return (
     <Card className="mb-6 p-5">
-      <h2 className="text-sm font-medium">Connexion avec Stripe</h2>
+      <h2 className="text-sm font-medium">Connexion avec Stripe (bêta)</h2>
       {unavailable ? (
         <>
           <p role="alert" className="mt-2 text-sm text-negative">Le service Searchtide Connect est indisponible. Utilisez une clé limitée (aucune donnée ne quitte votre instance).</p>

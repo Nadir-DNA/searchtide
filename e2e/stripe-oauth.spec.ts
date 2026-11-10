@@ -11,7 +11,7 @@ async function login(page: Page) {
 test("CA32/CA52 : le bouton reste inactif sans consentement, puis propose la clé limitée au clavier", async ({ page }) => {
   await login(page);
   await page.goto("/?view=connections");
-  await expect(page.getByRole("heading", { name: "Connexion avec Stripe" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Connexion avec Stripe (bêta)" })).toBeVisible();
   const go = page.getByRole("button", { name: "Continuer vers Stripe (test)" });
   await expect(go).toBeDisabled();
   const consent = page.getByRole("checkbox", { name: /J'autorise Searchtide Connect/ });
