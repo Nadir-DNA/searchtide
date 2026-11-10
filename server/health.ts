@@ -50,9 +50,11 @@ export function computeHealth(inp: Inputs, weights: Weights = DEFAULT_WEIGHTS, o
   const sum = parts.filter((p) => p.measured).reduce((n, p) => n + p.weight * p.value!, 0);
   const score = measuredW > 0 ? Math.round(sum / measuredW) : null;
   const coverage = applicableW > 0 ? Math.round((100 * measuredW) / applicableW) : 0;
-  const tone = score == null ? "none" : score >= 70 ? "positive" : score >= 40 ? "warn" : "negative";
+  // B2 : sous 60 % de couverture, le score est partiel et neutre (il ne récompense pas le vide).
+  const partial = coverage < 60;
+  const tone = score == null || partial ? "none" : score >= 70 ? "positive" : score >= 40 ? "warn" : "negative";
   const missing = parts.filter((p) => p.applicable && !p.measured).map((p) => p.label);
-  return { score, coverage, tone, partial: coverage < 50, missing, parts };
+  return { score, coverage, tone, partial, missing, parts };
 }
 
 // ── Poids enregistrés (settings.health.weights), communs à tous les projets ──

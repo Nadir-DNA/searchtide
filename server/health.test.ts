@@ -68,14 +68,23 @@ test("composantes : objectifs, conversion, action, tendance moyenne des mesures,
   assert.equal(part(computeHealth(base({ action: { late: 2 } }), DEFAULT_WEIGHTS, { crm: false }), "action").measured, false, "sans CRM, Action n'est pas mesurée même si on la fournit");
 });
 
-test("seuils d'affichage : ≥ 70 positif, 40 à 69 avertissement, < 40 négatif ; couverture < 50 % = score partiel", () => {
-  const s = (errors: number, items: number) => computeHealth({ trend: {}, goals: { total: 0, reached: 0 }, reliability: { items, errors }, conversion: null, action: null }, DEFAULT_WEIGHTS, { crm: false });
-  assert.deepEqual([s(3, 10).score, s(3, 10).tone], [70, "positive"]);
+test("seuils d'affichage : ≥ 70 positif, 40 à 69 avertissement, < 40 négatif ; couverture < 60 % = partiel et neutre", () => {
+  // Poids concentrés sur la fiabilité : couverture 100 %, donc les seuils de score s'appliquent.
+  const w = { trend: 0, goals: 0, reliability: 100, conversion: 0, action: 0 };
+  const s = (errors: number, items: number) => computeHealth({ trend: {}, goals: { total: 0, reached: 0 }, reliability: { items, errors }, conversion: null, action: null }, w, { crm: false });
+  assert.deepEqual([s(3, 10).score, s(3, 10).tone, s(3, 10).partial], [70, "positive", false]);
   assert.deepEqual([s(31, 100).score, s(31, 100).tone], [69, "warn"]);
   assert.deepEqual([s(6, 10).score, s(6, 10).tone], [40, "warn"]);
   assert.deepEqual([s(61, 100).score, s(61, 100).tone], [39, "negative"]);
-  assert.equal(s(0, 5).coverage, 22); assert.equal(s(0, 5).partial, true);
-  assert.deepEqual(s(0, 5).missing, ["Tendance", "Objectifs", "Conversion"]);
+  // Sous 60 % : partiel, jamais coloré comme bon.
+  const low = computeHealth({ trend: {}, goals: { total: 0, reached: 0 }, reliability: { items: 5, errors: 0 }, conversion: null, action: null }, DEFAULT_WEIGHTS, { crm: false });
+  assert.equal(low.coverage, 22); assert.equal(low.partial, true); assert.equal(low.tone, "none");
+  assert.deepEqual(low.missing, ["Tendance", "Objectifs", "Conversion"]);
+  // Cas limite : 60 % pile → non partiel ; 59 % → partiel.
+  const at60 = computeHealth({ trend: { visits: { now: 2, before: 1 } }, goals: { total: 0, reached: 0 }, reliability: { items: 1, errors: 0 }, conversion: null, action: null }, { trend: 60, goals: 40, reliability: 0, conversion: 0, action: 0 }, { crm: false });
+  assert.equal(at60.coverage, 60); assert.equal(at60.partial, false);
+  const at59 = computeHealth({ trend: { visits: { now: 2, before: 1 } }, goals: { total: 0, reached: 0 }, reliability: { items: 1, errors: 0 }, conversion: null, action: null }, { trend: 59, goals: 41, reliability: 0, conversion: 0, action: 0 }, { crm: false });
+  assert.equal(at59.coverage, 59); assert.equal(at59.partial, true); assert.equal(at59.tone, "none");
 });
 
 beforeEach(() => { db.exec("DELETE FROM settings WHERE key = 'health.weights'"); delete process.env.DEMO; });
@@ -107,11 +116,11 @@ test("CA21 (données réelles) : tendance des visites + fiabilité → score, co
   db.prepare("UPDATE indicators SET last_error = 'panne' WHERE id = ?").run(bad.id);           // 1 indicateur + 1 site = 2 éléments, 1 en erreur → fiabilité 50
   const r = lastDays(7);
   let row = portfolio(r).projects.find((x) => x.id === p.id)!;
-  assert.equal(row.health!.coverage, 50); assert.equal(row.health!.score, 80); assert.equal(row.health!.tone, "positive");
+  assert.equal(row.health!.coverage, 50); assert.equal(row.health!.score, 80); assert.equal(row.health!.tone, "none"); assert.equal(row.health!.partial, true);
   assert.deepEqual(row.health!.missing, ["Objectifs", "Conversion", "Action"]);
   process.env.DEMO = "1";                                                                       // sans CRM : Action non applicable
   row = portfolio(r).projects.find((x) => x.id === p.id)!;
-  assert.equal(row.health!.coverage, 56); assert.equal(row.health!.score, 80);
+  assert.equal(row.health!.coverage, 56); assert.equal(row.health!.score, 80); assert.equal(row.health!.tone, "none"); assert.equal(row.health!.partial, true);
   delete process.env.DEMO;
   row = portfolio(r, { trend: 10, goals: 0, reliability: 40, conversion: 0, action: 0 }).projects.find((x) => x.id === p.id)!;
   assert.equal(row.health!.score, 60);
