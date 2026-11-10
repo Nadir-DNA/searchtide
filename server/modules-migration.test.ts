@@ -69,3 +69,11 @@ test("migration : une erreur au milieu laisse la base inchangée", () => {
     assert.equal(r.done, false);
   } finally { t.done(); }
 });
+
+test("migration : NTFY_TOPIC seul suffit à garder les notifications actives", () => {
+  const t = tempDb();
+  try {
+    seed(t.path, SEED);
+    assert.ok(activate(t.path, { NTFY_TOPIC: "mon-sujet" }).enabled.includes("notifications"));
+  } finally { t.done(); }
+});

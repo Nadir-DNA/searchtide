@@ -78,5 +78,5 @@ export function startJobs(now: () => number = Date.now): () => void {
 export const jobsStatus = () => db.prepare("SELECT id, module, every, last_run, duration_ms, ok, error, fails FROM jobs ORDER BY module, id").all() as Row[];
 
 /** Alertes du portefeuille : une tâche en échec trois fois de suite. */
-export const jobAlerts = () => jobsStatus().filter((j) => j.fails >= 3)
+export const jobAlerts = () => jobsStatus().filter((j) => j.fails >= 3 && isEnabled(j.module))
   .map((j) => ({ tone: "bad" as const, project: null, text: `Tâche « ${j.id} » en échec ${j.fails} fois de suite : ${j.error}`, to: { view: "settings" } }));

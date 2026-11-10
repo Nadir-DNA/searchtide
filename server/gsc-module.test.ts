@@ -38,3 +38,24 @@ test("google : la propriété du projet prime sur celle du site", () => {
   assert.equal(gscPropertyFor("a.fr"), "https://a.fr/"); // sans projet : celle d'un projet qui contient le site
   assert.equal(gscPropertyFor("inconnu.fr"), null);
 });
+
+test("google : changer la propriété d'un site dans l'interface change celle qui est synchronisée", async () => {
+  const { setSiteGscProperty } = await import("./gsc.ts");
+  db.prepare("INSERT INTO sites (id, domain, name, gsc_property, created_at) VALUES ('gc', 'c.fr', 'c.fr', 'sc-domain:c.fr', 0)").run();
+  const p = saveProject(null, { name: "C", sites: ["c.fr"] })!;
+  setProjectModule(p.id, "google", true, { gsc_property: { "c.fr": "sc-domain:c.fr" } }); // copie faite par la migration
+  setSiteGscProperty("gc", "https://c.fr/");
+  assert.equal(gscPropertyFor("c.fr", p.id), "https://c.fr/");
+  setSiteGscProperty("gc", null);
+  assert.equal(gscPropertyFor("c.fr", p.id), null);
+});
+
+test("google : une connexion supprimée ne revient pas au redémarrage", async () => {
+  const { removeConnection } = await import("./connections.ts");
+  process.env.GOOGLE_SERVICE_ACCOUNT_JSON = GOOGLE_JSON;
+  convertGoogleEnv();
+  for (const c of connections("google")) removeConnection(c.id);
+  assert.notEqual(convertGoogleEnv(), "converti");
+  assert.equal(connections("google").length, 0);
+  delete process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+});

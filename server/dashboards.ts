@@ -12,8 +12,8 @@ type Row = Record<string, any>;
 migrate("dashboards-1", `CREATE TABLE dashboards (id TEXT PRIMARY KEY, name TEXT NOT NULL, icon TEXT, position INTEGER NOT NULL DEFAULT 0,
   widgets TEXT NOT NULL DEFAULT '[]', updated_at INTEGER NOT NULL, updated_by TEXT)`);
 
-/** Catalogue des blocs : la réunion des blocs déclarés par les modules (server/modules). */
-export const WIDGETS: Record<string, WidgetDef> = Object.fromEntries(allModules().flatMap((m) => Object.entries(m.widgets ?? {})));
+/** Catalogue des blocs : la réunion des blocs déclarés par les modules (server/modules), lue à chaque appel. */
+export const widgetDefs = (): Record<string, WidgetDef> => Object.fromEntries(allModules().flatMap((m) => Object.entries(m.widgets ?? {})));
 /** Catalogue avec, pour chaque bloc, son module et s'il est disponible (module actif). */
 export function widgetCatalog(): Record<string, WidgetDef & { module: string; moduleName: string; available: boolean }> {
   const out: Record<string, WidgetDef & { module: string; moduleName: string; available: boolean }> = {};
@@ -24,11 +24,11 @@ export const SIZES = ["quarter", "third", "half", "two-thirds", "full"] as const
 
 const widget = z.object({
   id: z.string().min(1).max(40).default(() => randomUUID().slice(0, 8)),
-  type: z.enum(Object.keys(WIDGETS) as [string, ...string[]]),
+  type: z.string().refine((t) => t in widgetDefs(), "Type de bloc inconnu, voir le catalogue"),
   size: z.enum(SIZES).optional(),
   title: z.string().max(80).optional(),
   options: z.record(z.string(), z.union([z.string().max(20_000), z.number(), z.boolean()])).default({}),
-}).transform((w) => ({ ...w, size: w.size ?? WIDGETS[w.type].size }));
+}).transform((w) => ({ ...w, size: w.size ?? widgetDefs()[w.type].size }));
 export type Widget = z.infer<typeof widget>;
 const widgets = z.array(widget).max(60);
 
@@ -108,7 +108,7 @@ export function registerDashboards(app: Hono) {
 
 const json = (data: unknown) => ({ content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] });
 const wInput = z.object({
-  type: z.enum(Object.keys(WIDGETS) as [string, ...string[]]).describe("Type de bloc, voir dashboard_catalog"),
+  type: z.string().describe("Type de bloc, voir dashboard_catalog"),
   size: z.enum(SIZES).optional().describe("Largeur : quarter, third, half, two-thirds, full"),
   title: z.string().optional().describe("Titre affiché à la place du titre par défaut"),
   options: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional().describe("Options du type (voir dashboard_catalog)"),

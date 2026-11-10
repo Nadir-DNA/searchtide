@@ -31,7 +31,7 @@ export function modulesList() {
  * Active ou retire un module pour un projet. Activer exige une connexion existante si le module en dépend
  * (une clé ne crée jamais de connexion) ; le module est alors aussi activé pour l'instance.
  */
-export function enableForProject(projectId: string, moduleId: string, on: boolean, settings?: Record<string, unknown>) {
+export function enableForProject(projectId: string, moduleId: string, on: boolean, settings?: Record<string, unknown>, admin = false) {
   const m = getModule(moduleId);
   if (!m) throw new Error(`Module inconnu : ${moduleId}`);
   if (!db.prepare("SELECT 1 FROM projects WHERE id = ?").get(projectId)) throw new Error("Projet introuvable");
@@ -40,7 +40,10 @@ export function enableForProject(projectId: string, moduleId: string, on: boolea
   if (on) {
     const req = needed(m.id);
     if (req.length && !req.some((c) => connections(c).length)) throw new Error(`Connectez d'abord ${m.name} dans Modules.`);
-    if (!isEnabled(m.id)) setEnabled(m.id, true);
+    if (!isEnabled(m.id)) {
+      if (!admin) throw new Error(`Activez d'abord ${m.name} dans Modules.`); // spec §5.7 : l'instance se règle depuis la session administrateur
+      setEnabled(m.id, true);
+    }
   }
   setProjectModule(projectId, m.id, on, settings);
 }
@@ -57,7 +60,7 @@ export function registerModules(app: Hono) {
     // Les clés en lecture seule sont déjà arrêtées avant (méthode non GET) ; reste la session et les clés en écriture.
     if (viewerOf(c) === "anon") return c.json({ error: "Connexion requise" }, 403);
     const b = await c.req.json().catch(() => ({})) as Row;
-    try { enableForProject(c.req.param("id"), c.req.param("module"), !!b.enabled, b.settings && typeof b.settings === "object" ? b.settings : undefined); return c.json({ ok: true }); }
+    try { enableForProject(c.req.param("id"), c.req.param("module"), !!b.enabled, b.settings && typeof b.settings === "object" ? b.settings : undefined, isAdmin(c)); return c.json({ ok: true }); }
     catch (e) { return c.json({ error: (e as Error).message }, 400); }
   });
 }

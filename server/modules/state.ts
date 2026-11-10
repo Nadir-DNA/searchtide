@@ -77,7 +77,7 @@ export function activateFromExistingData() {
 
   const instance = new Set(allModules().filter((m) => m.core || m.connectors?.some((c) => kinds.has(c) && c !== "analytics" && c !== "manual")).map((m) => m.id));
   if (process.env.GOOGLE_SERVICE_ACCOUNT_JSON) instance.add("google");
-  if (process.env.SMTP_URL) instance.add("notifications");
+  if (process.env.SMTP_URL || process.env.NTFY_TOPIC) instance.add("notifications");
   if (count("contacts")) instance.add("crm");
   if (count("publications")) instance.add("publications");
   if (count("templates") || count("sequences")) instance.add("prospection");

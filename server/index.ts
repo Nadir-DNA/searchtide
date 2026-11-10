@@ -11,7 +11,7 @@ import { randomUUID, timingSafeEqual } from "node:crypto";
 import { db, localDay, type Site } from "./db.ts";
 import { collect } from "./collect.ts";
 import { lastDays, overview, searchStats, strikingDistance, trafficStats, type Range } from "./stats.ts";
-import { convertGoogleEnv, gscConfigured, listProperties, syncAll, syncSite } from "./gsc.ts";
+import { convertGoogleEnv, gscConfigured, listProperties, setSiteGscProperty, syncAll, syncSite } from "./gsc.ts";
 import { handleMcp, mcpAccess } from "./mcp.ts";
 import { registerBusiness } from "./business.ts";
 import { registerReport } from "./report.ts";
@@ -174,8 +174,8 @@ app.patch("/api/sites/:id", async (c) => {
   const s = getSite(c.req.param("id"));
   if (!s) return c.json({ error: "Site introuvable" }, 404);
   const b = await c.req.json().catch(() => ({}));
-  db.prepare("UPDATE sites SET name = ?, gsc_property = ? WHERE id = ?")
-    .run(String(b.name ?? s.name).slice(0, 100), b.gsc_property === undefined ? s.gsc_property : b.gsc_property || null, s.id);
+  db.prepare("UPDATE sites SET name = ? WHERE id = ?").run(String(b.name ?? s.name).slice(0, 100), s.id);
+  if (b.gsc_property !== undefined) setSiteGscProperty(s.id, b.gsc_property || null);
   return c.json(getSite(s.id));
 });
 

@@ -175,7 +175,7 @@ export function registerSources(app: Hono) {
     try {
       for (const x of plan) {
         if (existing.some((e) => e.source === x.source && sameConfig(e.config, x.config))) { skipped.push(x.label); continue; }
-        const ind = saveIndicator(null, pid, { label: x.label, unit: x.unit, mode: x.mode, source: x.source, config: x.config })!;
+        const ind = saveIndicator(null, pid, { label: x.label, unit: x.unit, mode: x.mode, source: x.source, config: x.config }, isAdmin(c))!;
         await collect(ind, 90).catch(() => {}); // l'erreur éventuelle reste visible sur l'indicateur
         created.push({ id: ind.id, label: ind.label });
       }

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { allModules, checkModule, getModule, registerModule } from "./modules/index.ts";
-import { WIDGETS } from "./dashboards.ts";
+import { widgetDefs } from "./dashboards.ts";
 
 test("modules : les 12 modules sont déclarés, dont 4 cœur", () => {
   assert.equal(allModules().length, 12);
@@ -9,7 +9,7 @@ test("modules : les 12 modules sont déclarés, dont 4 cœur", () => {
 });
 
 test("modules : chaque bloc de WIDGETS appartient à exactement un module", () => {
-  for (const w of Object.keys(WIDGETS)) assert.equal(allModules().filter((m) => m.widgets?.[w]).length, 1, w);
+  for (const w of Object.keys(widgetDefs())) assert.equal(allModules().filter((m) => m.widgets?.[w]).length, 1, w);
 });
 
 test("modules : un connecteur inconnu ou un id déjà pris est refusé", () => {

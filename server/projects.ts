@@ -10,6 +10,7 @@ import { db, localDay } from "./db.ts";
 import { lastDays, previous, type Range } from "./stats.ts";
 import { migrate } from "./migrations.ts";
 import { hiddenIndicators, indicatorModule, isEnabled, setEnabled, setProjectModule } from "./modules/state.ts";
+import { isAdmin } from "./admin.ts";
 import { getModule } from "./modules/index.ts";
 import { collectVia, currentCtx } from "./connectors/use.ts";
 import { connections } from "./connections.ts";
@@ -350,7 +351,7 @@ export function saveProject(id: string | null, input: unknown) {
     .run(pid, v.name, v.color, v.url, JSON.stringify(v.sites), v.crm_key, v.position, JSON.stringify(v.funnel), v.pinned ? 1 : 0, cur?.created_at ?? Date.now());
   return decodeProj(db.prepare("SELECT * FROM projects WHERE id = ?").get(pid) as Row);
 }
-export function saveIndicator(id: string | null, projectId: string | null, input: unknown) {
+export function saveIndicator(id: string | null, projectId: string | null, input: unknown, admin = true) {
   const cur = id ? getInd(id) : undefined;
   if (id && !cur) return null;
   const v = indicatorFields.parse({ ...cur, ...(input as Row) });
@@ -361,7 +362,7 @@ export function saveIndicator(id: string | null, projectId: string | null, input
     position = excluded.position, goal = excluded.goal, goal_period = excluded.goal_period`)
     .run(iid, cur?.project_id ?? projectId, v.label, v.unit, v.mode, v.source, JSON.stringify(v.config), v.position, v.goal, v.goal ? v.goal_period ?? "month" : null, cur?.created_at ?? Date.now());
   // Un nouvel indicateur active son module pour le projet : sinon il serait aussitôt masqué
-  if (!cur) { const m = indicatorModule({ source: v.source, config: v.config }); if (!getModule(m)?.core) { if (!isEnabled(m)) setEnabled(m, true); setProjectModule(projectId!, m, true); } }
+  if (!cur) { const m = indicatorModule({ source: v.source, config: v.config }); if (!getModule(m)?.core) { if (!isEnabled(m)) { if (!admin) throw new Error(`Activez d'abord ${getModule(m)?.name ?? m} dans Modules.`); setEnabled(m, true); } setProjectModule(projectId!, m, true); } }
   // Changer la source ou la requête rend l'historique faux
   if (cur && (cur.source !== v.source || JSON.stringify(cur.config) !== JSON.stringify(v.config))) db.prepare("DELETE FROM metrics WHERE indicator_id = ?").run(iid);
   return getInd(iid)!;
@@ -411,14 +412,14 @@ export function registerProjects(app: Hono) {
   app.post("/api/projects/:id/indicators", async (c) => {
     if (!db.prepare("SELECT 1 FROM projects WHERE id = ?").get(c.req.param("id"))) return c.json({ error: "Projet introuvable" }, 404);
     try {
-      const ind = saveIndicator(null, c.req.param("id"), await c.req.json())!;
+      const ind = saveIndicator(null, c.req.param("id"), await c.req.json(), isAdmin(c))!;
       await collect(ind, 90).catch(() => {}); // l'erreur éventuelle reste visible sur l'indicateur
       return c.json(getInd(ind.id), 201);
     } catch (e) { return c.json({ error: bad(e) }, 400); }
   });
   app.patch("/api/indicators/:id", async (c) => {
     try {
-      const ind = saveIndicator(c.req.param("id"), null, await c.req.json());
+      const ind = saveIndicator(c.req.param("id"), null, await c.req.json(), isAdmin(c));
       if (!ind) return c.json({ error: "Indicateur introuvable" }, 404);
       await collect(ind, 90).catch(() => {});
       return c.json(getInd(ind.id));

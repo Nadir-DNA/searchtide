@@ -89,3 +89,20 @@ test("api : état des tâches de fond", async () => {
     assert.deepEqual(jobs.map((j) => j.id).sort(), ["alerts", "backup", "gsc-sync", "indicators", "offsite-backup", "sequences", "weekly-report"]);
   } finally { s.stop(); t.done(); }
 });
+
+test("api modules : une clé en écriture ne réactive pas un module que l'administrateur a coupé", async () => {
+  const t = tempDb(); seed(t.path, SEED); const s = await startServer(t.path);
+  try {
+    const pid = await projectId(s.base);
+    const h = { authorization: `Bearer ${KEY}`, "content-type": "application/json" };
+    const r = await fetch(`${s.base}/api/projects/${pid}/modules/crm`, { method: "PUT", headers: h, body: JSON.stringify({ enabled: true }) });
+    assert.equal(r.status, 400);
+    assert.equal((await r.json() as any).error, "Activez d'abord Contacts dans Modules.");
+    const ind = await fetch(`${s.base}/api/projects/${pid}/indicators`, { method: "POST", headers: h, body: JSON.stringify({ label: "MRR", mode: "total", source: "stripe", config: { metric: "mrr", env: "STRIPE_X" } }) });
+    assert.equal(ind.status, 400);
+    const list = await (await fetch(`${s.base}/api/modules`, { headers: { authorization: `Bearer ${KEY}` } })).json() as any[];
+    assert.deepEqual([list.find((m) => m.id === "crm").enabled, list.find((m) => m.id === "stripe").enabled], [false, false]);
+    const cookie = await login(s.base);
+    assert.equal((await fetch(`${s.base}/api/projects/${pid}/modules/crm`, { method: "PUT", headers: { Cookie: cookie, "content-type": "application/json" }, body: JSON.stringify({ enabled: true }) })).status, 200);
+  } finally { s.stop(); t.done(); }
+});

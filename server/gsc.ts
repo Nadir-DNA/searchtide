@@ -16,7 +16,11 @@ export const gscConfigured = () => connections("google").length > 0;
 
 /** Au démarrage : l'ancienne variable GOOGLE_SERVICE_ACCOUNT_JSON (contenu ou chemin) devient une connexion Google, une seule fois. */
 export function convertGoogleEnv(): "converti" | "absent" | "deja-connecte" {
-  if (connections("google").length) return "deja-connecte";
+  const NAME = "google-env-converted";
+  const mark = () => db.prepare("INSERT OR IGNORE INTO migrations (name, applied_at) VALUES (?, ?)").run(NAME, Date.now());
+  // Une connexion supprimée ensuite ne doit pas revenir au redémarrage si la variable est restée dans .env
+  if (db.prepare("SELECT 1 FROM migrations WHERE name = ?").get(NAME)) return "deja-connecte";
+  if (connections("google").length) { mark(); return "deja-connecte"; }
   const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.trim();
   if (!raw) return "absent";
   const json = raw.startsWith("{") ? raw : readFileSync(raw, "utf8");
@@ -24,6 +28,7 @@ export function convertGoogleEnv(): "converti" | "absent" | "deja-connecte" {
   // PLAY_BUCKET suit, sinon les indicateurs Play de l'ancien mode perdraient leur bucket
   const playBucket = process.env.PLAY_BUCKET?.trim();
   createConnection({ kind: "google", label: sa.client_email, account: sa.client_email, config: { hint: sa.client_email, ...(playBucket ? { playBucket } : {}) }, secrets: { json }, fingerprintOf: json });
+  mark();
   console.log("[google] GOOGLE_SERVICE_ACCOUNT_JSON converti en connexion ; la variable n'est plus lue.");
   return "converti";
 }
@@ -37,6 +42,20 @@ export function gscPropertyFor(domain: string, projectId?: string): string | nul
   const any = rows.map(pick).find(Boolean);
   const site = db.prepare("SELECT gsc_property FROM sites WHERE domain = ?").get(domain) as { gsc_property: string | null } | undefined;
   return own ?? any ?? site?.gsc_property ?? null;
+}
+
+/** Change la propriété Search Console d'un site (null : aucune), partout où elle est lue. */
+export function setSiteGscProperty(siteId: string, value: string | null) {
+  const s = db.prepare("SELECT domain FROM sites WHERE id = ?").get(siteId) as { domain: string } | undefined;
+  if (!s) return;
+  db.prepare("UPDATE sites SET gsc_property = ? WHERE id = ?").run(value, siteId);
+  const rows = db.prepare(`SELECT pm.project_id, pm.settings FROM project_modules pm JOIN projects p ON p.id = pm.project_id
+    WHERE pm.module_id = 'google' AND EXISTS (SELECT 1 FROM json_each(p.sites) WHERE value = ?)`).all(s.domain) as { project_id: string; settings: string }[];
+  for (const r of rows) {
+    const st = JSON.parse(r.settings);
+    if (value) st.gsc_property = { ...st.gsc_property, [s.domain]: value }; else if (st.gsc_property) delete st.gsc_property[s.domain];
+    db.prepare("UPDATE project_modules SET settings = ? WHERE project_id = ? AND module_id = 'google'").run(JSON.stringify(st), r.project_id);
+  }
 }
 
 /** Jeton OAuth du compte de service pour une portée donnée. */

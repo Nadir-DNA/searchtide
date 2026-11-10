@@ -57,3 +57,19 @@ test("aujourd'hui : relances CRM par projet, une seule fois (plus dans les alert
   assert.equal(today().filter((i) => i.text.includes("relance")).length, 1);
   assert.ok(!portfolio({ from: at(-7), to: at(0) }).alerts.some((a) => a.text.includes("relance")));
 });
+
+test("aujourd'hui : une alerte ignorée revient si le problème disparaît puis revient", async () => {
+  const { registerJob, tick } = await import("./jobs.ts");
+  let fail = true;
+  registerJob("projets", { id: "test-retour", every: "30m", run: async () => { if (fail) throw new Error("panne"); } });
+  let t = Date.now() + 20 * 86400000;
+  const run = async (n: number) => { for (let i = 0; i < n; i++) { await tick(t); t += 31 * 60_000; } };
+  const find = () => today().find((i) => i.text.includes("test-retour"));
+  await run(3);
+  setTodayState(find()!.key, "ignored");
+  assert.equal(find(), undefined);
+  fail = false; await run(1);
+  assert.equal(find(), undefined);
+  fail = true; await run(3);
+  assert.ok(find(), "l'alerte revient après résolution");
+});

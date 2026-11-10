@@ -46,3 +46,24 @@ test("jobs : trois échecs consécutifs créent une alerte, un succès remet à 
   fail = false; await tick(t);
   assert.equal(jobsStatus().find((x) => x.id === "test-panne")!.fails, 0);
 });
+
+test("jobs : sans BACKUP_URL, la sauvegarde externe ne compte pas comme un échec", async () => {
+  const { Hono } = await import("hono");
+  const { registerOps } = await import("./ops.ts");
+  delete process.env.BACKUP_URL; delete process.env.BACKUP_TOKEN;
+  registerOps(new Hono());
+  let t = Date.parse("2026-11-10T03:00:00Z");
+  for (let i = 0; i < 3; i++) { await tick(t); t += 86400000; }
+  assert.equal(jobsStatus().find((j) => j.id === "offsite-backup")!.fails, 0);
+});
+
+test("jobs : la tâche en échec d'un module désactivé n'alerte plus", async () => {
+  const { jobAlerts } = await import("./jobs.ts");
+  setEnabled("prospection", true);
+  registerJob("prospection", { id: "test-panne-module", every: "30m", run: async () => { throw new Error("smtp"); } });
+  let t = Date.now() + 10 * 86400000;
+  for (let i = 0; i < 3; i++) { await tick(t); t += 31 * 60_000; }
+  assert.ok(jobAlerts().some((a) => a.text.includes("test-panne-module")));
+  setEnabled("prospection", false);
+  assert.ok(!jobAlerts().some((a) => a.text.includes("test-panne-module")));
+});

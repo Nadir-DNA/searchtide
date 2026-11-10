@@ -81,7 +81,10 @@ export function today(now = new Date()): TodayItem[] {
     const s = states.get(k);
     return !!s && (s.state === "ignored" || (s.state === "snoozed" && s.until > day) || (s.state === "done" && s.until >= day));
   };
-  return collectItems(now).filter((i) => !hidden(i.key))
+  const items = collectItems(now);
+  const live = new Set(items.map((i) => i.key));
+  for (const [k, s] of states) if (s.state === "ignored" && k.startsWith("alerte:") && !live.has(k)) { db.prepare("DELETE FROM today_items WHERE key = ?").run(k); states.delete(k); }
+  return items.filter((i) => !hidden(i.key))
     .sort((a, b) => rank(a) - rank(b) || (a.kind === "jalon" && b.kind === "jalon" ? (a.daysLeft ?? 0) - (b.daysLeft ?? 0) : 0));
 }
 

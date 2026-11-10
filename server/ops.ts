@@ -96,6 +96,7 @@ export function registerOps(app: Hono) {
 
   // Sauvegarde externe vers 2 h 30 UTC, alertes toutes les 30 min
   registerJob("projets", { id: "offsite-backup", every: "daily@02:30", run: async () => {
+    if (!process.env.BACKUP_URL || !process.env.BACKUP_TOKEN) return; // pas de sauvegarde externe configurée : rien à faire
     try { await offsiteBackup(); } catch (e) { await notify("Sauvegarde externe en échec", (e as Error).message, "high"); throw e; }
   } });
   registerJob("notifications", { id: "alerts", every: "30m", run: async () => { await checkAlerts(); } });

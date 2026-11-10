@@ -42,3 +42,14 @@ test("pages : le bloc pipeline est indisponible tant que le CRM est inactif", as
   setEnabled("crm", true);
   assert.equal(widgetCatalog().pipeline.available, true);
 });
+
+test("pages : le bloc d'un module privé chargé après le démarrage peut être placé", async () => {
+  const { createDashboard, deleteDashboard } = await import("./dashboards.ts");
+  const { registerModule, unregisterModule } = await import("./modules/registry.ts");
+  registerModule({ id: "prive-test", name: "Privé", description: "x", category: "produit", scope: "instance", widgets: { prive_bloc: { label: "Bloc privé", description: "x", size: "third", options: {} } } } as any);
+  try {
+    const p = createDashboard("Privée", [{ type: "prive_bloc" }], "test");
+    assert.equal(p.widgets[0].size, "third");
+    deleteDashboard(p.id);
+  } finally { unregisterModule("prive-test"); }
+});
