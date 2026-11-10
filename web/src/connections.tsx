@@ -105,11 +105,21 @@ function FieldInput({ f, value, onChange, editing }: { f: Field; value: string; 
 /** Copie une valeur non secrète (adresse du compte de service Google) avec annonce lecteur d'écran. */
 function CopyText({ value }: { value: string }) {
   const [done, setDone] = useState(false);
+  const [error, setError] = useState("");
+  async function copy() {
+    setError(""); setDone(false);
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error("presse-papiers indisponible");
+      await navigator.clipboard.writeText(value);
+      setDone(true); setTimeout(() => setDone(false), 1500);
+    } catch { setError("Copie impossible ici, sélectionnez l'adresse"); }
+  }
   return (
     <span className="inline-flex max-w-full flex-wrap items-center gap-1.5 align-middle">
       <code className="min-w-0 break-all rounded bg-raised px-2 py-0.5 font-mono text-xs text-ink">{value}</code>
-      <button type="button" title="Copier l'adresse" onClick={() => navigator.clipboard?.writeText(value).then(() => { setDone(true); setTimeout(() => setDone(false), 1500); })}
+      <button type="button" title="Copier l'adresse" onClick={copy}
         className="shrink-0 rounded-lg border border-control px-2.5 py-0.5 text-xs">{done ? "Copié" : "Copier"}</button>
+      {error && <span role="status" aria-live="polite" className="text-xs text-negative">{error}</span>}
       <span role="status" aria-live="polite" className="sr-only">{done ? "Copié" : ""}</span>
     </span>
   );
