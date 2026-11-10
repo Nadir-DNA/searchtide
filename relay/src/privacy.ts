@@ -22,8 +22,9 @@ Vos clients sont les vôtres : vous restez responsable de leurs données. Le ser
 | Dates de création et de dernier usage, compteur quotidien de demandes | limiter les abus | idem |
 | Journal technique : date, route, code de réponse, identifiant d'instance (jamais de paramètre, de montant ni de donnée Stripe) | sécurité et diagnostic | **7 jours** |
 | États d'autorisation et codes à usage unique | sécuriser le retour de Stripe | 10 minutes et 60 secondes, puis purge |
+| Empreinte **non réversible** de l'adresse IP (HMAC) et route | limiter les abus (20 démarrages/heure, 60 retours/heure) | **au plus 1 heure**, purgée par le cron |
 
-Le service **n'enregistre pas votre adresse IP**. L'hébergeur, Cloudflare, traite des données de connexion pour acheminer les requêtes, selon sa propre politique.
+Le service ne conserve **pas votre adresse IP en clair**. Pour limiter les abus, il enregistre une **empreinte non réversible** (HMAC avec un secret du Worker) de votre adresse IP, associée à la route demandée, pendant **au plus une heure**. L'hébergeur, Cloudflare, traite des données de connexion pour acheminer les requêtes, selon sa propre politique.
 
 ### Ce que le service ne fait pas
 Aucune vente ni cession de données, aucune publicité, aucun outil de mesure d'audience, aucun cookie, aucune écriture sur votre compte Stripe.
@@ -57,7 +58,7 @@ export const PRIVACY_EN = `**Searchtide Connect** is a small service that lets y
 
 **What passes through without being stored.** The service sees the requested Stripe data (amounts, currencies, dates, subscription statuses, technical ids). It returns **no names, email addresses or postal addresses** of your customers, and stores **no Stripe response**. Your customers remain yours: you stay responsible for their data; the service is only a technical intermediary acting on your instruction.
 
-**What is stored.** Your Stripe account id (\`acct_…\`), a hash of the instance token, the instance host name and a random id, creation and last-use dates, and a daily request counter: until revocation, or 180 days without use. A technical log (date, route, status code, instance id; never parameters, amounts or Stripe data): **7 days**. Authorisation states and one-time codes: 10 minutes and 60 seconds, then purged. The service does **not** record your IP address; the host, Cloudflare, processes connection data under its own policy.
+**What is stored.** Your Stripe account id (\`acct_…\`), a hash of the instance token, the instance host name and a random id, creation and last-use dates, and a daily request counter: until revocation, or 180 days without use. A technical log (date, route, status code, instance id; never parameters, amounts or Stripe data): **7 days**. Authorisation states and one-time codes: 10 minutes and 60 seconds, then purged. The service does **not** store your IP address in clear text. To limit abuse, it stores a **non-reversible fingerprint** (HMAC with a Worker secret) of your IP address, tied to the requested route, for **at most one hour**. The host, Cloudflare, processes connection data under its own policy.
 
 **What it does not do.** No sale or transfer of data, no advertising, no analytics, no cookies, no writes to your Stripe account.
 

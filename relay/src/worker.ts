@@ -11,6 +11,7 @@ export type Env = {
   STRIPE_READ_KEY?: string;
   /** Clé de plateforme (sk_) : uniquement /oauth/token et /oauth/deauthorize. */
   STRIPE_OAUTH_KEY?: string;
+  RATE_SECRET?: string;
   WEBHOOK_SECRET?: string;
   STATE_SECRET?: string;
   MODE?: "test" | "live";
@@ -56,7 +57,7 @@ function storeOf(env: Env): Store {
 }
 const fetchOf = (env: Env) => env.__fetch ?? fetch;
 
-const SECRETS: (keyof Env)[] = ["STRIPE_CLIENT_ID", "STRIPE_READ_KEY", "STRIPE_OAUTH_KEY", "WEBHOOK_SECRET", "STATE_SECRET"];
+const SECRETS: (keyof Env)[] = ["STRIPE_CLIENT_ID", "STRIPE_READ_KEY", "STRIPE_OAUTH_KEY", "RATE_SECRET", "WEBHOOK_SECRET", "STATE_SECRET"];
 const missingSecrets = (env: Env) => SECRETS.filter((k) => !env[k]);
 
 /* ── lecture Stripe : liste blanche ───────────────────────────────────────── */
@@ -112,9 +113,11 @@ export async function handle(req: Request, env: Env): Promise<Response> {
   // Limitation de débit des routes non authentifiées (protège D1 et la clé de plateforme).
   const LIMITS: Record<string, number> = { "/v1/start": 20, "/authorize": 60, "/oauth/authorize": 60, "/oauth/callback": 60 };
   if (LIMITS[url.pathname]) {
+    // CA58 : la clé de limitation est une empreinte HMAC non réversible, jamais l'adresse IP en clair.
     const ip = req.headers.get("cf-connecting-ip") ?? "inconnu";
+    const ipHash = await hmac(ip, env.RATE_SECRET!);
     const hour = new Date(now).toISOString().slice(0, 13);
-    if (!await store.rate(`${ip}:${url.pathname}`, hour, LIMITS[url.pathname])) { log(429); return json({ error: "Trop de demandes" }, 429, { "retry-after": "3600" }); }
+    if (!await store.rate(`${url.pathname}:${ipHash}`, hour, LIMITS[url.pathname])) { log(429); return json({ error: "Trop de demandes" }, 429, { "retry-after": "3600" }); }
   }
 
   if (url.pathname === "/v1/start") {
@@ -177,7 +180,7 @@ export async function handle(req: Request, env: Env): Promise<Response> {
     if (!tr.ok || !tok.stripe_user_id) { log(502, st.instanceId); return page("Stripe a refusé", "<h1>Stripe n'a pas accepté la connexion</h1><p>Recommencez depuis votre instance.</p>"); }
     if (env.MODE === "test" && tok.livemode) { log(403, st.instanceId); return page("Compte de test requis", "<h1>Ce service n'accepte que des comptes de test pour le moment.</h1>"); }
     const existing = await store.findByStripeUser(String(tok.stripe_user_id));
-    if (existing && existing.instanceId !== st.instanceId) { log(409, st.instanceId); return page("Compte déjà relié", `<h1>Ce compte Stripe est déjà relié à l'instance ${esc(existing.host)}.</h1><p>Révoquez-la d'abord, ou utilisez une clé limitée.</p>`, 409); }
+    if (existing && existing.instanceId !== st.instanceId) { log(409, st.instanceId); return page("Compte déjà relié", `<h1>Ce compte Stripe est déjà relié à l'instance ${esc(existing.host)}.</h1><p>Révoquez-la d'abord, ou utilisez une clé limitée. Vous pouvez aussi retirer l'application dans votre <a href="https://dashboard.stripe.com/settings/apps">Dashboard Stripe</a>.</p>`, 409); }
     const instCode = random(24);
     await store.createCode(await sha256(instCode), { ...st, stripeUserId: String(tok.stripe_user_id), livemode: !!tok.livemode, expiresAt: now + 60_000 });
     log(200, st.instanceId);

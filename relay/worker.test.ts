@@ -26,7 +26,7 @@ function fakeFetch(calls: Call[]) {
 function setup(over: Partial<Env> = {}) {
   const store = new MemoryStore(); const calls: Call[] = [];
   const env: Env = {
-    STRIPE_CLIENT_ID: "ca_TEST", STRIPE_READ_KEY: "read-key-fake", STRIPE_OAUTH_KEY: "oauth-key-fake", WEBHOOK_SECRET: "webhook-secret-fake", STATE_SECRET: "state-secret-0123456789",
+    STRIPE_CLIENT_ID: "ca_TEST", STRIPE_READ_KEY: "read-key-fake", STRIPE_OAUTH_KEY: "oauth-key-fake", RATE_SECRET: "rate-secret-0123456789", WEBHOOK_SECRET: "webhook-secret-fake", STATE_SECRET: "state-secret-0123456789",
     MODE: "test", RELAY_URL: "https://connect.test", __store: store, __fetch: fakeFetch(calls), __now: now, ...over,
   };
   return { store, calls, env };
@@ -240,4 +240,17 @@ test("Webhook : une signature valide mais trop ancienne est refusée", async () 
   const key = await crypto.subtle.importKey("raw", enc("webhook-secret-fake"), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
   const sig = b64url(new Uint8Array(await crypto.subtle.sign("HMAC", key, enc(`${t}.${raw}`))));
   assert.equal((await handle(new Request("https://connect.test/v1/webhook", { method: "POST", headers: { "stripe-signature": `t=${t},v1=${sig}` }, body: raw }), env)).status, 400);
+});
+
+test("CA58 : la limitation stocke une empreinte HMAC, pas l'adresse IP, et la purge efface après une heure", async () => {
+  const { env, store } = setup();
+  const ip = "203.0.113.9";
+  await post("/v1/start", { instance_id: "inst-1234", return_url: "https://i.test/cb", code_challenge: challenge }, env, { "cf-connecting-ip": ip });
+  const keys = [...store.rates.keys()];
+  assert.equal(keys.length, 1);
+  assert.ok(!keys[0].includes(ip), "l'IP ne doit pas être stockée");
+  assert.match(keys[0], /^\/v1\/start:[A-Za-z0-9_-]{43}$/);
+  store.rates.set(keys[0], { window: "2000-01-01T00", count: 1 });
+  await store.purge(clock);
+  assert.equal(store.rates.size, 0);
 });

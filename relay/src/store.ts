@@ -109,6 +109,7 @@ export class D1Store implements Store {
     await this.db.prepare("DELETE FROM codes WHERE expires_at < ? OR used = 1").bind(now).run();
     await this.db.prepare("DELETE FROM logs WHERE at < ?").bind(now - 7 * 86400_000).run();
     await this.db.prepare("DELETE FROM tokens WHERE last_used < ?").bind(now - 180 * 86400_000).run();
+    await this.db.prepare("DELETE FROM limits WHERE window < ?").bind(new Date(now - 3600_000).toISOString().slice(0, 13)).run();
   }
   async log(route: string, status: number, instanceId: string | null, now: number) {
     await this.db.prepare("INSERT INTO logs (at, route, status, instance_id) VALUES (?, ?, ?, ?)").bind(now, route, status, instanceId).run();
@@ -151,6 +152,8 @@ export class MemoryStore implements Store {
     for (const [h, c] of this.codes) if (c.used || c.expiresAt < now) this.codes.delete(h);
     this.logs = this.logs.filter((l) => l.at >= now - 7 * 86400_000);
     for (const [h, t] of this.tokens) if (t.lastUsed < now - 180 * 86400_000) this.tokens.delete(h);
+    const cutoff = new Date(now - 3600_000).toISOString().slice(0, 13);
+    for (const [k, v] of this.rates) if (v.window < cutoff) this.rates.delete(k);
   }
   async log(route: string, status: number, instanceId: string | null, now: number) { this.logs.push({ route, status, instanceId, at: now }); }
   rates = new Map<string, { window: string; count: number }>();
