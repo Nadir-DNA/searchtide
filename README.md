@@ -1,5 +1,7 @@
 # Searchtide
 
+English: [README.en.md](README.en.md)
+
 [![CI](https://github.com/Nadir-DNA/searchtide/actions/workflows/ci.yml/badge.svg)](https://github.com/Nadir-DNA/searchtide/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/Nadir-DNA/searchtide)](https://github.com/Nadir-DNA/searchtide/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -80,7 +82,7 @@ Une erreur de connexion ? Voir la [FAQ](docs/guides/faq.md) : elle reprend les m
 Tout se configure dans **Connexions** : un guide court, les champs utiles, puis « Tester » — une connexion n'est enregistrée que si le test réussit.
 
 | Source | Ce qu'elle apporte | Authentification | Guide |
-|---|---|---|---|---|
+|---|---|---|---|
 | **Searchtide analytics** | Visites, pages, canaux, référents, pays, appareils, campagnes, événements, part du trafic venu d'assistants IA | intégrée (script de suivi) | [analytics](docs/guides/analytics.md) |
 | **Google Search Console** | Clics, impressions, CTR, position, opportunités ; historique conservé au-delà des 16 mois de Google. *Play en option, même connexion :* installations par jour, installations actives, note moyenne | compte de service (fichier JSON) ; bucket `gs://` pour Play | [google](docs/guides/google.md) |
 | **Stripe** | CA net, MRR, abonnements actifs, nouveaux clients | clé restreinte `rk_` en lecture seule — une clé complète `sk_` est refusée | [stripe](docs/guides/stripe.md) |
@@ -121,7 +123,7 @@ POST /api/sites/{id}/sync
 
 ## Sécurité
 
-- **Coffre chiffré** : secrets AES-256-GCM, clé dérivée de `SECRET` par HKDF ; aucune API ne renvoie un secret, même partiel. Une rotation de `SECRET` passe les connexions en « à reconnecter » sans perdre l'historique.
+- **Coffre chiffré** : secrets AES-256-GCM, clé dérivée de `SECRET` par HKDF ; aucune API ne renvoie un secret en entier ; seul un court indice (préfixe et 4 derniers caractères) est affiché. Une rotation de `SECRET` passe les connexions en « à reconnecter » sans perdre l'historique.
 - **Trois niveaux de lecture** : session administrateur, clé d'API ou d'agent, démonstration anonyme. Seule la session administrateur voit les réglages et crée des connexions.
 - **Connexion** : 5 échecs en 15 minutes bloquent l'adresse IP ; double authentification TOTP avec `npm run 2fa`.
 - **Sauvegardes** : copie cohérente de la base chaque nuit vers 2 h UTC, 14 jours pour les copies locales (base, `secret`, `admin-password`). Les bundles de sauvegarde hors site (`.bundle.json.gz`) ne sont pas purgés automatiquement : à faire à la main.
@@ -146,7 +148,7 @@ Ne joignez jamais ce volume à un ticket ou à une archive de support. Mot de pa
 - La recette avec de vrais comptes couvre Stripe, SMTP, Google Search Console et ntfy. Postgres est testé contre un vrai serveur **en local seulement : ces tests réels sont ignorés en CI**. **PageSpeed, API JSON et Google Play n'ont pas été repassés sur un compte réel** depuis cette version.
 - Les tests de bout en bout tournent sur Chromium uniquement (pas Firefox ni WebKit).
 - La connexion Stripe en un clic (OAuth) n'existe pas encore : la clé restreinte `rk_` est la seule méthode.
-- L'interface et la documentation sont en français.
+- L'interface et l'essentiel de la documentation sont en français.
 
 ## Feuille de route
 
