@@ -99,10 +99,25 @@ const OBJECTS: Record<string, { params: RegExp[]; trim: (o: any) => any }> = {
   account: { params: [], trim: (o) => ({ id: o.id, business_profile: o.business_profile ? { name: o.business_profile.name } : null, country: o.country, default_currency: o.default_currency, livemode: !!o.livemode }) },
 };
 
+/** Vrai si l'objet et tous ses paramètres passent la liste blanche (contrat CA62). */
+export const relayAccepts = (object: string, params: Record<string, string>) => {
+  const def = Object.hasOwn(OBJECTS, object) ? OBJECTS[object] : undefined;
+  return !!def && Object.keys(params).every((k) => def.params.some((re) => re.test(k)));
+};
+
 /* ── pages HTML ───────────────────────────────────────────────────────────── */
 const page = (title: string, body: string, status = 200) => new Response(`<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title>
 <style>body{font:16px/1.5 system-ui,sans-serif;max-width:40rem;margin:3rem auto;padding:0 1rem;color:#111}a{color:#0b6b5b}button{font:inherit;padding:.55rem 1rem;border-radius:999px;border:1px solid #bbb;background:#fff;cursor:pointer}.primary{background:#0b6b5b;color:#fff;border-color:#0b6b5b}code{background:#f3f4f6;padding:.1rem .3rem;border-radius:.3rem}</style></head><body>${body}</body></html>`,
   { status, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
+
+/** CA59 : le préfixe des clés doit correspondre au mode (live ↔ rk_live_/sk_live_, test ↔ rk_test_/sk_test_). */
+export function modeMismatch(env: Env) {
+  const prefixes: Record<string, [string, string]> = { live: ["rk_live_", "sk_live_"], test: ["rk_test_", "sk_test_"] };
+  const p = env.MODE ? prefixes[env.MODE] : undefined;
+  const read = env.STRIPE_READ_KEY ?? "", oauth = env.STRIPE_OAUTH_KEY ?? "";
+  if (!p || !read || !oauth) return false;
+  return !(read.startsWith(p[0]) && oauth.startsWith(p[1]));
+}
 
 /** Vrai tant qu'un texte de politique attend une valeur (date de mise en ligne). */
 export const policyIncomplete = (fr: string, en: string) => fr.includes("[À compléter") || en.includes("[À compléter");
@@ -122,6 +137,7 @@ export async function handle(req: Request, env: Env): Promise<Response> {
 
   if (url.pathname === "/v1/health") {
     if (missingSecrets(env).length || (env.MODE !== "test" && env.MODE !== "live")) { log(503); return json({ ok: false, error: "Configuration incomplète" }, 503); }
+    if (modeMismatch(env)) { log(503); return json({ ok: false, error: "Mode incohérent" }, 503); }
     log(200); return json({ ok: true, mode: env.MODE });
   }
   if (url.pathname === "/privacy") {
@@ -129,6 +145,7 @@ export async function handle(req: Request, env: Env): Promise<Response> {
     log(200); return privacyPage();
   }
   if (missingSecrets(env).length) { log(503); return json({ ok: false, error: "Configuration incomplète" }, 503); }
+  if (modeMismatch(env) && ["/v1/start", "/oauth/authorize", "/oauth/callback"].includes(url.pathname)) { log(503); return json({ ok: false, error: "Mode incohérent" }, 503); }
 
   // Limitation de débit des routes non authentifiées (protège D1 et la clé de plateforme).
   const LIMITS: Record<string, number> = { "/v1/start": 20, "/authorize": 60, "/oauth/authorize": 60, "/oauth/callback": 60 };

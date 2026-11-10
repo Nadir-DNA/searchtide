@@ -68,3 +68,35 @@ test("CA57 : retirer une connexion OAuth marque ses indicateurs « Source retir�
   assert.match(String(row.last_error), /Source retirée/);
   assert.equal(removeConnection(c.id), false, "déjà supprimée");
 });
+
+// CA61 : tous les échecs de révocation distante (502, injoignable, délai) suppriment quand même le jeton local.
+async function removeAvecEchec(impl: typeof fetch, label: string) {
+  process.env.RELAY_URL = "https://connect.test";
+  db.exec("DELETE FROM indicators; DELETE FROM projects; DELETE FROM connections;");
+  const c = createConnection({ kind: "stripe", label: "Relais", config: { relay: true, relay_url: "https://connect.test" }, secrets: { token: "relay_jeton" }, fingerprintOf: "relay:acct_1" });
+  const p = saveProject(null, { name: "Projet re" })!;
+  const ind = saveIndicator(null, p.id, { label: "CA", mode: "total", source: "stripe", unit: "€", config: { metric: "revenue", connection_id: c.id } })!;
+  const app = new Hono(); app.use("*", (ctx, next) => { markAdmin(ctx); return next(); }); registerConnections(app);
+  const orig = globalThis.fetch;
+  globalThis.fetch = impl;
+  try {
+    const r = await app.request(`/api/connections/${c.id}`, { method: "DELETE" });
+    assert.equal(r.status, 200, label);
+    assert.equal((await r.json()).relayWarning, true, label);
+  } finally { globalThis.fetch = orig; }
+  assert.equal(removeConnection(c.id), false, "connexion supprimée");
+  const row = db.prepare("SELECT last_error FROM indicators WHERE id = ?").get(ind.id) as any;
+  assert.match(String(row.last_error), /Source retirée/, label);
+}
+
+test("CA61 : relais 502 → avertissement, jeton local supprimé", async () => {
+  await removeAvecEchec((async () => new Response("{}", { status: 502 })) as typeof fetch, "502");
+});
+
+test("CA61 : relais injoignable → avertissement, jeton local supprimé", async () => {
+  await removeAvecEchec((async () => { throw new Error("fetch failed"); }) as typeof fetch, "injoignable");
+});
+
+test("CA61 : délai dépassé → avertissement, jeton local supprimé", async () => {
+  await removeAvecEchec((async () => { throw Object.assign(new Error("The operation was aborted"), { name: "AbortError" }); }) as typeof fetch, "délai");
+});

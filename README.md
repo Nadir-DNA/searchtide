@@ -17,7 +17,7 @@ Une instance, un fichier SQLite, vos clés chiffrées chez vous. Pas de service 
 Données fictives, aucune clé, lecture seule :
 
 ```bash
-docker run -d -p 127.0.0.1:3030:3030 -e DEMO=1 -v searchtide_demo:/data ghcr.io/nadir-dna/searchtide:0.2.2
+docker run -d -p 127.0.0.1:3030:3030 -e DEMO=1 -v searchtide_demo:/data ghcr.io/nadir-dna/searchtide:0.2.3
 ```
 
 Ouvrez <http://localhost:3030>. Détails et deuxième capture (portefeuille multi-projets) : [docs/demo.md](docs/demo.md).
@@ -35,7 +35,7 @@ Ouvrez <http://localhost:3030>. Détails et deuxième capture (portefeuille mult
 ### Docker, une commande
 
 ```bash
-docker run -d --name searchtide -p 127.0.0.1:3030:3030 -v searchtide:/data ghcr.io/nadir-dna/searchtide:0.2.2
+docker run -d --name searchtide -p 127.0.0.1:3030:3030 -v searchtide:/data ghcr.io/nadir-dna/searchtide:0.2.3
 docker logs searchtide    # mot de passe administrateur généré au premier lancement
 ```
 

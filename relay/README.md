@@ -17,7 +17,7 @@ wrangler secret put STRIPE_OAUTH_KEY           # sk_live, uniquement /oauth/toke
 wrangler secret put WEBHOOK_SECRET             # secret du webhook Connect
 wrangler secret put STATE_SECRET               # 32 octets aléatoires
 wrangler secret put RATE_SECRET                # 32 octets aléatoires, sel de l'empreinte IP (CA58)
-wrangler deploy
+npm run deploy:relay                           # jamais « wrangler deploy » directement
 ```
 
 Six valeurs sont nécessaires : les cinq secrets ci-dessus (`STRIPE_READ_KEY`, `STRIPE_OAUTH_KEY`, `WEBHOOK_SECRET`, `STATE_SECRET`, `RATE_SECRET`) et le client Stripe public `STRIPE_CLIENT_ID`, déjà dans `wrangler.toml` (compte plateforme réel depuis la v0.2.3). Aucun secret ne va dans le fichier ; `RATE_SECRET` sert uniquement à calculer l'empreinte HMAC de l'IP pour la limitation de débit. L'URI de retour enregistrée dans Stripe doit être exactement `https://connect.nadirdaoudi.com/oauth/callback`.
@@ -25,6 +25,10 @@ Six valeurs sont nécessaires : les cinq secrets ci-dessus (`STRIPE_READ_KEY`, `
 Webhook Connect : `https://connect.nadirdaoudi.com/v1/webhook`, événement `account.application.deauthorized` uniquement.
 
 Limitation de débit : le Worker plafonne `/v1/start` à 20 requêtes/heure/IP et `/authorize`, `/oauth/authorize`, `/oauth/callback` à 60/heure/IP. Sur le plan gratuit, Cloudflare n'autorise **qu'une seule** règle de limitation (période 10 s, blocage 10 s, champs Path et IP) : la poser sur `/v1/start`, **10 requêtes / 10 s par IP**, action « Block » 10 s. Les routes `/oauth/*` restent couvertes par la limite D1 du Worker.
+
+## Déploiement sûr (CA60)
+
+Ne lancez **jamais** `wrangler deploy` directement : `npm run deploy:relay` lit le mode courant (`/v1/health`), le compare à `MODE` dans `wrangler.toml`, refuse un écart sans `--changer-de-mode`, déploie, puis vérifie que le mode n'a pas changé. C'est ce qui évite de rétrograder le relais en test par accident.
 
 ## Mode test et production
 

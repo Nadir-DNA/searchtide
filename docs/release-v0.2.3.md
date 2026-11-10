@@ -13,7 +13,9 @@ Version de service : le relais **Searchtide Connect** passe en **mode réel**. E
 
 - **Rotation du secret** : l'en-tête `Stripe-Signature` peut contenir plusieurs `v1` ; le Worker les accepte tous et `WEBHOOK_SECRET_PREVIOUS` couvre la transition. Procédure dans `relay/README.md`.
 - **Comparaison à temps constant** des signatures.
-- **Révocation honnête** : quand Stripe refuse la désautorisation, `/v1/revoke` répond **502** avec « Retirez l'application dans votre Dashboard Stripe » ; le jeton local est quand même supprimé et l'instance affiche l'avertissement.
+- **Révocation honnête** : quand Stripe refuse la désautorisation, `/v1/revoke` répond **502** avec « Retirez l'application dans votre Dashboard Stripe » ; le jeton local est quand même supprimé et l'instance affiche l'avertissement. Une application déjà retirée côté Stripe est traitée comme un succès idempotent.
+- **Mode cohérent (CA59)** : les clés doivent correspondre à `MODE` (`rk_live_`/`sk_live_` en réel) ; sinon santé, démarrage et OAuth répondent 503 « Mode incohérent ».
+- **Déploiement sûr (CA60)** : `npm run deploy:relay` refuse un changement de mode non demandé et vérifie le mode après déploiement ; `wrangler deploy` direct est proscrit.
 
 ## Bêta
 

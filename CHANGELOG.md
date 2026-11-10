@@ -10,11 +10,14 @@ Passage du relais Searchtide Connect en mode réel et remboursement de la dette 
 
 - Relais en **mode réel** : webhook Connect `livemode`, `client_id` réel, clés `rk_live` (lectures) et `sk_live` (OAuth uniquement) ; le mode test reste disponible par configuration.
 - **Rotation du secret du webhook** : plusieurs signatures `v1` acceptées dans un même en-tête (ancien et nouveau secret via `WEBHOOK_SECRET_PREVIOUS`).
+- **Mode cohérent (CA59)** : `rk_live_`/`sk_live_` en réel, `rk_test_`/`sk_test_` en test ; sinon `/v1/health`, `/v1/start` et `/oauth/*` répondent 503 « Mode incohérent ».
+- **Déploiement sûr (CA60)** : `npm run deploy:relay` refuse un changement de mode non demandé (`--changer-de-mode` pour l'autoriser) et vérifie le mode après déploiement.
 
 ### Corrigé
 
 - Signature du webhook comparée **à temps constant**.
-- `/v1/revoke` ne répond plus `ok` quand Stripe refuse la désautorisation : **502** explicite, jeton local supprimé, message « retirez l'application dans votre Dashboard Stripe ».
+- `/v1/revoke` ne répond plus `ok` quand Stripe refuse la désautorisation : **502** explicite, jeton local supprimé, message « retirez l'application dans votre Dashboard Stripe » ; une application déjà retirée est un succès idempotent.
+- **Tests** : échecs de « Retirer » (502, injoignable, délai) et contrat entre `stripeMetric` et la liste blanche du relais.
 
 ## [0.2.2] — 2026-11-10
 

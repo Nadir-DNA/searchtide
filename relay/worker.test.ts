@@ -27,7 +27,7 @@ function fakeFetch(calls: Call[]) {
 function setup(over: Partial<Env> = {}) {
   const store = new MemoryStore(); const calls: Call[] = [];
   const env: Env = {
-    STRIPE_CLIENT_ID: "ca_TEST", STRIPE_READ_KEY: "read-key-fake", STRIPE_OAUTH_KEY: "oauth-key-fake", RATE_SECRET: "rate-secret-0123456789", WEBHOOK_SECRET: "webhook-secret-fake", STATE_SECRET: "state-secret-0123456789",
+    STRIPE_CLIENT_ID: "ca_TEST", STRIPE_READ_KEY: "rk_test_read-key-fake", STRIPE_OAUTH_KEY: "sk_test_oauth-key-fake", RATE_SECRET: "rate-secret-0123456789", WEBHOOK_SECRET: "webhook-secret-fake", STATE_SECRET: "state-secret-0123456789",
     MODE: "test", RELAY_URL: "https://connect.test", __store: store, __fetch: fakeFetch(calls), __now: now, ...over,
   };
   return { store, calls, env };
@@ -227,7 +227,7 @@ test("N-4 : lecture avec STRIPE_READ_KEY, token/déauthorisation avec STRIPE_OAU
   const api = calls.find((c) => c.url.includes("/v1/balance"))!;
   assert.match(String((api.init.headers as any).Authorization), /read-key-fake/);
   const token = calls.find((c) => c.url.includes("oauth/token"))!;
-  assert.match(String((token.init.headers as any).Authorization), new RegExp(btoa("oauth-key-fake:")));
+  assert.match(String((token.init.headers as any).Authorization), new RegExp(btoa("sk_test_oauth-key-fake:")));
 });
 
 test("Limitation de débit : /v1/start plafonne à 20 par heure et par IP", async () => {
@@ -320,4 +320,23 @@ test("T43b : une application déjà retirée côté Stripe est un succès idempo
   assert.equal(r.status, 200);
   assert.equal((await r.json() as any).ok, true);
   assert.equal((await post("/v1/stripe/read", { object: "balance" }, env, { authorization: `Bearer ${f.token}` })).status, 401);
+});
+
+test("CA59 : clés et mode incohérents → 503 sur santé, start et OAuth", async () => {
+  const liveAvecClesTest = setup({ MODE: "live" });
+  assert.equal((await get("/v1/health", liveAvecClesTest.env)).status, 503);
+  const start = { instance_id: "inst-1234", return_url: "https://i.test/cb", code_challenge: challenge };
+  assert.equal((await post("/v1/start", start, liveAvecClesTest.env)).status, 503);
+  assert.equal((await get("/oauth/authorize?state=x", liveAvecClesTest.env)).status, 503);
+  assert.equal((await get("/oauth/callback?state=x&code=y", liveAvecClesTest.env)).status, 503);
+
+  const testAvecClesLive = setup({ STRIPE_READ_KEY: "rk_live_x", STRIPE_OAUTH_KEY: "sk_live_x" });
+  assert.equal((await get("/v1/health", testAvecClesLive.env)).status, 503);
+  assert.equal((await post("/v1/start", start, testAvecClesLive.env)).status, 503);
+
+  const coherent = setup({ MODE: "live", STRIPE_READ_KEY: "rk_live_x", STRIPE_OAUTH_KEY: "sk_live_x" });
+  const h = await get("/v1/health", coherent.env);
+  assert.equal(h.status, 200);
+  assert.deepEqual(await h.json(), { ok: true, mode: "live" });
+  assert.equal((await post("/v1/start", start, coherent.env)).status, 200);
 });
