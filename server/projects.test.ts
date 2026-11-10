@@ -133,3 +133,18 @@ test("formule : une formule ne peut pas en citer une autre, ni un indicateur d'u
   assert.throws(() => saveIndicator(null, p.id, { label: "G", mode: "total", source: "formula", config: { terms: [{ indicator: f.id, op: "+" }, { indicator: a.id, op: "+" }] } }), /formule/);
   assert.throws(() => saveIndicator(null, p.id, { label: "H", mode: "total", source: "formula", config: { terms: [{ indicator: a.id, op: "+" }, { indicator: x.id, op: "+" }] } }), /autre projet/);
 });
+
+test("jalons : un jalon à venir est un jalon, puis une note une fois passé ; au-delà de 7 jours il n'est pas proche", async () => {
+  const { annotations, saveMilestone, upcomingMilestones } = await import("./projects.ts");
+  const { localDay } = await import("./db.ts");
+  const p = saveProject(null, { name: "Jal" })!;
+  const at = (n: number) => localDay(new Date(Date.now() + n * 86400000));
+  saveMilestone({ project_id: p.id, day: at(3), label: "Lancement", milestone: true }, "agent");
+  saveMilestone({ project_id: p.id, day: at(-1), label: "Bêta", milestone: true });
+  saveMilestone({ project_id: p.id, day: at(8), label: "Salon", milestone: true });
+  const kinds = annotations(p.id, { from: at(-2), to: at(9) }).map((a: any) => [a.label, a.kind]);
+  assert.deepEqual(kinds, [["Bêta", "note"], ["Lancement", "jalon"], ["Salon", "jalon"]]);
+  const soon = upcomingMilestones(p.id);
+  assert.deepEqual(soon.map((m: any) => [m.label, m.daysLeft]), [["Lancement", 3]]);
+  assert.equal((db.prepare("SELECT source FROM annotations WHERE label = 'Lancement'").get() as any).source, "agent");
+});

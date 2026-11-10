@@ -96,6 +96,7 @@ export function ProjectView({ id, days, go }: { id: string; days: number; go: Go
                   : <EmptyBox>{current.last_error ? `Le relevé a échoué : ${current.last_error}` : current.source === "manual" ? "Aucune valeur saisie sur la période." : "Pas encore de données sur la période."}</EmptyBox>}
               </Card>
             )}
+            <Milestones projectId={p.id} key={notes?.length ?? 0} />
             <AddNote projectId={p.id} onAdded={reloadNotes} count={notes?.length ?? 0} />
           </>
         ) : <EmptyBox>Aucun indicateur. <button onClick={() => setManage(true)} className="text-ink underline">Ajouter le premier</button></EmptyBox>}
@@ -156,18 +157,35 @@ function Funnel({ steps, days }: { steps: Project["funnel"]; days: number }) {
   );
 }
 
+/** Jalons des 30 prochains jours avec le nombre de jours restants. */
+function Milestones({ projectId }: { projectId: string }) {
+  const { data } = useData<{ id: string; day: string; label: string; daysLeft: number }[]>(`/api/milestones?project=${projectId}&days=30`);
+  if (!data?.length) return null;
+  return (
+    <ul aria-label="Jalons à venir" className="flex flex-wrap gap-2">
+      {data.map((m) => (
+        <li key={m.id} className={`rounded-full border px-3 py-1 text-sm ${m.daysLeft <= 7 ? "border-accent" : "border-border"}`}>
+          <span className="num font-medium">{m.daysLeft === 0 ? "Aujourd'hui" : `J-${m.daysLeft}`}</span> · {m.label}
+          <span className="ml-1.5 text-xs text-muted">{new Date(m.day).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function AddNote({ projectId, onAdded, count }: { projectId: string; onAdded: () => void; count: number }) {
   const [open, setOpen] = useState(false);
   async function add(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const f = Object.fromEntries(new FormData(e.currentTarget));
-    await api("/api/annotations", { method: "POST", json: { ...f, project_id: projectId } });
+    await api("/api/annotations", { method: "POST", json: { ...f, milestone: f.milestone === "on", project_id: projectId } });
     setOpen(false); onAdded();
   }
   return open ? (
     <form onSubmit={add} className="flex flex-wrap items-center gap-2 text-sm">
       <input name="day" type="date" required defaultValue={new Date().toISOString().slice(0, 10)} className={`${inputCls.replace("h-10 w-full", "h-9")} w-40`} aria-label="Date" />
-      <input name="label" required placeholder="Ex. nouvelle page d'accueil en ligne" className={`${inputCls.replace("h-10 w-full", "h-9")} min-w-0 flex-1`} aria-label="Repère" />
+      <input name="label" required placeholder="Ex. lancement de la version 2" className={`${inputCls.replace("h-10 w-full", "h-9")} min-w-0 flex-1`} aria-label="Repère" />
+      <label className="flex items-center gap-1.5 text-muted"><input type="checkbox" name="milestone" className="size-4" />Jalon (compte à rebours)</label>
       <Button variant="secondary">Ajouter</Button>
       <button type="button" onClick={() => setOpen(false)} className="text-muted hover:text-ink">Annuler</button>
     </form>

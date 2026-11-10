@@ -76,9 +76,9 @@ test("mcp : une clé en lecture seule n'a pas module_enable_for_project", async 
   try {
     const ro = await tools(s.base, "cle-lecture-de-test-01");
     assert.ok(ro.includes("modules_list") && !ro.includes("module_enable_for_project"));
-    assert.ok(ro.includes("kpi_catalog") && !ro.includes("kpi_add"));
+    assert.ok(ro.includes("kpi_catalog") && !ro.includes("kpi_add") && ro.includes("milestones_list") && !ro.includes("milestone_save"));
     const rw = await tools(s.base, KEY);
-    assert.ok(rw.includes("module_enable_for_project") && rw.includes("kpi_add"));
+    assert.ok(rw.includes("module_enable_for_project") && rw.includes("kpi_add") && rw.includes("milestone_save"));
   } finally { s.stop(); t.done(); }
 });
 

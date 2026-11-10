@@ -65,6 +65,8 @@ CREATE TABLE annotations (
 CREATE INDEX annotations_day ON annotations(day);
 `);
 
+migrate("2026-11-10-jalons", "ALTER TABLE annotations ADD COLUMN milestone INTEGER NOT NULL DEFAULT 0; ALTER TABLE annotations ADD COLUMN source TEXT NOT NULL DEFAULT 'manuel';");
+
 type Row = Record<string, any>;
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 const day = (t: number) => new Date(t).toISOString().slice(0, 10);
@@ -363,10 +365,28 @@ export function saveIndicator(id: string | null, projectId: string | null, input
   return getInd(iid)!;
 }
 
+/** Note ou jalon (date à venir avec compte à rebours) ; source : manuel, agent ou id de module. */
+export function saveMilestone(b: { project_id?: string | null; day: string; label: string; milestone?: boolean }, source = "manuel") {
+  if (!DAY.test(b.day ?? "") || typeof b.label !== "string" || !b.label.trim()) throw new Error("Date (AAAA-MM-JJ) et texte requis");
+  const id = randomUUID();
+  db.prepare("INSERT INTO annotations (id, project_id, day, label, milestone, source, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+    .run(id, b.project_id || null, b.day, b.label.trim().slice(0, 200), b.milestone ? 1 : 0, source, Date.now());
+  return { id };
+}
+
+/** Jalons des prochains jours (aujourd'hui compris), du plus proche au plus lointain. */
+export function upcomingMilestones(projectId?: string, withinDays = 7) {
+  const today = localDay();
+  const to = day(Date.parse(today) + withinDays * 86400000);
+  return (db.prepare(`SELECT id, project_id, day, label FROM annotations WHERE milestone = 1 AND day BETWEEN ? AND ? ${projectId ? "AND (project_id = ? OR project_id IS NULL)" : ""} ORDER BY day`)
+    .all(...[today, to, ...(projectId ? [projectId] : [])]) as Row[]).map((m) => ({ ...m, daysLeft: Math.round((Date.parse(m.day) - Date.parse(today)) / 86400000) }));
+}
+
 export function annotations(projectId: string | undefined, r: Range) {
   const p = projectId ? db.prepare("SELECT id, crm_key FROM projects WHERE id = ?").get(projectId) as Row | undefined : undefined;
-  const notes = db.prepare(`SELECT id, day, label, 'note' AS kind FROM annotations WHERE day BETWEEN ? AND ? ${p ? "AND (project_id = ? OR project_id IS NULL)" : ""}`)
-    .all(...[r.from, r.to, ...(p ? [p.id] : [])]) as Row[];
+  // Un jalon reste un jalon tant que sa date n'est pas passée ; ensuite c'est une note sur la courbe
+  const notes = db.prepare(`SELECT id, day, label, CASE WHEN milestone = 1 AND day >= ? THEN 'jalon' ELSE 'note' END AS kind FROM annotations WHERE day BETWEEN ? AND ? ${p ? "AND (project_id = ? OR project_id IS NULL)" : ""}`)
+    .all(...[localDay(), r.from, r.to, ...(p ? [p.id] : [])]) as Row[];
   const pubs = db.prepare(`SELECT id, day, title AS label, 'publication' AS kind FROM publications WHERE status = 'published' AND day BETWEEN ? AND ? ${p?.crm_key ? "AND project = ?" : p ? "AND 0" : ""}`)
     .all(...[r.from, r.to, ...(p?.crm_key ? [p.crm_key] : [])]) as Row[];
   return [...notes, ...pubs].sort((a, b) => a.day.localeCompare(b.day));
@@ -427,13 +447,12 @@ export function registerProjects(app: Hono) {
   });
 
   // Repères des courbes : notes datées et publications du projet
+  app.get("/api/milestones", (c) => c.json(upcomingMilestones(c.req.query("project") || undefined, Math.min(Number(c.req.query("days")) || 30, 365))));
   app.get("/api/annotations", (c) => c.json(annotations(c.req.query("project"), rangeOf(c.req.query()))));
   app.post("/api/annotations", async (c) => {
     const b = await c.req.json().catch(() => ({}));
-    if (!DAY.test(b.day ?? "") || typeof b.label !== "string" || !b.label.trim()) return c.json({ error: "Date (AAAA-MM-JJ) et texte requis" }, 400);
-    const id = randomUUID();
-    db.prepare("INSERT INTO annotations (id, project_id, day, label, created_at) VALUES (?, ?, ?, ?, ?)").run(id, b.project_id || null, b.day, b.label.trim().slice(0, 200), Date.now());
-    return c.json({ id }, 201);
+    try { return c.json(saveMilestone({ project_id: b.project_id, day: b.day, label: b.label, milestone: !!b.milestone }), 201); }
+    catch (e) { return c.json({ error: (e as Error).message }, 400); }
   });
   app.delete("/api/annotations/:id", (c) => db.prepare("DELETE FROM annotations WHERE id = ?").run(c.req.param("id")).changes ? c.json({ ok: true }) : c.json({ error: "Repère introuvable" }, 404));
 
@@ -448,6 +467,14 @@ export function registerProjectTools(server: McpServer, readOnly = false) {
     inputSchema: z.object({ days: z.number().int().min(1).max(500).default(28) }),
   }, async ({ days }) => json(listProjects(lastDays(days)).map((p) => ({ name: p.name, crm_key: p.crm_key, sites: p.sites,
     indicators: p.indicators.map((i: Record<string, any>) => ({ id: i.id, label: i.label, unit: i.unit, mode: i.mode, value: i.value, previous: i.previous, error: i.last_error })) }))));
+  server.registerTool("milestones_list", {
+    description: "Jalons à venir (lancements, échéances) avec le nombre de jours restants ; tous projets ou un seul.",
+    inputSchema: z.object({ project: z.string().optional().describe("id du projet (facultatif)"), days: z.number().int().min(1).max(365).default(30) }),
+  }, async ({ project, days }) => json(upcomingMilestones(project, days)));
+  if (!readOnly) server.registerTool("milestone_save", {
+    description: "Ajoute un jalon (date à venir, compte à rebours dans « Aujourd'hui » à J-7) ou une note sur les courbes (milestone: false).",
+    inputSchema: z.object({ project: z.string().optional().describe("id du projet ; absent = tous les projets"), day: z.string().describe("AAAA-MM-JJ"), label: z.string(), milestone: z.boolean().default(true) }),
+  }, async ({ project, day: d, label, milestone }) => json(saveMilestone({ project_id: project ?? null, day: d, label, milestone }, "agent")));
   if (!readOnly) server.registerTool("indicator_record", {
     description: "Enregistre à la main la valeur d'un indicateur pour un jour (ex. abonnés TikTok). Donne l'id obtenu avec projects_kpis.",
     inputSchema: z.object({ id: z.string(), value: z.number(), day: z.string().regex(DAY).optional() }),
