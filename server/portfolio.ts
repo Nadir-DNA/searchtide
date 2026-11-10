@@ -162,14 +162,16 @@ export function portfolio(r: Range, weights: Weights = getWeights()) {
 
     // B1 : le CA vient de Stripe si une connexion Stripe est rattachée, sinon des saisies « CA ».
     // Même logique pour les contacts : CRM s'il existe, sinon Stripe (nouveaux clients), sinon saisie « contacts ».
-    const stripeConnected = inds.some((i) => i.source === "stripe");
+    // M1 : Stripe ne prend la priorité que pour la mesure réellement fournie (revenue / new_customers).
+    // Un projet qui n'a que du MRR Stripe garde donc sa saisie manuelle de CA.
+    const stripeRevenue = inds.some((i) => i.source === "stripe" && i.config?.metric === "revenue");
     const manualRevenue = manualMeasure(inds, "revenue");
-    const revenueMeasure: Measure | null = stripeConnected
+    const revenueMeasure: Measure | null = stripeRevenue
       ? { value: money(inds, "revenue", "value"), previous: money(inds, "revenue", "previous"), unit: inds.find((i) => i.source === "stripe" && i.config?.metric === "revenue")?.unit ?? "€" }
       : manualRevenue;
     const contactsMeasure: Measure | null = x.crm_key
       ? { value: crm?.leads ?? 0, previous: crm?.leads_prev ?? 0, unit: null }
-      : stripeConnected ? stripeContacts(inds) : manualMeasure(inds, "contacts");
+      : (stripeContacts(inds) ?? manualMeasure(inds, "contacts"));
     return {
       id: x.id, name: x.name, color: x.color, url: x.url, sites: ss.map((s) => s.domain), to, health, mrrPrev: money(inds, "mrr", "previous"),
       measures: {

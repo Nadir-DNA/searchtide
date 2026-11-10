@@ -48,3 +48,15 @@ test("B1 : deux devises restent séparées dans le total", () => {
   const a = r.find((x) => x.id === eur.id)!, b = r.find((x) => x.id === usd.id)!;
   assert.deepEqual(columnTotal("money", [a.measures.revenue, b.measures.revenue]), { value: null, unit: null, mixed: true });
 });
+
+test("CA34 bis : Stripe ne prime que sur la mesure qu'il fournit (MRR seul ne masque pas le CA saisi)", () => {
+  const p = saveProject(null, { name: "MRR seul" })!;
+  const mrr = saveIndicator(null, p.id, { label: "MRR", mode: "total", source: "stripe", unit: "€", config: { metric: "mrr", connection_id: "c" } })!;
+  record(mrr.id, today, 29);
+  metric(p.id, "revenue", 147, "€");
+  metric(p.id, "contacts", 92, null);
+  const row = portfolio(lastDays(7)).projects.find((x) => x.id === p.id)!;
+  assert.deepEqual(row.measures.revenue, { value: 147, previous: null, unit: "€", manual: true }, "le CA saisi reste visible");
+  assert.deepEqual(row.measures.leads, { value: 92, previous: null, unit: null, manual: true }, "les contacts saisis restent visibles");
+  assert.equal(row.measures.mrr.value, 29);
+});
