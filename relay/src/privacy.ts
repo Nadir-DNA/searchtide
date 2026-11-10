@@ -1,4 +1,4 @@
-// Texte servi par GET /privacy, repris de 04-politique-confidentialite-relais.md. Les [À compléter] bloquent le mode production.
+// Texte servi par GET /privacy, repris de 04-politique-confidentialite-relais.md. Seule la date de mise en ligne reste [À compléter] avant le déploiement.
 export const PRIVACY_FR = `**Searchtide Connect** est un petit service qui permet à votre instance Searchtide de lire vos données Stripe après que vous avez cliqué sur « Connexion avec Stripe ». Il est optionnel : vous pouvez toujours connecter Stripe avec une clé restreinte \`rk_\`, sans aucun échange avec ce service.
 
 ### Qui est responsable

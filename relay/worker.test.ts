@@ -172,6 +172,8 @@ test("CA50/CA52 : politique FR/EN, mode production bloqué si [À compléter] ; 
   assert.equal(p.status, 200);
   const html = await p.text();
   assert.match(html, /Français|Searchtide Connect/);
+  assert.match(html, /France/);
+  assert.match(html, /github\.com\/Nadir-DNA\/searchtide\/tree\/main\/relay/);
   assert.equal((await get("/privacy", { ...env, MODE: "live" })).status, 503);
   const calls: Call[] = [];
   const liveEnv = setup({ __fetch: (async (u: any, i: RequestInit = {}) => {
