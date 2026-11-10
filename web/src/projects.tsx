@@ -2,7 +2,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { api, type Overview as OverviewData, type Site } from "./api";
 import { ErrorLine, Header, KpiSkeleton, useData } from "./App";
-import { STAGES } from "./business";
+import { STAGES } from "./modules/shared";
 import { BarChart } from "./chart";
 import { SourcesCard } from "./sources";
 import { useCatalog } from "./connections";
