@@ -28,7 +28,7 @@ gratuites pour vos sites.
 Une commande, des données fictives, aucune clé :
 
 ```bash
-docker run -d -p 3030:3030 -e DEMO=1 -v searchtide_demo:/data ghcr.io/nadir-dna/searchtide:v0.2.0
+docker run -d -p 3030:3030 -e DEMO=1 -v searchtide_demo:/data ghcr.io/nadir-dna/searchtide:0.2.0
 ```
 
 ![Vue d'ensemble de la démonstration](docs/demo.png)

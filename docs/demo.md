@@ -7,7 +7,7 @@ uniquement des **données fictives**, créées automatiquement au premier démar
 ## Docker
 
 ```bash
-docker run -d --name searchtide-demo -p 3030:3030 -e DEMO=1 -v searchtide_demo:/data ghcr.io/nadir-dna/searchtide:v0.2.0
+docker run -d --name searchtide-demo -p 3030:3030 -e DEMO=1 -v searchtide_demo:/data ghcr.io/nadir-dna/searchtide:0.2.0
 # http://localhost:3030
 ```
 

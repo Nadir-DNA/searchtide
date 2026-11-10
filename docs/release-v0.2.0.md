@@ -9,14 +9,14 @@ Searchtide passe d'un tableau de bord à configurer dans `.env` à un produit au
 ## À essayer en premier
 
 ```bash
-docker run -d -p 3030:3030 -e DEMO=1 -v searchtide_demo:/data ghcr.io/nadir-dna/searchtide:v0.2.0
+docker run -d -p 3030:3030 -e DEMO=1 -v searchtide_demo:/data ghcr.io/nadir-dna/searchtide:0.2.0
 # http://localhost:3030 — données fictives, lecture seule
 ```
 
 Installation réelle, sans clé ni fichier à éditer :
 
 ```bash
-docker run -d --name searchtide -p 3030:3030 -v searchtide:/data ghcr.io/nadir-dna/searchtide:v0.2.0
+docker run -d --name searchtide -p 3030:3030 -v searchtide:/data ghcr.io/nadir-dna/searchtide:0.2.0
 docker logs searchtide    # mot de passe administrateur généré au premier lancement
 ```
 
@@ -48,7 +48,7 @@ docker logs searchtide    # mot de passe administrateur généré au premier lan
 
 1. **Déplacer `.env` et `google.json` hors du dépôt (T33)**, puis pousser `main`. Le scan de secrets de l'arbre et de tout l'historique est fait ; le déplacement de ces fichiers ne l'est pas encore.
 2. Créer le tag annoté `v0.2.0` : `git tag -a v0.2.0 -m "Searchtide v0.2.0" && git push origin v0.2.0` (utiliser `-s` seulement si une clé GPG est configurée).
-3. Vérifier que le workflow « Image Docker » pousse bien `ghcr.io/nadir-dna/searchtide:v0.2.0` et `:latest` pour les deux architectures. Nom confirmé par Nadir (Q-N11) : `ghcr.io/nadir-dna/searchtide` (le workflow suit `github.repository`).
+3. Vérifier que le workflow « Image Docker » pousse bien `ghcr.io/nadir-dna/searchtide:0.2.0` et `:latest` pour les deux architectures. Nom confirmé par Nadir (Q-N11) : `ghcr.io/nadir-dna/searchtide` (le workflow suit `github.repository`).
 4. Publier ces notes comme release GitHub (copier ce fichier).
 
 ## Données de l'instance
