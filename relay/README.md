@@ -12,7 +12,8 @@ Prérequis : un compte Cloudflare avec la zone du domaine, `wrangler` authentifi
 cd relay
 wrangler d1 create searchtide-connect          # recopier database_id dans wrangler.toml
 wrangler d1 execute searchtide-connect --remote --file=schema.sql
-wrangler secret put STRIPE_KEY                 # clé de plateforme (test d'abord)
+wrangler secret put STRIPE_READ_KEY            # clé restreinte rk_test (lectures)
+wrangler secret put STRIPE_OAUTH_KEY           # sk_test, uniquement /oauth/token et /oauth/deauthorize
 wrangler secret put WEBHOOK_SECRET             # secret du webhook Connect
 wrangler secret put STATE_SECRET               # 32 octets aléatoires
 wrangler deploy
@@ -21,6 +22,8 @@ wrangler deploy
 Le client Stripe (`STRIPE_CLIENT_ID`) est public et déjà dans `wrangler.toml` (environnement de test). L'URI de retour enregistrée dans Stripe doit être exactement `https://connect.nadirdaoudi.com/oauth/callback`.
 
 Webhook Connect : `https://connect.nadirdaoudi.com/v1/webhook`, événement `account.application.deauthorized` uniquement.
+
+Limitation de débit : le Worker plafonne `/v1/start` à 20 requêtes/heure/IP et `/authorize`, `/oauth/authorize`, `/oauth/callback` à 60/heure/IP. Poser en plus une règle **Cloudflare WAF Rate Limiting** sur `connect.nadirdaoudi.com` : 30 requêtes/minute par IP pour `/v1/start` et `/oauth/*`, action « Block » 1 minute (protège le quota D1 gratuit).
 
 ## Mode test et production
 

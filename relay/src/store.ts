@@ -24,6 +24,7 @@ export interface Store {
   deleteByStripeUser(stripeUserId: string): Promise<void>;
   purge(now: number): Promise<void>;
   log(route: string, status: number, instanceId: string | null, now: number): Promise<void>;
+  rate(key: string, window: string, max: number): Promise<boolean>;
 }
 
 export const sha256 = async (text: string) => {
@@ -112,6 +113,11 @@ export class D1Store implements Store {
   async log(route: string, status: number, instanceId: string | null, now: number) {
     await this.db.prepare("INSERT INTO logs (at, route, status, instance_id) VALUES (?, ?, ?, ?)").bind(now, route, status, instanceId).run();
   }
+  async rate(key: string, window: string, max: number) {
+    const r = await this.db.prepare("INSERT INTO limits (key, window, count) VALUES (?, ?, 1) ON CONFLICT(key) DO UPDATE SET count = CASE WHEN limits.window = excluded.window THEN limits.count + 1 ELSE 1 END, window = excluded.window RETURNING count")
+      .bind(key, window).first() as { count: number } | null;
+    return !!r && Number(r.count) <= max;
+  }
 }
 
 /* ── Mémoire (tests) ──────────────────────────────────────────────────────── */
@@ -147,4 +153,11 @@ export class MemoryStore implements Store {
     for (const [h, t] of this.tokens) if (t.lastUsed < now - 180 * 86400_000) this.tokens.delete(h);
   }
   async log(route: string, status: number, instanceId: string | null, now: number) { this.logs.push({ route, status, instanceId, at: now }); }
+  rates = new Map<string, { window: string; count: number }>();
+  async rate(key: string, window: string, max: number) {
+    const r = this.rates.get(key);
+    const next = r && r.window === window ? r.count + 1 : 1;
+    this.rates.set(key, { window, count: next });
+    return next <= max;
+  }
 }

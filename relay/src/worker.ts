@@ -7,7 +7,10 @@ import { PRIVACY_EN, PRIVACY_FR } from "./privacy.ts";
 export type Env = {
   DB?: D1;
   STRIPE_CLIENT_ID?: string;
-  STRIPE_KEY?: string;
+  /** Clé restreinte en lecture (rk_) : lectures Stripe uniquement. */
+  STRIPE_READ_KEY?: string;
+  /** Clé de plateforme (sk_) : uniquement /oauth/token et /oauth/deauthorize. */
+  STRIPE_OAUTH_KEY?: string;
   WEBHOOK_SECRET?: string;
   STATE_SECRET?: string;
   MODE?: "test" | "live";
@@ -16,6 +19,7 @@ export type Env = {
   __store?: Store;
   __fetch?: typeof fetch;
   __now?: () => number;
+  __waitUntil?: (p: Promise<unknown>) => void;
 };
 
 const AUTHORIZE = "https://connect.stripe.com/oauth/authorize";
@@ -52,7 +56,7 @@ function storeOf(env: Env): Store {
 }
 const fetchOf = (env: Env) => env.__fetch ?? fetch;
 
-const SECRETS: (keyof Env)[] = ["STRIPE_CLIENT_ID", "STRIPE_KEY", "WEBHOOK_SECRET", "STATE_SECRET"];
+const SECRETS: (keyof Env)[] = ["STRIPE_CLIENT_ID", "STRIPE_READ_KEY", "STRIPE_OAUTH_KEY", "WEBHOOK_SECRET", "STATE_SECRET"];
 const missingSecrets = (env: Env) => SECRETS.filter((k) => !env[k]);
 
 /* ── lecture Stripe : liste blanche ───────────────────────────────────────── */
@@ -63,8 +67,12 @@ const OBJECTS: Record<string, { params: RegExp[]; trim: (o: any) => any }> = {
     trim: (o) => ({ data: (o.data ?? []).map((t: any) => ({ id: t.id, amount: t.amount, fee: t.fee, net: t.net, currency: t.currency, created: t.created, type: t.type })), has_more: !!o.has_more }),
   },
   subscriptions: {
-    params: [/^limit$/, /^starting_after$/, /^status$/, /^created\[(gte|lte)\]$/],
-    trim: (o) => ({ data: (o.data ?? []).map((s: any) => ({ id: s.id, status: s.status, created: s.created, currency: s.currency, cancel_at_period_end: !!s.cancel_at_period_end, items: { data: (s.items?.data ?? []).map((i: any) => ({ quantity: i.quantity, price: { unit_amount: i.price?.unit_amount, recurring: i.price?.recurring ? { interval: i.price.recurring.interval } : null } })) } })), has_more: !!o.has_more }),
+    params: [/^limit$/, /^starting_after$/, /^status$/, /^created\[(gte|lte)\]$/, /^expand\[\]$/],
+    trim: (o) => ({ data: (o.data ?? []).map((s: any) => ({
+      id: s.id, status: s.status, created: s.created, currency: s.currency, cancel_at_period_end: !!s.cancel_at_period_end,
+      items: { data: (s.items?.data ?? []).map((i: any) => ({ quantity: i.quantity, price: { unit_amount: i.price?.unit_amount, recurring: i.price?.recurring ? { interval: i.price.recurring.interval, interval_count: i.price.recurring.interval_count ?? 1 } : null } })) },
+      discounts: (s.discounts ?? []).filter((d: any) => d && d.coupon).map((d: any) => ({ coupon: { percent_off: d.coupon.percent_off ?? null, amount_off: d.coupon.amount_off ?? null } })),
+    })), has_more: !!o.has_more }),
   },
   customers: {
     params: [/^limit$/, /^starting_after$/, /^created\[(gte|lte)\]$/],
@@ -88,7 +96,7 @@ export async function handle(req: Request, env: Env): Promise<Response> {
   const store = storeOf(env);
   const now = nowOf(env);
   const route = `${req.method} ${url.pathname}`;
-  const log = (status: number, instanceId: string | null = null) => { void store.log(route, status, instanceId, now); return status; };
+  const log = (status: number, instanceId: string | null = null) => { const p = store.log(route, status, instanceId, now); env.__waitUntil?.(p); return status; };
   const origin = (env.RELAY_URL ?? url.origin).replace(/\/$/, "");
 
   if (url.pathname === "/v1/health") {
@@ -101,14 +109,24 @@ export async function handle(req: Request, env: Env): Promise<Response> {
   }
   if (missingSecrets(env).length) { log(503); return json({ ok: false, error: "Configuration incomplète" }, 503); }
 
+  // Limitation de débit des routes non authentifiées (protège D1 et la clé de plateforme).
+  const LIMITS: Record<string, number> = { "/v1/start": 20, "/authorize": 60, "/oauth/authorize": 60, "/oauth/callback": 60 };
+  if (LIMITS[url.pathname]) {
+    const ip = req.headers.get("cf-connecting-ip") ?? "inconnu";
+    const hour = new Date(now).toISOString().slice(0, 13);
+    if (!await store.rate(`${ip}:${url.pathname}`, hour, LIMITS[url.pathname])) { log(429); return json({ error: "Trop de demandes" }, 429, { "retry-after": "3600" }); }
+  }
+
   if (url.pathname === "/v1/start") {
     if (req.method !== "POST") { log(405); return json({ error: "Méthode non autorisée" }, 405); }
     const b = await req.json().catch(() => ({})) as Record<string, string>;
-    const instanceId = String(b.instance_id ?? ""), host = String(b.instance_host ?? ""), returnUrl = String(b.return_url ?? ""), challenge = String(b.code_challenge ?? "");
-    if (!/^[A-Za-z0-9_-]{8,64}$/.test(instanceId) || !host || host.length > 253 || /\s/.test(host)) { log(400); return json({ error: "Instance invalide" }, 400); }
+    const instanceId = String(b.instance_id ?? ""), returnUrl = String(b.return_url ?? ""), challenge = String(b.code_challenge ?? "");
+    if (!/^[A-Za-z0-9_-]{8,64}$/.test(instanceId)) { log(400); return json({ error: "Instance invalide" }, 400); }
     let ret: URL; try { ret = new URL(returnUrl); } catch { log(400); return json({ error: "URL de retour invalide" }, 400); }
     const local = ["localhost", "127.0.0.1"].includes(ret.hostname);
     if (ret.protocol !== "https:" && !local) { log(400); return json({ error: "URL de retour en https requise" }, 400); }
+    // C5/CA55 : l'hôte affiché est celui de return_url, jamais un nom fourni par l'instance.
+    const host = ret.host;
     if (!/^[A-Za-z0-9_-]{43,128}$/.test(challenge)) { log(400); return json({ error: "PKCE invalide" }, 400); }
     const raw = await signState(env, random(16));
     await store.createState(await sha256(raw), { instanceId, host, challenge, returnUrl: ret.toString(), expiresAt: now + 10 * 60_000 });
@@ -153,13 +171,13 @@ export async function handle(req: Request, env: Env): Promise<Response> {
     if (url.searchParams.get("error")) { log(400, st.instanceId); return Response.redirect(back("error=access_denied"), 302); }
     const code = url.searchParams.get("code") ?? "";
     if (!code) { log(400, st.instanceId); return Response.redirect(back("error=invalid_request"), 302); }
-    const basic = btoa(`${env.STRIPE_KEY}:`);
+    const basic = btoa(`${env.STRIPE_OAUTH_KEY}:`);
     const tr = await fetchOf(env)(TOKEN, { method: "POST", headers: { Authorization: `Basic ${basic}`, "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ grant_type: "authorization_code", code }) });
     const tok = await tr.json().catch(() => ({})) as any;
     if (!tr.ok || !tok.stripe_user_id) { log(502, st.instanceId); return page("Stripe a refusé", "<h1>Stripe n'a pas accepté la connexion</h1><p>Recommencez depuis votre instance.</p>"); }
     if (env.MODE === "test" && tok.livemode) { log(403, st.instanceId); return page("Compte de test requis", "<h1>Ce service n'accepte que des comptes de test pour le moment.</h1>"); }
     const existing = await store.findByStripeUser(String(tok.stripe_user_id));
-    if (existing && existing.instanceId !== st.instanceId) { log(409, st.instanceId); return page("Compte déjà relié", `<h1>Ce compte Stripe est déjà relié à l'instance ${esc(existing.host)}.</h1><p>Révoquez-la d'abord, ou utilisez une clé limitée.</p>`); }
+    if (existing && existing.instanceId !== st.instanceId) { log(409, st.instanceId); return page("Compte déjà relié", `<h1>Ce compte Stripe est déjà relié à l'instance ${esc(existing.host)}.</h1><p>Révoquez-la d'abord, ou utilisez une clé limitée.</p>`, 409); }
     const instCode = random(24);
     await store.createCode(await sha256(instCode), { ...st, stripeUserId: String(tok.stripe_user_id), livemode: !!tok.livemode, expiresAt: now + 60_000 });
     log(200, st.instanceId);
@@ -191,12 +209,15 @@ export async function handle(req: Request, env: Env): Promise<Response> {
     const q = await store.quota(await sha256(token), now, day, minute, MAX_DAY, MAX_MINUTE);
     if (q !== "ok") { log(429, t.instanceId); return json({ error: "quota" }, 429, { "retry-after": q === "day" ? "3600" : "60" }); }
     const b = await req.json().catch(() => ({})) as { object?: string; params?: Record<string, string> };
-    const def = b.object ? OBJECTS[b.object] : undefined;
+    const def = b.object && Object.hasOwn(OBJECTS, b.object) ? OBJECTS[b.object] : undefined;
     if (!def) { log(400, t.instanceId); return json({ error: "Objet non autorisé" }, 403); }
     const params = b.params ?? {};
-    for (const k of Object.keys(params)) if (!def.params.some((re) => re.test(k))) { log(400, t.instanceId); return json({ error: `Paramètre refusé : ${k}` }, 400); }
+    for (const k of Object.keys(params)) {
+      if (!def.params.some((re) => re.test(k))) { log(400, t.instanceId); return json({ error: `Paramètre refusé : ${k}` }, 400); }
+      if (k === "expand[]" && String(params[k]) !== "data.discounts") { log(400, t.instanceId); return json({ error: "Seul data.discounts peut être étendu" }, 400); }
+    }
     const qs = new URLSearchParams(Object.entries(params).map(([k, v]) => [k, String(v)])).toString();
-    const r = await fetchOf(env)(`${API}/${b.object}${qs ? `?${qs}` : ""}`, { method: "GET", headers: { Authorization: `Bearer ${env.STRIPE_KEY}`, "Stripe-Account": t.stripeUserId } });
+    const r = await fetchOf(env)(`${API}/${b.object}${qs ? `?${qs}` : ""}`, { method: "GET", headers: { Authorization: `Bearer ${env.STRIPE_READ_KEY}`, "Stripe-Account": t.stripeUserId } });
     const data = await r.json().catch(() => ({}));
     if (!r.ok) { log(502, t.instanceId); return json({ error: r.status === 401 ? "stripe_auth" : "stripe_error" }, 502); }
     log(200, t.instanceId);
@@ -209,7 +230,7 @@ export async function handle(req: Request, env: Env): Promise<Response> {
     const hash = await sha256(token); const t = token ? await store.findToken(hash) : null;
     if (!t) { log(401); return json({ error: "Jeton inconnu" }, 401); }
     try {
-      const basic = btoa(`${env.STRIPE_KEY}:`);
+      const basic = btoa(`${env.STRIPE_OAUTH_KEY}:`);
       await fetchOf(env)(DEAUTHORIZE, { method: "POST", headers: { Authorization: `Basic ${basic}`, "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ client_id: env.STRIPE_CLIENT_ID!, stripe_user_id: t.stripeUserId }) });
     } catch { /* la révocation locale prime */ }
     await store.deleteToken(hash);
@@ -225,6 +246,7 @@ export async function handle(req: Request, env: Env): Promise<Response> {
     if (!parts.t || !parts.v1) { log(400); return json({ error: "Signature absente" }, 400); }
     const expected = await hmac(`${parts.t}.${raw}`, env.WEBHOOK_SECRET!);
     if (!same(parts.v1, expected)) { log(400); return json({ error: "Signature invalide" }, 400); }
+    if (!/^\d+$/.test(parts.t) || Math.abs(now / 1000 - Number(parts.t)) > 300) { log(400); return json({ error: "Signature expirée" }, 400); }
     const event = JSON.parse(raw || "{}");
     if (event.type === "account.application.deauthorized" && event.account) { await store.deleteByStripeUser(String(event.account)); log(200); return json({ received: true }); }
     log(200); return json({ received: true });
@@ -235,6 +257,6 @@ export async function handle(req: Request, env: Env): Promise<Response> {
 }
 
 export default {
-  fetch: (req: Request, env: Env) => handle(req, env),
+  fetch: (req: Request, env: Env, ctx: { waitUntil(p: Promise<unknown>): void }) => handle(req, { ...env, __waitUntil: (p) => ctx.waitUntil(p) }),
   scheduled: async (_event: unknown, env: Env) => { await storeOf(env).purge(nowOf(env)); },
 };

@@ -26,7 +26,7 @@ function fakeFetch(calls: Call[]) {
 function setup(over: Partial<Env> = {}) {
   const store = new MemoryStore(); const calls: Call[] = [];
   const env: Env = {
-    STRIPE_CLIENT_ID: "ca_TEST", STRIPE_KEY: "sk_test_FAKE", WEBHOOK_SECRET: "whsec_FAKE", STATE_SECRET: "state-secret-0123456789",
+    STRIPE_CLIENT_ID: "ca_TEST", STRIPE_READ_KEY: "read-key-fake", STRIPE_OAUTH_KEY: "oauth-key-fake", WEBHOOK_SECRET: "webhook-secret-fake", STATE_SECRET: "state-secret-0123456789",
     MODE: "test", RELAY_URL: "https://connect.test", __store: store, __fetch: fakeFetch(calls), __now: now, ...over,
   };
   return { store, calls, env };
@@ -46,7 +46,7 @@ async function flow(env: Env, host = "instance.test") {
 }
 
 test("CA53/health : 503 si un secret manque, 200 avec le mode", async () => {
-  const { env } = setup({ STRIPE_KEY: undefined });
+  const { env } = setup({ STRIPE_READ_KEY: undefined });
   assert.equal((await get("/v1/health", env)).status, 503);
   const ok = await get("/v1/health", setup().env);
   assert.equal(ok.status, 200);
@@ -139,7 +139,7 @@ test("CA30 : webhook signé invalide les jetons, signature fausse refusée ; ré
   const raw = JSON.stringify({ type: "account.application.deauthorized", account: "acct_TEST" });
   assert.equal((await post("/v1/webhook", JSON.parse(raw), env, { "stripe-signature": "t=1,v1=faux" })).status, 400);
   const t = String(Math.floor(clock / 1000));
-  const key = await crypto.subtle.importKey("raw", enc("whsec_FAKE"), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const key = await crypto.subtle.importKey("raw", enc("webhook-secret-fake"), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
   const sig = b64url(new Uint8Array(await crypto.subtle.sign("HMAC", key, enc(`${t}.${raw}`))));
   const wh = await handle(new Request("https://connect.test/v1/webhook", { method: "POST", headers: { "stripe-signature": `t=${t},v1=${sig}` }, body: raw }), env);
   assert.equal(wh.status, 200);
@@ -186,4 +186,58 @@ test("CA50/CA52 : politique FR/EN, mode production bloqué si [À compléter] ; 
   const cb = await get(`/oauth/callback?code=ac_9&state=${encodeURIComponent(state)}`, liveEnv);
   assert.equal(cb.status, 200);
   assert.match(await cb.text(), /comptes de test/);
+});
+
+test("CA55 : la page intermédiaire affiche l'hôte de return_url, pas le nom annoncé par l'instance", async () => {
+  const { env } = setup();
+  const s = await (await post("/v1/start", { instance_id: "inst-1234", instance_host: "faux.test", return_url: "https://reel.test/cb", code_challenge: challenge }, env)).json() as any;
+  const page = await get(`/authorize?state=${encodeURIComponent(new URL(s.authorize_url).searchParams.get("state")!)}`, env);
+  const html = await page.text();
+  assert.match(html, /reel\.test/); assert.doesNotMatch(html, /faux\.test/);
+});
+
+test("CA56 : constructor, __proto__ et toString sont refusés par la liste blanche", async () => {
+  const { env } = setup(); const f = await flow(env); const auth = { authorization: `Bearer ${f.token}` };
+  for (const object of ["constructor", "__proto__", "toString"]) {
+    assert.equal((await post("/v1/stripe/read", { object }, env, auth)).status, 403, object);
+  }
+});
+
+test("CA54 : le relais conserve interval_count et les remises des abonnements", async () => {
+  const seen: string[] = [];
+  const { env } = setup({ __fetch: (async (u: any) => {
+    const url = String(u); seen.push(url);
+    if (url.includes("oauth/token")) return Response.json({ stripe_user_id: "acct_TEST", livemode: false });
+    if (url.includes("/subscriptions")) return Response.json({ data: [{ id: "sub_1", status: "active", created: 1, currency: "eur", cancel_at_period_end: false, items: { data: [{ quantity: 1, price: { unit_amount: 3000, recurring: { interval: "month", interval_count: 3 } } }] }, discounts: [{ coupon: { percent_off: 50, amount_off: null } }] }], has_more: false });
+    return Response.json({});
+  }) as typeof fetch });
+  const f = await flow(env);
+  const r = await (await post("/v1/stripe/read", { object: "subscriptions", params: { "expand[]": "data.discounts" } }, env, { authorization: `Bearer ${f.token}` })).json() as any;
+  assert.equal(r.data[0].items.data[0].price.recurring.interval_count, 3);
+  assert.deepEqual(r.data[0].discounts[0].coupon, { percent_off: 50, amount_off: null });
+  assert.ok(seen.some((u) => u.includes("/subscriptions") && /expand[^=]*=data\.discounts/.test(u)));
+});
+
+test("N-4 : lecture avec STRIPE_READ_KEY, token/déauthorisation avec STRIPE_OAUTH_KEY uniquement", async () => {
+  const { env, calls } = setup(); const f = await flow(env);
+  await post("/v1/stripe/read", { object: "balance" }, env, { authorization: `Bearer ${f.token}` });
+  const api = calls.find((c) => c.url.includes("/v1/balance"))!;
+  assert.match(String((api.init.headers as any).Authorization), /read-key-fake/);
+  const token = calls.find((c) => c.url.includes("oauth/token"))!;
+  assert.match(String((token.init.headers as any).Authorization), new RegExp(btoa("oauth-key-fake:")));
+});
+
+test("Limitation de débit : /v1/start plafonne à 20 par heure et par IP", async () => {
+  const { env } = setup();
+  for (let i = 0; i < 20; i++) assert.equal((await post("/v1/start", { instance_id: "inst-1234", return_url: "https://i.test/cb", code_challenge: challenge }, env)).status, 200, String(i));
+  const blocked = await post("/v1/start", { instance_id: "inst-1234", return_url: "https://i.test/cb", code_challenge: challenge }, env);
+  assert.equal(blocked.status, 429);
+});
+
+test("Webhook : une signature valide mais trop ancienne est refusée", async () => {
+  const { env } = setup(); const raw = JSON.stringify({ type: "x" });
+  const t = String(Math.floor(clock / 1000) - 301);
+  const key = await crypto.subtle.importKey("raw", enc("webhook-secret-fake"), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const sig = b64url(new Uint8Array(await crypto.subtle.sign("HMAC", key, enc(`${t}.${raw}`))));
+  assert.equal((await handle(new Request("https://connect.test/v1/webhook", { method: "POST", headers: { "stripe-signature": `t=${t},v1=${sig}` }, body: raw }), env)).status, 400);
 });

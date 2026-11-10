@@ -22,6 +22,7 @@ database_id = "A_REMPLACER_APRES_CREATION"
 crons = ["0 * * * *"]
 
 # Secrets (jamais dans ce fichier) :
-#   wrangler secret put STRIPE_KEY
+#   wrangler secret put STRIPE_READ_KEY   (rk_test, lectures)
+#   wrangler secret put STRIPE_OAUTH_KEY  (sk_test, OAuth seulement)
 #   wrangler secret put WEBHOOK_SECRET
 #   wrangler secret put STATE_SECRET
