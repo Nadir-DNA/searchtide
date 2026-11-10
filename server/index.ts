@@ -26,6 +26,7 @@ import { registerDashboards } from "./dashboards.ts";
 import { registerOutreach } from "./outreach.ts";
 import { backup, loginLimiter, verifyTotp } from "./security.ts";
 import { markAdmin, markClient } from "./admin.ts";
+import { activateFromExistingData } from "./modules/state.ts";
 
 const PRODUCTION = process.env.NODE_ENV === "production";
 const DB_PATH = process.env.DATABASE_PATH ?? "data/searchtide.db";
@@ -205,6 +206,7 @@ registerConnections(app);
 registerStripeOAuth(app);
 registerSources(app);
 startVault();
+activateFromExistingData();
 registerOps(app);
 registerPortfolio(app);
 registerAgents(app);
