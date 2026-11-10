@@ -2,7 +2,7 @@
 
 La **clé limitée `rk_`** reste la voie recommandée : lecture seule garantie par Stripe, aucune donnée ne quitte votre instance. « Connexion avec Stripe » est une **bêta** qui passe par le service **Searchtide Connect**, opéré par Nadir DAOUDI.
 
-> **Bêta.** Le relais accepte désormais les comptes Stripe **réels** comme les comptes de test ; le mode est affiché sur la connexion. Pour un compte de production, la clé limitée `rk_` reste la voie recommandée.
+> **Bêta.** Le relais accepte les comptes réels ; le mode est affiché sur la connexion. Pour un compte de production, la clé limitée `rk_` reste la voie recommandée.
 
 ## Ce que fait le service
 
@@ -17,7 +17,7 @@ Stripe n'offre pas de « lecture seule » pour ce type de connexion : son écran
 
 ## Dans Searchtide
 
-**Connexions → Connexion avec Stripe**, cochez le consentement, puis **Continuer vers Stripe (test)**. Revenu sur l'instance, la connexion affiche le compte et le mode. La révocation se fait par **Retirer** ou **Révoquer** : le jeton local est supprimé et le relais est appelé.
+**Connexions → Connexion avec Stripe**, cochez le consentement, puis **Continuer vers Stripe** (le libellé porte « (test) » si le relais est en mode test). Revenu sur l'instance, la connexion affiche le compte et le mode. La révocation se fait par **Retirer** ou **Révoquer** : le jeton local est supprimé et le relais est appelé.
 
 Si le service est indisponible, Searchtide affiche un message et propose **Utiliser une clé limitée** : rien ne quitte alors votre instance.
 

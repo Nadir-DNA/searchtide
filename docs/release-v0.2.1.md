@@ -18,7 +18,7 @@ Version corrective publiée le 10/11/2026. Elle ne change ni la structure de l'i
 ## Installation
 
 ```bash
-docker run -d --name searchtide -p 3030:3030 -v searchtide:/data ghcr.io/nadir-dna/searchtide:0.2.1
+docker run -d --name searchtide -p 127.0.0.1:3030:3030 -v searchtide:/data ghcr.io/nadir-dna/searchtide:0.2.1
 docker logs searchtide    # mot de passe administrateur généré au premier lancement
 ```
 

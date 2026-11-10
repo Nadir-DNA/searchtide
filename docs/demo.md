@@ -7,7 +7,7 @@ uniquement des **données fictives**, créées automatiquement au premier démar
 ## Docker
 
 ```bash
-docker run -d --name searchtide-demo -p 3030:3030 -e DEMO=1 -v searchtide_demo:/data ghcr.io/nadir-dna/searchtide:0.2.0
+docker run -d --name searchtide-demo -p 127.0.0.1:3030:3030 -e DEMO=1 -v searchtide_demo:/data ghcr.io/nadir-dna/searchtide:0.2.0
 # http://localhost:3030
 ```
 
@@ -35,7 +35,7 @@ npm run demo        # http://localhost:3030, base data/demo.db
 Régénérer après une modification de l'interface :
 
 ```bash
-docker run -d --name st-demo -p 3030:3030 -e DEMO=1 -v st-demo:/data <image>
+docker run -d --name st-demo -p 127.0.0.1:3030:3030 -e DEMO=1 -v st-demo:/data <image>
 node scripts/capture-demo.mjs http://127.0.0.1:3030
 ```
 

@@ -22,7 +22,7 @@ La **Connexion avec Stripe** reste en **bêta** : elle est désormais ouverte au
 ## Installation et mise à jour
 
 ```bash
-docker run -d --name searchtide -p 3030:3030 -v searchtide:/data ghcr.io/nadir-dna/searchtide:0.2.3
+docker run -d --name searchtide -p 127.0.0.1:3030:3030 -v searchtide:/data ghcr.io/nadir-dna/searchtide:0.2.3
 ```
 
 Depuis 0.2.2 : remplacer l'image et redémarrer. Aucune migration n'est nécessaire.

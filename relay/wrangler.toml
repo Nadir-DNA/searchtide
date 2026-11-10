@@ -22,8 +22,8 @@ database_id = "391d80fc-18dd-4d97-b77f-8bf5cb6adad0"
 crons = ["0 * * * *"]
 
 # Secrets (jamais dans ce fichier) :
-#   wrangler secret put STRIPE_READ_KEY   (rk_test, lectures)
-#   wrangler secret put STRIPE_OAUTH_KEY  (sk_test, OAuth seulement)
+#   wrangler secret put STRIPE_READ_KEY   (rk_live, lectures)
+#   wrangler secret put STRIPE_OAUTH_KEY  (sk_live, OAuth seulement)
 #   wrangler secret put WEBHOOK_SECRET
 #   wrangler secret put WEBHOOK_SECRET_PREVIOUS  (facultatif, pendant une rotation)
 #   wrangler secret put STATE_SECRET

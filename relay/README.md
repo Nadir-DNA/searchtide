@@ -28,7 +28,7 @@ Limitation de débit : le Worker plafonne `/v1/start` à 20 requêtes/heure/IP e
 
 ## Mode test et production
 
-Le Worker tourne en `MODE = "live"` depuis le 10 novembre 2026 : il accepte les comptes Stripe réels comme les comptes de test. Le mode reste réglable par `MODE = "test"` pour un environnement de recette, sans changer le code des instances. `GET /privacy` refuse de servir la politique en mode `live` tant qu'il reste un `[À compléter]` (il n'en reste plus depuis cette date).
+Le Worker tourne en `MODE = "live"` depuis le 10 novembre 2026 : il accepte les comptes réels. Le mode reste réglable par `MODE = "test"` pour un environnement de recette, sans changer le code des instances. `GET /privacy` refuse de servir la politique en mode `live` tant qu'il reste un `[À compléter]` (il n'en reste plus depuis cette date).
 
 ## Rotation du secret du webhook
 

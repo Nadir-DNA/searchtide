@@ -155,7 +155,7 @@ Never attach this volume to a ticket or a support archive. Lost password: delete
 
 ## Roadmap
 
-- **0.3**: Stripe OAuth in production (after platform account verification).
+- **0.3**: Stripe OAuth out of beta, once the relay is stable in production.
 - **Later, no date**: deferred connectors (Cloudflare, Gmail read-only, third-party CRM, remote S3 backup).
 
 ## Contributing

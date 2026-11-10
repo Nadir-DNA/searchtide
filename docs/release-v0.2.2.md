@@ -21,7 +21,7 @@ Le passage en production du relais ne changera que ses secrets et son `client_id
 ## Installation et mise à jour
 
 ```bash
-docker run -d --name searchtide -p 3030:3030 -v searchtide:/data ghcr.io/nadir-dna/searchtide:0.2.2
+docker run -d --name searchtide -p 127.0.0.1:3030:3030 -v searchtide:/data ghcr.io/nadir-dna/searchtide:0.2.2
 docker logs searchtide    # mot de passe administrateur généré au premier lancement
 ```
 

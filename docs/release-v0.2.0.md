@@ -9,14 +9,14 @@ Searchtide passe d'un tableau de bord à configurer dans `.env` à un produit au
 ## À essayer en premier
 
 ```bash
-docker run -d -p 3030:3030 -e DEMO=1 -v searchtide_demo:/data ghcr.io/nadir-dna/searchtide:0.2.0
+docker run -d -p 127.0.0.1:3030:3030 -e DEMO=1 -v searchtide_demo:/data ghcr.io/nadir-dna/searchtide:0.2.0
 # http://localhost:3030 — données fictives, lecture seule
 ```
 
 Installation réelle, sans clé ni fichier à éditer :
 
 ```bash
-docker run -d --name searchtide -p 3030:3030 -v searchtide:/data ghcr.io/nadir-dna/searchtide:0.2.0
+docker run -d --name searchtide -p 127.0.0.1:3030:3030 -v searchtide:/data ghcr.io/nadir-dna/searchtide:0.2.0
 docker logs searchtide    # mot de passe administrateur généré au premier lancement
 ```
 

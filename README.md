@@ -153,7 +153,7 @@ Ne joignez jamais ce volume à un ticket ou à une archive de support. Mot de pa
 
 ## Feuille de route
 
-- **0.3** : Connexion avec Stripe en production, après vérification du compte plateforme (le relais reste en mode test d'ici là).
+- **0.3** : Connexion avec Stripe hors bêta, une fois le relais stabilisé en production.
 - **Ensuite, sans date** : connecteurs reportés (Cloudflare, Gmail en lecture, CRM tiers, sauvegarde distante S3).
 
 ## Contribuer
