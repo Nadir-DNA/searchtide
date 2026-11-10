@@ -164,3 +164,12 @@ test("catalogue : un KPI d'analytics se crée depuis le catalogue (visites venue
   assert.equal(ind.label, "Visites venues des IA · ia.fr");
   assert.equal(await measure(ind, "2026-11-09"), 2);
 });
+
+test("catalogue : un KPI calculé se crée depuis le catalogue", async () => {
+  const { addKpi } = await import("./sources.ts");
+  const p = saveProject(null, { name: "Calc", sites: [] })!;
+  const a = saveIndicator(null, p.id, { label: "Inscriptions", mode: "daily", source: "manual", config: {} })!;
+  const b = saveIndicator(null, p.id, { label: "Visites", mode: "daily", source: "manual", config: {} })!;
+  const f = await addKpi(p.id, { module: "projets", kpi: "formula", label: "Conversion", params: { terms: JSON.stringify([{ indicator: a.id, op: "+" }, { indicator: b.id, op: "/" }]), scale: "100", unit: "%" } });
+  assert.deepEqual([f.source, f.unit, (f.config as any).scale], ["formula", "%", 100]);
+});

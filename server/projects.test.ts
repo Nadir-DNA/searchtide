@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { db } from "./db.ts";
-import { indicatorView, measure, record, saveIndicator, saveProject } from "./projects.ts";
+import { getProject, indicatorView, measure, record, saveIndicator, saveProject } from "./projects.ts";
 
 const p = saveProject(null, { name: "Projet test", sites: ["proj.test"], crm_key: "test" })!;
 
@@ -97,4 +97,39 @@ test("revenu mensuel : remises déduites, prix annuel ramené au mois", async ()
   assert.equal(monthlyNet({ ...item(2900, "month"), discounts: [{ coupon: { percent_off: 100 } }] }), 0);
   assert.equal(monthlyNet({ ...item(12000, "year"), discounts: [] }), 1000);
   assert.equal(monthlyNet({ ...item(2900, "month"), discounts: [{ coupon: { amount_off: 900 } }] }), 2000);
+});
+
+test("formule : taux de conversion jour par jour, division par zéro absente, valeur sur la période", async () => {
+  const { formulaSeries } = await import("./projects.ts");
+  const p = saveProject(null, { name: "Conv" })!;
+  const ins = saveIndicator(null, p.id, { label: "Inscriptions", mode: "daily", source: "manual", config: {} })!;
+  const vis = saveIndicator(null, p.id, { label: "Visites", mode: "daily", source: "manual", config: {} })!;
+  [["2026-11-01", 2, 100], ["2026-11-02", 0, 0], ["2026-11-03", 3, 50]].forEach(([d, a, b]) => { record(ins.id, d as string, a as number); record(vis.id, d as string, b as number); });
+  const cfg = { terms: [{ indicator: ins.id, op: "+" as const }, { indicator: vis.id, op: "/" as const }], scale: 100 };
+  const r = { from: "2026-11-01", to: "2026-11-03" };
+  assert.deepEqual(Object.values(formulaSeries(cfg, p.id, r)), [2, null, 6]);
+  const f = saveIndicator(null, p.id, { label: "Conversion", unit: "%", mode: "total", source: "formula", config: cfg })!;
+  const view = getProject(p.id, r)!.indicators.find((i: any) => i.id === f.id);
+  assert.equal(view.value, 3.3333); // 5 inscriptions / 150 visites sur la période
+  assert.deepEqual(view.series.map((x: any) => x.value), [2, null, 6]);
+});
+
+test("formule : opérande supprimée → null et message", async () => {
+  const p = saveProject(null, { name: "Orph" })!;
+  const a = saveIndicator(null, p.id, { label: "A", mode: "daily", source: "manual", config: {} })!;
+  const b = saveIndicator(null, p.id, { label: "B", mode: "daily", source: "manual", config: {} })!;
+  const f = saveIndicator(null, p.id, { label: "A/B", mode: "total", source: "formula", config: { terms: [{ indicator: a.id, op: "+" }, { indicator: b.id, op: "/" }] } })!;
+  db.prepare("DELETE FROM indicators WHERE id = ?").run(b.id);
+  const view = getProject(p.id, { from: "2026-11-01", to: "2026-11-03" })!.indicators.find((i: any) => i.id === f.id);
+  assert.equal(view.value, null);
+  assert.equal(view.last_error, `Indicateur « ${b.id} » introuvable`);
+});
+
+test("formule : une formule ne peut pas en citer une autre, ni un indicateur d'un autre projet", () => {
+  const p = saveProject(null, { name: "Nest" })!, q = saveProject(null, { name: "Autre" })!;
+  const a = saveIndicator(null, p.id, { label: "A", mode: "daily", source: "manual", config: {} })!;
+  const x = saveIndicator(null, q.id, { label: "X", mode: "daily", source: "manual", config: {} })!;
+  const f = saveIndicator(null, p.id, { label: "F", mode: "total", source: "formula", config: { terms: [{ indicator: a.id, op: "+" }, { indicator: a.id, op: "*" }] } })!;
+  assert.throws(() => saveIndicator(null, p.id, { label: "G", mode: "total", source: "formula", config: { terms: [{ indicator: f.id, op: "+" }, { indicator: a.id, op: "+" }] } }), /formule/);
+  assert.throws(() => saveIndicator(null, p.id, { label: "H", mode: "total", source: "formula", config: { terms: [{ indicator: a.id, op: "+" }, { indicator: x.id, op: "+" }] } }), /autre projet/);
 });

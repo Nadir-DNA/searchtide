@@ -125,10 +125,16 @@ export async function addKpi(projectId: string, o: { module: string; connection_
   } else if (o.kpi === "manual") {
     x = { label: String(o.label ?? o.params?.label ?? "").trim().slice(0, 100), unit: o.params?.unit ? String(o.params.unit) : null, mode: o.params?.mode === "total" ? "total" : "daily", source: "manual", config: {} };
     if (!x.label) throw new Error("Champ requis : nom");
+  } else if (o.kpi === "formula") {
+    let terms: unknown;
+    try { terms = typeof o.params?.terms === "string" ? JSON.parse(o.params.terms) : o.params?.terms; } catch { throw new Error("Termes de la formule illisibles"); }
+    x = { label: String(o.label ?? "").trim().slice(0, 100), unit: o.params?.unit ? String(o.params.unit) : null, mode: "total", source: "formula",
+      config: { terms, ...(o.params?.scale ? { scale: Number(o.params.scale) } : {}) } };
+    if (!x.label) throw new Error("Champ requis : nom");
   } else x = { ...sitePlan(o.kpi, o.params ?? {}), ...(o.label ? { label: String(o.label).slice(0, 100) } : {}) };
-  if (x.source !== "manual" && isTracked(existingOf(projectId), x)) throw new Error(`« ${x.label} » est déjà suivi sur ce projet.`);
+  if (x.source !== "manual" && x.source !== "formula" && isTracked(existingOf(projectId), x)) throw new Error(`« ${x.label} » est déjà suivi sur ce projet.`);
   const ind = saveIndicator(null, projectId, x)!;
-  if (x.source !== "manual" && x.source !== "site") await collect(ind, 90).catch(() => {}); // l'erreur éventuelle reste visible sur l'indicateur
+  if (!["manual", "site", "formula"].includes(x.source)) await collect(ind, 90).catch(() => {}); // l'erreur éventuelle reste visible sur l'indicateur
   return ind;
 }
 

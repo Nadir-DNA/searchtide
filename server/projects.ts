@@ -85,13 +85,15 @@ const configs = {
   manual: z.object({ role: z.enum(["revenue", "contacts"]).optional() }),
   pagespeed: z.object({ url: z.string().url(), metric: z.enum(["performance", "seo", "lcp", "cls"]), strategy: z.enum(["mobile", "desktop"]).default("mobile"), env: envName.optional(), connection_id: z.string().optional() }),
   play: z.object({ env: envName.optional(), connection_id: z.string().optional(), package: z.string().regex(/^[a-z][a-z0-9_.]+$/), metric: z.enum(["daily_installs", "active_installs", "rating"]) }),
+  // KPI calculé : premier terme, puis chaque terme appliqué par son opération, le tout multiplié par scale (100 pour un %)
+  formula: z.object({ terms: z.array(z.object({ indicator: z.string().min(1), op: z.enum(["+", "-", "*", "/"]) })).min(2).max(6), scale: z.number().finite().positive().optional() }),
 };
 export type Source = keyof typeof configs;
 const indicatorFields = z.object({
   label: z.string().trim().min(1).max(100),
   unit: z.string().trim().max(10).nullish().transform((v) => v || null),
   mode: z.enum(["daily", "total"]),
-  source: z.enum(["pg", "supabase", "stripe", "http", "site", "manual", "pagespeed", "play"]),
+  source: z.enum(["pg", "supabase", "stripe", "http", "site", "manual", "pagespeed", "play", "formula"]),
   config: z.record(z.string(), z.unknown()).default({}),
   position: z.number().int().default(0),
   goal: z.number().finite().positive().nullish().transform((v) => v ?? null),
@@ -188,6 +190,7 @@ export async function measure(ind: Row, d = localDay()) {
     case "site": return siteSeries(configs.site.parse(ind.config), { from: d, to: d })[d] ?? 0;
     case "pagespeed": return pagespeedValue(configs.pagespeed.parse(ind.config));
     case "play": return playValue(configs.play.parse(ind.config), at);
+    case "formula": { const v = formulaSeries(configs.formula.parse(ind.config), ind.project_id, { from: d, to: d })[d]; if (v == null) throw new Error("Pas de valeur calculable ce jour-là"); return v; }
     default: throw new Error("Indicateur saisi à la main : rien à relever");
   }
 }
@@ -199,7 +202,7 @@ export function record(id: string, d: string, value: number) { upsert.run(id, d,
 
 /** Relève un indicateur : hier et aujourd'hui pour un chiffre journalier (ou `backfill` jours), aujourd'hui pour un niveau. */
 export async function collect(ind: Row, backfill = 0) {
-  if (ind.source === "manual" || ind.source === "site") return { values: 0 };
+  if (ind.source === "manual" || ind.source === "site" || ind.source === "formula") return { values: 0 };
   const today = localDay();
   const targets = canBackfill(ind) ? days({ from: day(Date.now() - Math.max(backfill, 1) * 86400000), to: today }) : [today];
   let values = 0;
@@ -213,15 +216,72 @@ export async function collect(ind: Row, backfill = 0) {
   return { values };
 }
 export async function collectAll() {
-  for (const r of db.prepare("SELECT * FROM indicators WHERE source NOT IN ('manual', 'site')").all() as Row[]) {
+  for (const r of db.prepare("SELECT * FROM indicators WHERE source NOT IN ('manual', 'site', 'formula')").all() as Row[]) {
     // PageSpeed et Google Play changent au plus une fois par jour : inutile d'interroger plus souvent
     if ((r.source === "pagespeed" || r.source === "play") && r.last_run && !r.last_error && Date.now() - r.last_run < 20 * 3600 * 1000) continue;
     await collect(decodeInd(r)).catch((e) => console.error(`[indicateurs] ${r.label} :`, e.message));
   }
 }
 
+// ── KPI calculés ──
+export type Formula = { terms: { indicator: string; op: "+" | "-" | "*" | "/" }[]; scale?: number };
+function checkTerms(f: Formula, projectId: string, self: string) {
+  for (const t of f.terms) {
+    const o = db.prepare("SELECT project_id, source FROM indicators WHERE id = ?").get(t.indicator) as Row | undefined;
+    if (!o) throw new Error(`Indicateur « ${t.indicator} » introuvable`);
+    if (o.project_id !== projectId) throw new Error("Une formule ne peut citer qu'un indicateur de son projet, pas d'un autre projet.");
+    if (o.source === "formula" || t.indicator === self) throw new Error("Une formule ne peut pas citer une autre formule.");
+  }
+}
+const apply = (terms: Formula["terms"], vals: (number | null)[], scale = 1): number | null => {
+  let acc = vals[0];
+  for (let i = 1; i < terms.length && acc != null; i++) {
+    const v = vals[i];
+    if (v == null) return null;
+    const op = terms[i].op;
+    if (op === "/" && v === 0) return null;
+    acc = op === "+" ? acc + v : op === "-" ? acc - v : op === "*" ? acc * v : acc / v;
+  }
+  return acc == null ? null : Math.round(acc * scale * 10000) / 10000;
+};
+/** Opérandes d'une formule ; null et le nom de l'indicateur manquant si l'un a disparu. */
+function operands(f: Formula): { rows: Row[]; missing: string | null } {
+  const rows: Row[] = [];
+  for (const t of f.terms) {
+    const r = db.prepare("SELECT * FROM indicators WHERE id = ?").get(t.indicator) as Row | undefined;
+    if (!r) return { rows: [], missing: t.indicator };
+    rows.push(decodeInd(r));
+  }
+  return { rows, missing: null };
+}
+const storedSeries = (ind: Row, span: Range): Record<string, number> => ind.source === "site" ? siteSeries(ind.config, span)
+  : Object.fromEntries((db.prepare("SELECT day, value FROM metrics WHERE indicator_id = ? AND day BETWEEN ? AND ?").all(ind.id, span.from, span.to) as Row[]).map((x) => [x.day, x.value]));
+
+/** Valeur jour par jour : un terme sans valeur ce jour-là, ou une division par zéro, donne null. */
+export function formulaSeries(cfg: Formula, _projectId: string, r: Range): Record<string, number | null> {
+  const { rows, missing } = operands(cfg);
+  if (missing) return Object.fromEntries(days(r).map((d) => [d, null]));
+  const series = rows.map((o) => storedSeries(o, r));
+  return Object.fromEntries(days(r).map((d) => [d, apply(cfg.terms, series.map((x) => x[d] ?? null), cfg.scale)]));
+}
+
+function formulaView(ind: Row, r: Range): ReturnType<typeof plainView> {
+  const cfg = ind.config as Formula;
+  const { rows, missing } = operands(cfg);
+  const error = missing ? `Indicateur « ${missing} » introuvable` : null;
+  if (error !== (ind.last_error ?? null)) db.prepare("UPDATE indicators SET last_error = ? WHERE id = ?").run(error, ind.id);
+  const s = formulaSeries(cfg, ind.project_id, r);
+  // Sur une période, la formule s'applique aux valeurs de période de chaque terme (5 inscriptions / 150 visites), pas à la somme des jours
+  const period = (rr: Range): number | null => missing ? null : apply(cfg.terms, rows.map((o) => indicatorView(o, rr).value), cfg.scale);
+  return { id: ind.id, label: ind.label, unit: ind.unit, mode: ind.mode, source: ind.source, config: ind.config, position: ind.position,
+    last_run: ind.last_run, last_error: error, value: period(r), previous: period(previous(r)), series: days(r).map((d) => ({ day: d, value: s[d] ?? null })), goal: null };
+}
+
 // ── Lecture : valeur sur la période, période précédente et série pour les courbes ──
-export function indicatorView(ind: Row, r: Range) {
+export function indicatorView(ind: Row, r: Range): ReturnType<typeof plainView> {
+  return ind.source === "formula" ? formulaView(ind, r) : plainView(ind, r);
+}
+function plainView(ind: Row, r: Range) {
   const p = previous(r);
   const span = { from: p.from, to: r.to };
   const stored = ind.source === "site" ? siteSeries(ind.config, span)
@@ -291,6 +351,7 @@ export function saveIndicator(id: string | null, projectId: string | null, input
   if (id && !cur) return null;
   const v = indicatorFields.parse({ ...cur, ...(input as Row) });
   const iid = id ?? randomUUID();
+  if (v.source === "formula") checkTerms(v.config as Formula, cur?.project_id ?? projectId!, iid);
   db.prepare(`INSERT INTO indicators (id, project_id, label, unit, mode, source, config, position, goal, goal_period, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET label = excluded.label, unit = excluded.unit, mode = excluded.mode, source = excluded.source, config = excluded.config,
     position = excluded.position, goal = excluded.goal, goal_period = excluded.goal_period`)
