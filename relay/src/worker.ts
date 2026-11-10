@@ -13,6 +13,8 @@ export type Env = {
   STRIPE_OAUTH_KEY?: string;
   RATE_SECRET?: string;
   WEBHOOK_SECRET?: string;
+  /** Ancien secret, accepté le temps d'une rotation Stripe. */
+  WEBHOOK_SECRET_PREVIOUS?: string;
   STATE_SECRET?: string;
   MODE?: "test" | "live";
   RELAY_URL?: string;
@@ -48,7 +50,14 @@ async function hmac(text: string, secret: string) {
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
   return b64url(new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(text))));
 }
-const same = (a: string, b: string) => a.length === b.length && a.split("").every((c, i) => c === b[i]);
+/** Comparaison à temps constant (les longueurs restent visibles). */
+const same = (a: string, b: string) => {
+  const ea = new TextEncoder().encode(a), eb = new TextEncoder().encode(b);
+  if (ea.length !== eb.length) return false;
+  let diff = 0;
+  for (let i = 0; i < ea.length; i++) diff |= ea[i] ^ eb[i];
+  return diff === 0;
+};
 const signState = async (env: Env, nonce: string) => `${nonce}.${await hmac(nonce, env.STATE_SECRET!)}`;
 async function verifyState(env: Env, raw: string) {
   if (!env.STATE_SECRET) return false;
@@ -244,11 +253,15 @@ export async function handle(req: Request, env: Env): Promise<Response> {
     const token = req.headers.get("authorization")?.replace(/^Bearer /, "") ?? "";
     const hash = await sha256(token); const t = token ? await store.findToken(hash) : null;
     if (!t) { log(401); return json({ error: "Jeton inconnu" }, 401); }
+    let refused = false;
     try {
       const basic = btoa(`${env.STRIPE_OAUTH_KEY}:`);
-      await fetchOf(env)(DEAUTHORIZE, { method: "POST", headers: { Authorization: `Basic ${basic}`, "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ client_id: env.STRIPE_CLIENT_ID!, stripe_user_id: t.stripeUserId }) });
-    } catch { /* la révocation locale prime */ }
+      const r = await fetchOf(env)(DEAUTHORIZE, { method: "POST", headers: { Authorization: `Basic ${basic}`, "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ client_id: env.STRIPE_CLIENT_ID!, stripe_user_id: t.stripeUserId }) });
+      refused = !r.ok;
+    } catch { refused = true; }
+    // Le jeton local disparaît dans tous les cas ; l'instance prévient si Stripe a refusé.
     await store.deleteToken(hash);
+    if (refused) { log(502, t.instanceId); return json({ ok: false, error: "Stripe a refusé la désautorisation. Retirez l'application dans votre Dashboard Stripe." }, 502); }
     log(200, t.instanceId);
     return json({ ok: true });
   }
@@ -257,11 +270,15 @@ export async function handle(req: Request, env: Env): Promise<Response> {
     if (req.method !== "POST") { log(405); return json({ error: "Méthode non autorisée" }, 405); }
     const raw = await req.text();
     const sig = req.headers.get("stripe-signature") ?? "";
-    const parts = Object.fromEntries(sig.split(",").map((p) => p.split("=")) as [string, string][]);
-    if (!parts.t || !parts.v1) { log(400); return json({ error: "Signature absente" }, 400); }
-    const expected = await hmacHex(`${parts.t}.${raw}`, env.WEBHOOK_SECRET!);
-    if (!same(parts.v1, expected)) { log(400); return json({ error: "Signature invalide" }, 400); }
-    if (!/^\d+$/.test(parts.t) || Math.abs(now / 1000 - Number(parts.t)) > 300) { log(400); return json({ error: "Signature expirée" }, 400); }
+    const chunks = sig.split(",").map((p) => p.trim()).filter(Boolean);
+    const t = chunks.find((p) => p.startsWith("t="))?.slice(2) ?? "";
+    const v1s = chunks.filter((p) => p.startsWith("v1=")).map((p) => p.slice(3));
+    if (!t || !v1s.length) { log(400); return json({ error: "Signature absente" }, 400); }
+    // Pendant une rotation, Stripe envoie plusieurs v1 (ancien et nouveau secret).
+    const expected = await hmacHex(`${t}.${raw}`, env.WEBHOOK_SECRET!);
+    const previous = env.WEBHOOK_SECRET_PREVIOUS ? await hmacHex(`${t}.${raw}`, env.WEBHOOK_SECRET_PREVIOUS) : null;
+    if (!v1s.some((v) => same(v, expected) || (!!previous && same(v, previous)))) { log(400); return json({ error: "Signature invalide" }, 400); }
+    if (!/^\d+$/.test(t) || Math.abs(now / 1000 - Number(t)) > 300) { log(400); return json({ error: "Signature expirée" }, 400); }
     const event = JSON.parse(raw || "{}");
     if (event.type === "account.application.deauthorized" && event.account) { await store.deleteByStripeUser(String(event.account)); log(200); return json({ received: true }); }
     log(200); return json({ received: true });

@@ -1,8 +1,8 @@
-# Stripe — Connexion avec Stripe (bêta, comptes de test)
+# Stripe — Connexion avec Stripe (bêta)
 
 La **clé limitée `rk_`** reste la voie recommandée : lecture seule garantie par Stripe, aucune donnée ne quitte votre instance. « Connexion avec Stripe » est une **bêta** qui passe par le service **Searchtide Connect**, opéré par Nadir DAOUDI.
 
-> **Bêta, comptes de test seulement.** En v0.2.2, le service n'accepte que des comptes Stripe en **mode test**. La production suivra après la vérification du compte de la plateforme. Pour un compte réel, utilisez la clé limitée.
+> **Bêta.** Le relais accepte désormais les comptes Stripe **réels** comme les comptes de test ; le mode est affiché sur la connexion. Pour un compte de production, la clé limitée `rk_` reste la voie recommandée.
 
 ## Ce que fait le service
 

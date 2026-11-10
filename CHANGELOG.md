@@ -2,6 +2,20 @@
 
 Toutes les versions notables sont consignées ici. Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/).
 
+## [0.2.3] — à paraître
+
+Passage du relais Searchtide Connect en mode réel et remboursement de la dette technique du webhook.
+
+### Ajouté
+
+- Relais en **mode réel** : webhook Connect `livemode`, `client_id` réel, clés `rk_live` (lectures) et `sk_live` (OAuth uniquement) ; le mode test reste disponible par configuration.
+- **Rotation du secret du webhook** : plusieurs signatures `v1` acceptées dans un même en-tête (ancien et nouveau secret via `WEBHOOK_SECRET_PREVIOUS`).
+
+### Corrigé
+
+- Signature du webhook comparée **à temps constant**.
+- `/v1/revoke` ne répond plus `ok` quand Stripe refuse la désautorisation : **502** explicite, jeton local supprimé, message « retirez l'application dans votre Dashboard Stripe ».
+
 ## [0.2.2] — 2026-11-10
 
 Version d'ajouts : un neuvième connecteur, et une **Connexion avec Stripe** en bêta (comptes de test), servie par le relais Searchtide Connect.

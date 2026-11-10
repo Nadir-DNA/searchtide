@@ -36,8 +36,8 @@ const post = (path: string, body: unknown, env: Env, headers: Record<string, str
   handle(new Request(`https://connect.test${path}`, { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify(body) }), env);
 const get = (path: string, env: Env) => handle(new Request(`https://connect.test${path}`), env);
 
-async function flow(env: Env, host = "instance.test") {
-  const s = await (await post("/v1/start", { instance_id: "inst-1234", instance_host: host, return_url: "https://instance.test/oauth/callback", code_challenge: challenge }, env)).json() as any;
+async function flow(env: Env, host = "instance.test", headers: Record<string, string> = {}) {
+  const s = await (await post("/v1/start", { instance_id: "inst-1234", instance_host: host, return_url: "https://instance.test/oauth/callback", code_challenge: challenge }, env, headers)).json() as any;
   const state = new URL(s.authorize_url).searchParams.get("state")!;
   const cb = await get(`/oauth/callback?code=ac_1&state=${encodeURIComponent(state)}`, env);
   assert.equal(cb.status, 302);
@@ -267,4 +267,36 @@ test("Le retour OAuth renvoie le code ET le state, pour que l'instance retrouve 
   const loc = new URL(cb.headers.get("location")!);
   assert.match(loc.searchParams.get("code")!, /^[A-Za-z0-9_-]{24,}$/);
   assert.equal(loc.searchParams.get("state"), state);
+});
+
+async function hexSig(secret: string, t: string, raw: string) {
+  const key = await crypto.subtle.importKey("raw", enc(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  return [...new Uint8Array(await crypto.subtle.sign("HMAC", key, enc(`${t}.${raw}`)))].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+test("T43a : plusieurs v1 pendant une rotation sont acceptés, un faux v1 est refusé", async () => {
+  const { env } = setup({ WEBHOOK_SECRET_PREVIOUS: "ancien-secret-0123456789" });
+  const raw = JSON.stringify({ type: "account.application.deauthorized", account: "acct_TEST" });
+  const t = String(Math.floor(clock / 1000));
+  const bon = await hexSig("webhook-secret-fake", t, raw);
+  const ancien = await hexSig("ancien-secret-0123456789", t, raw);
+  const req = (header: string) => handle(new Request("https://connect.test/v1/webhook", { method: "POST", headers: { "stripe-signature": header }, body: raw }), env);
+  assert.equal((await req(`t=${t},v1=${ancien},v1=${bon}`)).status, 200, "ancien puis nouveau");
+  assert.equal((await req(`t=${t},v1=faux,v1=${bon}`)).status, 200, "faux puis valide");
+  assert.equal((await req(`t=${t},v1=${"0".repeat(64)}`)).status, 400, "faux seul");
+});
+
+test("T43b : /v1/revoke renvoie une erreur explicite quand Stripe refuse, et supprime quand même le jeton", async () => {
+  const { env } = setup({ __fetch: (async (u: any) => {
+    if (String(u).includes("oauth/token")) return Response.json({ stripe_user_id: "acct_TEST", livemode: false });
+    if (String(u).includes("deauthorize")) return new Response("{}", { status: 403 });
+    return Response.json({});
+  }) as typeof fetch });
+  const f = await flow(env, "refus.test", { "cf-connecting-ip": "198.51.100.7" });
+  const r = await post("/v1/revoke", {}, env, { authorization: `Bearer ${f.token}`, "cf-connecting-ip": "198.51.100.7" });
+  assert.equal(r.status, 502);
+  const body = await r.json() as any;
+  assert.equal(body.ok, false);
+  assert.match(body.error, /Dashboard Stripe/);
+  assert.equal((await post("/v1/stripe/read", { object: "balance" }, env, { authorization: `Bearer ${f.token}` })).status, 401);
 });

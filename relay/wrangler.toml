@@ -7,10 +7,10 @@ workers_dev = false
 routes = [{ pattern = "connect.nadirdaoudi.com", custom_domain = true }]
 
 [vars]
-MODE = "test"
+MODE = "live"
 RELAY_URL = "https://connect.nadirdaoudi.com"
-# client_id public de l'environnement « Searchtide Connect test ».
-STRIPE_CLIENT_ID = "ca_VbMjeBkFrNeeJX1qrGGG1PeXZnzq2hla"
+# client_id public du compte plateforme réel « Searchtide ».
+STRIPE_CLIENT_ID = "ca_VbMixQ6g1nGi3pIsQ2VXjq0Fhjp4xdtK"
 
 [[d1_databases]]
 binding = "DB"
@@ -25,6 +25,7 @@ crons = ["0 * * * *"]
 #   wrangler secret put STRIPE_READ_KEY   (rk_test, lectures)
 #   wrangler secret put STRIPE_OAUTH_KEY  (sk_test, OAuth seulement)
 #   wrangler secret put WEBHOOK_SECRET
+#   wrangler secret put WEBHOOK_SECRET_PREVIOUS  (facultatif, pendant une rotation)
 #   wrangler secret put STATE_SECRET
 #   wrangler secret put RATE_SECRET      (HMAC de l'IP, 32 octets aléatoires)
 # Six valeurs au total avec STRIPE_CLIENT_ID, public et ci-dessus (vars).

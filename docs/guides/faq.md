@@ -88,7 +88,7 @@ Pour un diagnostic, suffisent : le connecteur concerné, le message exact affich
 
 ## Connexion avec Stripe ou clé limitée ?
 
-La **clé limitée `rk_`** est recommandée : lecture seule garantie par Stripe et aucune donnée ne quitte l'instance. **Connexion avec Stripe** est une **bêta pour comptes de test** : elle passe par le service Searchtide Connect, qui voit les données demandées et n'en conserve aucune. Si le service est indisponible, Searchtide propose la clé limitée.
+La **clé limitée `rk_`** est recommandée : lecture seule garantie par Stripe et aucune donnée ne quitte l'instance. **Connexion avec Stripe** est une **bêta**, ouverte aux comptes réels : elle passe par le service Searchtide Connect, qui voit les données demandées et n'en conserve aucune. Si le service est indisponible, Searchtide propose la clé limitée.
 
 ## Comment connecter Supabase ?
 

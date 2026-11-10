@@ -85,7 +85,7 @@ Tout se configure dans **Connexions** : un guide court, les champs utiles, puis 
 |---|---|---|---|
 | **Searchtide analytics** | Visites, pages, canaux, référents, pays, appareils, campagnes, événements, part du trafic venu d'assistants IA | intégrée (script de suivi) | [analytics](docs/guides/analytics.md) |
 | **Google Search Console** | Clics, impressions, CTR, position, opportunités ; historique conservé au-delà des 16 mois de Google. *Play en option, même connexion :* installations par jour, installations actives, note moyenne | compte de service (fichier JSON) ; bucket `gs://` pour Play | [google](docs/guides/google.md) |
-| **Stripe** | CA net, MRR, abonnements actifs, nouveaux clients | clé restreinte `rk_` (recommandée) ou **Connexion avec Stripe** (bêta, comptes de test, via Searchtide Connect) | [stripe](docs/guides/stripe.md) · [connexion](docs/guides/stripe-oauth.md) |
+| **Stripe** | CA net, MRR, abonnements actifs, nouveaux clients | clé restreinte `rk_` (recommandée) ou **Connexion avec Stripe** (bêta, via Searchtide Connect) | [stripe](docs/guides/stripe.md) · [connexion](docs/guides/stripe-oauth.md) |
 | **Supabase** | utilisateurs, inscriptions, connectés 7/30 j, taille de la base | rôle Postgres en lecture seule + 4 fonctions d'agrégat | [supabase](docs/guides/supabase.md) |
 | **Postgres** *(lecture seule)* | Tout indicateur calculable en SQL : inscriptions, activation, rétention | URL d'un compte en lecture seule ; une seule instruction, exécutée en `READ ONLY` | [postgres](docs/guides/postgres.md) |
 | **SMTP / Gmail** | Rapport hebdomadaire et alertes par e-mail | mot de passe d'application Gmail, ou un serveur SMTP | [smtp](docs/guides/smtp.md) |
@@ -148,7 +148,7 @@ Ne joignez jamais ce volume à un ticket ou à une archive de support. Mot de pa
 
 - La recette avec de vrais comptes couvre Stripe, SMTP, Google Search Console et ntfy. Postgres est testé contre un vrai serveur **en local seulement : ces tests réels sont ignorés en CI**. **PageSpeed, API JSON et Google Play n'ont pas été repassés sur un compte réel** depuis cette version.
 - Les tests de bout en bout tournent sur Chromium uniquement (pas Firefox ni WebKit).
-- La **Connexion avec Stripe** est en **bêta, comptes de test seulement** (service Searchtide Connect, optionnel) : la clé restreinte `rk_` reste la voie recommandée pour un compte réel.
+- La **Connexion avec Stripe** est en **bêta** (service Searchtide Connect, optionnel), désormais ouverte aux comptes réels : la clé restreinte `rk_` reste la voie recommandée pour un compte de production.
 - L'interface et l'essentiel de la documentation sont en français.
 
 ## Feuille de route
