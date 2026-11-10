@@ -334,6 +334,54 @@ export function useCatalog() {
   return { catalog, error, reload: load };
 }
 
+
+type RelayStatus = { enabled: boolean; ok: boolean; mode: "test" | "live" | null; error: string | null; url?: string };
+
+/** Carte « Connexion avec Stripe » : consentement explicite, relais optionnel, repli clé limitée (C5, CA32, CA51, CA52). */
+function StripeConnect({ onUseKey }: { onUseKey: () => void }) {
+  const [st, setSt] = useState<RelayStatus | null>(null);
+  const [consent, setConsent] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    fetch("/api/stripe-oauth/status", { headers: { accept: "application/json" } })
+      .then((r) => (r.ok ? r.json() : null)).then(setSt).catch(() => setSt({ enabled: false, ok: false, mode: null, error: "unreachable" }));
+  }, []);
+  if (!st?.enabled) return null;
+  const unavailable = !st.ok;
+  async function go() {
+    setBusy(true); setError("");
+    try {
+      const r = await fetch("/api/stripe-oauth/start", { method: "POST" });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error ?? "Le service Searchtide Connect ne répond pas. Réessayez, ou utilisez une clé limitée.");
+      window.location.href = j.url;
+    } catch (e) { setError((e as Error).message); setBusy(false); }
+  }
+  const label = st.mode === "test" ? "Continuer vers Stripe (test)" : "Continuer vers Stripe";
+  return (
+    <Card className="mb-6 p-5">
+      <h2 className="text-sm font-medium">Connexion avec Stripe</h2>
+      {unavailable ? (
+        <p role="alert" className="mt-2 text-sm text-negative">Le service Searchtide Connect est indisponible. Utilisez une clé limitée (aucune donnée ne quitte votre instance).</p>
+      ) : (
+        <>
+          <p className="mt-1 text-sm text-muted">Optionnel. Vous serez redirigé vers Stripe ; Searchtide Connect lit votre compte à votre place et ne conserve aucune donnée Stripe.</p>
+          <label className="mt-3 flex items-start gap-2 text-sm">
+            <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-0.5 size-4 shrink-0" />
+            <span>J'autorise Searchtide Connect, opéré par Nadir DAOUDI, à lire mon compte Stripe. <a href={`${st.url ?? ""}/privacy`} target="_blank" rel="noreferrer noopener" className="underline">Politique de confidentialité</a> · <a href="https://github.com/Nadir-DNA/searchtide/tree/main/relay" target="_blank" rel="noreferrer noopener" className="underline">Code du relais</a>.</span>
+          </label>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <Button onClick={go} disabled={!consent || busy}>{busy ? "Redirection…" : label}</Button>
+            <button type="button" onClick={onUseKey} className="text-sm text-accent underline">Utiliser une clé limitée</button>
+          </div>
+        </>
+      )}
+      {error && <p role="alert" className="mt-2 text-sm text-negative">{error}</p>}
+    </Card>
+  );
+}
+
 export function ConnectionsView() {
   const { catalog, error, reload: load } = useCatalog();
   const [filter, setFilter] = useState<(typeof FILTERS)[number][0]>("all");
@@ -352,6 +400,7 @@ export function ConnectionsView() {
 
   return (
     <>
+      {catalog?.admin && !catalog.demo && <StripeConnect onUseKey={() => open("stripe")} />}
       <header className="pt-4 pb-6 md:min-h-20 md:pt-6">
         <h1 className="text-2xl leading-9 font-light md:text-[30px] md:leading-10">Connexions</h1>
         <p className="mt-1 max-w-2xl text-sm text-muted">Branchez vos services ici. Les clés sont chiffrées sur votre instance et ne sont jamais réaffichées.</p>

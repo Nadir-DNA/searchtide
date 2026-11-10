@@ -187,12 +187,14 @@ export function registerConnections(app: Hono) {
   });
 
   // Retirer : la ligne et ses secrets disparaissent ; les indicateurs liés restent, historique intact, en erreur « Source retirée »
-  app.delete("/api/connections/:id", (c) => {
+  app.delete("/api/connections/:id", async (c) => {
     if (!isAdmin(c)) return forbidden(c);
     if (DEMO()) return c.json({ error: "Désactivé en démonstration." }, 403);
     const id = c.req.param("id");
     if (!getConnection(id)) return c.json({ error: "Connexion introuvable" }, 404);
     const affected = indicatorsUsing(id).length;
+    let relay = false; try { relay = !!JSON.parse(String((db.prepare("SELECT config FROM connections WHERE id = ?").get(id) as any)?.config ?? "{}")).relay; } catch { /* ignore */ }
+    if (relay) { try { const { revokeRelayConnection } = await import("../stripe-oauth.ts"); await revokeRelayConnection(id); } catch { /* la suppression locale prime */ } return c.json({ ok: true, affected }); }
     db.exec("BEGIN");
     try {
       db.prepare("UPDATE indicators SET last_error = ?, last_run = ? WHERE json_extract(config, '$.connection_id') = ?").run(SOURCE_RETIREE, Date.now(), id);

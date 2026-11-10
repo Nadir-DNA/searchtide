@@ -63,18 +63,33 @@ async function probe(key: string, path: string, ctx: Ctx) {
   if (!res.ok) throw new ConnectorError("other", `Stripe ${res.status} : ${((await res.json().catch(() => ({}))) as Row).error?.message ?? "erreur"}`);
 }
 
-export type StripeAuth = { key: string; account?: string };
+export type StripeAuth = { key: string; account?: string; relay?: { url: string; token: string } };
+
+/** Lecture via le relais Searchtide Connect : aucune clé Stripe dans l'instance. */
+async function relayRead(relay: { url: string; token: string }, object: string, params: Record<string, string>, ctx: Ctx): Promise<Row> {
+  const res = await ctx.fetch(`${relay.url.replace(/\/$/, "")}/v1/stripe/read`, {
+    method: "POST", headers: { authorization: `Bearer ${relay.token}`, "content-type": "application/json" }, body: JSON.stringify({ object, params }),
+  });
+  if (res.status === 401) throw new ConnectorError("auth", "Stripe indique que l'accès a été retiré : reconnectez le compte.");
+  if (res.status === 429) throw new ConnectorError("other", "Trop de demandes : réessayez dans quelques minutes.");
+  if (!res.ok) throw new ConnectorError("other", `Relais Searchtide ${res.status} : réessayez, ou utilisez une clé limitée.`);
+  return await res.json() as Row;
+}
+async function listRows(a: StripeAuth, object: string, params: Record<string, string>, ctx: Ctx): Promise<Row[]> {
+  if (a.relay) { const j = await relayRead(a.relay, object, params, ctx); return (j.data ?? []) as Row[]; }
+  return stripeList(a.key, object, params, a.account, ctx);
+}
 /** Valeur d'un KPI Stripe. `day` : jour civil (indicateurs journaliers) ; sinon niveau actuel. */
 export async function stripeMetric(a: StripeAuth, metric: string, day: string | undefined, ctx: Ctx): Promise<number> {
   const start = day ? parisMidnight(day) : 0;
   const range: Record<string, string> = day ? { "created[gte]": String(start), "created[lt]": String(start + 86400) } : {};
   if (metric === "revenue") {
     // Net encaissé : ventes moins frais Stripe et remboursements (mouvements du solde, dans la devise du compte)
-    const txs = await stripeList(a.key, "balance_transactions", range, a.account, ctx);
+    const txs = await listRows(a, "balance_transactions", range, ctx);
     return txs.filter((x) => ["charge", "payment", "refund", "payment_refund", "adjustment", "payment_failure_refund"].includes(x.type)).reduce((n, x) => n + x.net, 0) / 100;
   }
-  if (metric === "new_customers") return (await stripeList(a.key, "customers", range, a.account, ctx)).length;
-  const subs = await stripeList(a.key, "subscriptions", { status: "active", "expand[]": "data.discounts" }, a.account, ctx);
+  if (metric === "new_customers") return (await listRows(a, "customers", range, ctx)).length;
+  const subs = await listRows(a, "subscriptions", { status: "active", ...(a.relay ? {} : { "expand[]": "data.discounts" }) }, ctx);
   if (metric === "active_subscriptions") return subs.length;
   if (metric === "mrr") return subs.reduce((n, s) => n + monthlyNet(s), 0) / 100;
   throw new Error(`Mesure Stripe inconnue : ${metric}`);
@@ -102,8 +117,16 @@ export const stripe: Connector = {
     { text: "Copiez la clé rk_… : elle n'est montrée qu'une fois." },
   ],
   revokeUrl: "https://dashboard.stripe.com/apikeys",
-  hint(c) { const k = keyOf(c); const m = /^(rk_(?:live|test)_)/.exec(k); return m ? `${m[1]}…${k.slice(-4)}` : `…${k.slice(-4)}`; },
+  hint(c) { if (c.config.relay) return String(c.config.hint ?? "relay_…"); const k = keyOf(c); const m = /^(rk_(?:live|test)_)/.exec(k); return m ? `${m[1]}…${k.slice(-4)}` : `…${k.slice(-4)}`; },
   async test(c, ctx): Promise<TestResult> {
+    if (c.config.relay) {
+      const relay = { url: String(c.config.relay_url ?? ""), token: String(c.secrets.token ?? "") };
+      if (!relay.url || !relay.token) throw new ConnectorError("format", "Connexion au relais incomplète : recommencez la connexion.");
+      const b = await relayRead(relay, "balance", {}, ctx).catch((e) => { throw e; });
+      const cur = String((b.available as Row[] | undefined)?.[0]?.currency ?? "").toLowerCase();
+      return { ok: true, label: String(c.config.account_name ?? "Compte Stripe"), livemode: !!c.config.livemode, settings: cur ? { currency: cur } : undefined,
+        detail: `${c.config.account_name ?? "Compte Stripe"}, mode ${c.config.livemode ? "production" : "test"}${cur ? `, devise ${cur.toUpperCase()}` : ""} (via Searchtide Connect)` };
+    }
     const key = keyOf(c);
     checkKey(key);
     const live = key.startsWith("rk_live_");
@@ -132,6 +155,11 @@ export const stripe: Connector = {
     { kpi: "active_subscriptions", label: "Abonnements actifs" }, { kpi: "new_customers", label: "Nouveaux clients" },
   ],
   toIndicator: (kpi) => ({ source: "stripe", config: { metric: kpi.id } }),
-  async collect(c, kpi, _p, day, ctx) { return stripeMetric({ key: keyOf(c) }, kpi.id, kpi.mode === "daily" ? day : undefined, ctx); },
+  async collect(c, kpi, _p, day, ctx) {
+    const auth: StripeAuth = c.config.relay
+      ? { key: "", relay: { url: String(c.config.relay_url ?? ""), token: String(c.secrets.token ?? "") } }
+      : { key: keyOf(c) };
+    return stripeMetric(auth, kpi.id, kpi.mode === "daily" ? day : undefined, ctx);
+  },
 };
 register(stripe);

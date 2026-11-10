@@ -20,6 +20,7 @@ import { registerConnections } from "./connectors/api.ts";
 import { registerSources } from "./sources.ts";
 import { registerOps } from "./ops.ts";
 import { registerPortfolio } from "./portfolio.ts";
+import { registerStripeOAuth } from "./stripe-oauth.ts";
 import { findAgent, registerAgents } from "./agents.ts";
 import { registerDashboards } from "./dashboards.ts";
 import { registerOutreach } from "./outreach.ts";
@@ -201,6 +202,7 @@ registerBusiness(app);
 registerReport(app);
 registerProjects(app)
 registerConnections(app);
+registerStripeOAuth(app);
 registerSources(app);
 startVault();
 registerOps(app);
