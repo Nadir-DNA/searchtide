@@ -27,6 +27,7 @@ import { registerOutreach } from "./outreach.ts";
 import { backup, loginLimiter, verifyTotp } from "./security.ts";
 import { markAdmin, markClient } from "./admin.ts";
 import { activateFromExistingData } from "./modules/state.ts";
+import { registerModules } from "./modules/api.ts";
 
 const PRODUCTION = process.env.NODE_ENV === "production";
 const DB_PATH = process.env.DATABASE_PATH ?? "data/searchtide.db";
@@ -211,6 +212,7 @@ registerOps(app);
 registerPortfolio(app);
 registerAgents(app);
 registerDashboards(app);
+registerModules(app);
 registerOutreach(app);
 
 // ── Interface (build Vite) ──
