@@ -6,6 +6,7 @@ import "./smtp.ts";
 import "./ntfy.ts";
 import "./google.ts";
 import "./postgres.ts";
+import "./supabase.ts";
 import "./pagespeed.ts";
 import "./jsonapi.ts";
 
