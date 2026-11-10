@@ -1,0 +1,87 @@
+name: Signaler un bug
+description: Quelque chose ne fonctionne pas comme documenté.
+title: "[Bug] "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Avant d'ouvrir ce rapport : vérifiez `GET /healthz`, puis `docker logs searchtide` (ou la sortie du terminal).
+        **Ne collez aucun secret** : ni clé, ni `SECRET`, ni mot de passe, ni contenu de `/data`.
+        Une faille de sécurité ne se signale pas ici — voir SECURITY.md.
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: "Tag de l'image ou commit, par exemple ghcr.io/nadir-dna/searchtide:0.2.0"
+      placeholder: "0.2.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: installation
+    attributes:
+      label: Mode d'installation
+      options:
+        - Docker (docker run)
+        - Docker Compose
+        - Depuis les sources (npm)
+        - Démonstration (DEMO=1)
+    validations:
+      required: true
+
+  - type: input
+    id: environnement
+    attributes:
+      label: Système et architecture
+      description: Système d'exploitation, architecture, version de Node si pertinent, et si l'instance est derrière un reverse proxy.
+      placeholder: "Debian 12, amd64, derrière Caddy"
+    validations:
+      required: false
+
+  - type: textarea
+    id: constat
+    attributes:
+      label: Ce qui se passe
+      description: Le comportement observé, en une ou deux phrases.
+    validations:
+      required: true
+
+  - type: textarea
+    id: etapes
+    attributes:
+      label: Étapes de reproduction
+      description: Numérotées, depuis un état reproductible. Dites si le problème arrive aussi sur une instance neuve.
+      placeholder: |
+        1. Démarrer une instance neuve
+        2. Ouvrir Connexions → Stripe
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: attendu
+    attributes:
+      label: Comportement attendu
+    validations:
+      required: false
+
+  - type: textarea
+    id: journaux
+    attributes:
+      label: Journaux utiles (nettoyés)
+      description: Extrait pertinent, sans secret ni donnée personnelle.
+      render: shell
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: verification
+    attributes:
+      label: Vérifications
+      options:
+        - label: Je n'ai inclus aucun secret, jeton, mot de passe ni contenu de /data.
+          required: true
+        - label: J'ai cherché une issue existante avant d'ouvrir celle-ci.
+          required: true

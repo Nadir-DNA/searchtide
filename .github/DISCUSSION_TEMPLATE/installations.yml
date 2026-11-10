@@ -1,0 +1,87 @@
+title: "[Installation] "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Ce fil sert à savoir si l'installation fonctionne chez d'autres que le mainteneur.
+        Dites ce qui a marché, ce qui a bloqué, et à quel moment — c'est plus utile qu'un simple « ça marche ».
+        **Aucun secret** : ni clé, ni `SECRET`, ni mot de passe, ni contenu de `/data`.
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      placeholder: "ghcr.io/nadir-dna/searchtide:0.2.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: methode
+    attributes:
+      label: Méthode d'installation
+      options:
+        - Docker (docker run)
+        - Docker Compose
+        - Depuis les sources (npm)
+        - Démonstration seulement (DEMO=1)
+    validations:
+      required: true
+
+  - type: input
+    id: environnement
+    attributes:
+      label: Système et architecture
+      description: Système d'exploitation, amd64 ou arm64, hébergeur éventuel, reverse proxy ou tunnel.
+      placeholder: "Ubuntu 24.04, amd64, VPS, Caddy"
+    validations:
+      required: false
+
+  - type: dropdown
+    id: resultat
+    attributes:
+      label: Résultat
+      options:
+        - Installation réussie, instance utilisée
+        - Installation réussie, pas encore branché de source
+        - Installation bloquée
+    validations:
+      required: true
+
+  - type: input
+    id: duree
+    attributes:
+      label: Temps jusqu'à la page de connexion
+      description: Estimation honnête, même approximative. Elle sert à corriger la documentation, pas à établir un record.
+      placeholder: "environ 3 minutes"
+    validations:
+      required: false
+
+  - type: textarea
+    id: sources
+    attributes:
+      label: Sources branchées
+      description: Lesquelles ont passé le test « Tester » du premier coup, lesquelles ont demandé des essais.
+      placeholder: |
+        Search Console : du premier coup
+        Stripe : deux essais (permissions de la clé restreinte)
+    validations:
+      required: false
+
+  - type: textarea
+    id: frictions
+    attributes:
+      label: Ce qui a accroché
+      description: Le passage de la documentation qui manquait, le message d'erreur obscur, l'étape qui a demandé d'aller chercher ailleurs.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: verification
+    attributes:
+      label: Vérifications
+      options:
+        - label: Je n'ai inclus aucun secret, jeton ou donnée personnelle.
+          required: true
+        - label: Je ne joins pas le volume /data ni une archive du dossier.
+          required: true

@@ -1,0 +1,66 @@
+name: Proposer une idée ou un connecteur
+description: Une source à brancher, un indicateur, une amélioration d'usage.
+title: "[Idée] "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Une idée n'est pas une promesse : elle est lue, discutée, et parfois refusée pour rester dans le périmètre du projet.
+        Les demandes de connecteur sont plus faciles à évaluer si vous décrivez le chiffre attendu, pas seulement le service.
+
+  - type: dropdown
+    id: type
+    attributes:
+      label: Type de demande
+      options:
+        - Nouveau connecteur
+        - Nouvel indicateur ou KPI
+        - Amélioration de l'interface
+        - Documentation
+        - Autre
+    validations:
+      required: true
+
+  - type: textarea
+    id: probleme
+    attributes:
+      label: Le problème que vous avez
+      description: Ce que vous cherchez à savoir et que le tableau de bord ne vous dit pas aujourd'hui.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposition
+    attributes:
+      label: Ce que vous proposez
+      description: Le chiffre ou l'écran attendu, et à quoi il servirait dans votre semaine.
+    validations:
+      required: true
+
+  - type: input
+    id: source
+    attributes:
+      label: Service concerné et accès disponible
+      description: Pour un connecteur, précisez s'il existe une API documentée et le type d'authentification (clé, OAuth, mot de passe d'application).
+      placeholder: "Exemple : Service X, API publique, clé en lecture"
+    validations:
+      required: false
+
+  - type: textarea
+    id: contournement
+    attributes:
+      label: Comment vous faites en attendant
+      description: Saisie manuelle, tableur, autre outil — cela aide à juger l'urgence réelle.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: verification
+    attributes:
+      label: Vérifications
+      options:
+        - label: J'ai cherché une demande existante avant d'ouvrir celle-ci.
+          required: true
+        - label: Je n'ai inclus aucun secret ni donnée personnelle.
+          required: true
