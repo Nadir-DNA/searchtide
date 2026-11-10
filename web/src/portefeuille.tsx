@@ -87,7 +87,7 @@ export function PortfolioView({ days, go }: { days: number; go: Go }) {
 
   return (
     <>
-      <Header title="Portefeuille" sub="Vos projets côte à côte : santé, couverture et chiffres clés" days={days} go={go}>
+      <Header title="Tous les projets" sub="Vos projets côte à côte : santé, couverture et chiffres clés" days={days} go={go}>
         <div className="relative">
           <Button variant="secondary" aria-expanded={open} aria-controls="colonnes" onClick={() => setOpen(!open)}>Colonnes ▾</Button>
           {open && (

@@ -217,7 +217,7 @@ type Offer = { module: string; connection_id: string | null; kpi: string; label:
 type KpiGroup = { module: string; name: string; offers: Offer[] };
 
 /** Catalogue de KPI du projet (spec §5.3) : tout ce que ses modules actifs savent mesurer, ajoutable en un clic. */
-function KpiCatalogPanel({ projectId, onClose, onAdded }: { projectId: string; onClose: () => void; onAdded: (label: string) => void }) {
+export function KpiCatalogPanel({ projectId, onClose, onAdded }: { projectId: string; onClose: () => void; onAdded: (label: string) => void }) {
   const ref = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   useDrawerKeys(ref, onClose);

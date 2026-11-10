@@ -65,6 +65,7 @@ CREATE TABLE annotations (
 CREATE INDEX annotations_day ON annotations(day);
 `);
 
+migrate("2026-11-10-favoris", "ALTER TABLE projects ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0");
 migrate("2026-11-10-jalons", "ALTER TABLE annotations ADD COLUMN milestone INTEGER NOT NULL DEFAULT 0; ALTER TABLE annotations ADD COLUMN source TEXT NOT NULL DEFAULT 'manuel';");
 
 type Row = Record<string, any>;
@@ -112,10 +113,11 @@ const projectFields = z.object({
   crm_key: z.string().trim().max(50).nullish().transform((v) => v || null),
   position: z.number().int().default(0),
   funnel: z.array(z.string()).max(8).default([]),   // indicateurs dans l'ordre de l'entonnoir
+  pinned: z.boolean().default(false),               // favori : toujours visible dans le menu
 });
 
 const decodeInd = (r: Row): Row => ({ ...r, config: JSON.parse(r.config) });
-const decodeProj = (r: Row): Row => ({ ...r, sites: JSON.parse(r.sites), funnel: JSON.parse(r.funnel ?? "[]") });
+const decodeProj = (r: Row): Row => ({ ...r, sites: JSON.parse(r.sites), funnel: JSON.parse(r.funnel ?? "[]"), pinned: !!r.pinned });
 const getInd = (id: string) => { const r = db.prepare("SELECT * FROM indicators WHERE id = ?").get(id) as Row | undefined; return r && decodeInd(r); };
 
 // ── Connecteurs ──
@@ -343,9 +345,9 @@ export function saveProject(id: string | null, input: unknown) {
   if (id && !cur) return null;
   const v = projectFields.parse({ ...(cur && decodeProj(cur)), ...(input as Row) });
   const pid = id ?? randomUUID();
-  db.prepare(`INSERT INTO projects (id, name, color, url, sites, crm_key, position, funnel, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(id) DO UPDATE SET name = excluded.name, color = excluded.color, url = excluded.url, sites = excluded.sites, crm_key = excluded.crm_key, position = excluded.position, funnel = excluded.funnel`)
-    .run(pid, v.name, v.color, v.url, JSON.stringify(v.sites), v.crm_key, v.position, JSON.stringify(v.funnel), cur?.created_at ?? Date.now());
+  db.prepare(`INSERT INTO projects (id, name, color, url, sites, crm_key, position, funnel, pinned, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET name = excluded.name, color = excluded.color, url = excluded.url, sites = excluded.sites, crm_key = excluded.crm_key, position = excluded.position, funnel = excluded.funnel, pinned = excluded.pinned`)
+    .run(pid, v.name, v.color, v.url, JSON.stringify(v.sites), v.crm_key, v.position, JSON.stringify(v.funnel), v.pinned ? 1 : 0, cur?.created_at ?? Date.now());
   return decodeProj(db.prepare("SELECT * FROM projects WHERE id = ?").get(pid) as Row);
 }
 export function saveIndicator(id: string | null, projectId: string | null, input: unknown) {

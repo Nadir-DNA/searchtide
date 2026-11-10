@@ -2,7 +2,7 @@
 import { useData } from "../App";
 
 export type ModuleInfo = { id: string; name: string; description: string; category: string; core: boolean; scope: "instance" | "projet";
-  enabled: boolean; status: "inactif" | "actif" | "a-reconnecter"; projects: string[]; connectors: { id: string; connected: boolean }[] };
+  enabled: boolean; status: "inactif" | "actif" | "a-reconnecter"; projects: string[]; connectors: { id: string; connected: boolean }[]; tabs?: { id: string; label: string }[] };
 
 export function useModules() {
   const { data, reload } = useData<ModuleInfo[]>("/api/modules");

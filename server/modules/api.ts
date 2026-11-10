@@ -21,7 +21,7 @@ export function modulesList() {
     const projects = m.scope === "projet" && !m.core
       ? (db.prepare("SELECT project_id FROM project_modules WHERE module_id = ? AND enabled = 1").all(m.id) as Row[]).map((r) => r.project_id)
       : [];
-    return { id: m.id, name: m.name, description: m.description, category: m.category, core: !!m.core, scope: m.scope,
+    return { id: m.id, name: m.name, description: m.description, category: m.category, core: !!m.core, scope: m.scope, tabs: m.tabs ?? [],
       enabled, status: !enabled ? "inactif" : reconnect ? "a-reconnecter" : "actif", projects,
       connectors: conns.map((c) => ({ id: c.id, connected: c.list.length > 0 })) };
   });

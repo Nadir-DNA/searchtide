@@ -148,3 +148,11 @@ test("jalons : un jalon à venir est un jalon, puis une note une fois passé ; a
   assert.deepEqual(soon.map((m: any) => [m.label, m.daysLeft]), [["Lancement", 3]]);
   assert.equal((db.prepare("SELECT source FROM annotations WHERE label = 'Lancement'").get() as any).source, "agent");
 });
+
+test("projets : un projet s'épingle et se désépingle sans perdre ses réglages", () => {
+  const p = saveProject(null, { name: "Fav", crm_key: "fav" })!;
+  assert.equal(p.pinned, false);
+  assert.equal(saveProject(p.id, { pinned: true })!.pinned, true);
+  const back = saveProject(p.id, { pinned: false })!;
+  assert.deepEqual([back.pinned, back.crm_key], [false, "fav"]);
+});

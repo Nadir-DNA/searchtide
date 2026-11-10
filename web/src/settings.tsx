@@ -91,7 +91,7 @@ function JobsCard() {
   );
 }
 
-export function SettingsView() {
+export function SettingsView({ go }: { go?: (n: Record<string, string | undefined>) => void } = {}) {
   const { data: o, error, reload } = useData<Ops>("/api/ops");
   const { data: auth } = useData<{ totp: boolean }>("/api/auth-config");
   const [msg, setMsg] = useState<Record<string, string>>({});
@@ -146,6 +146,10 @@ export function SettingsView() {
           <div className="mt-4 flex items-center gap-3"><Button variant="secondary" onClick={() => run("backup", "/api/ops/backup", "Sauvegarde envoyée")}>Sauvegarder maintenant</Button><span className="text-sm text-muted">{msg.backup}</span></div>
         </Card>
         <div className="lg:col-span-2"><JobsCard /></div>
+        <Card title="Rapport hebdomadaire">
+          <p className="text-sm">Chaque lundi à 8 h, le point de la semaine par e-mail (module Notifications).</p>
+          {go && <div className="mt-4"><Button variant="secondary" onClick={() => go({ view: "report" })}>Voir le rapport de la semaine</Button></div>}
+        </Card>
         <Card title="Sécurité">
           <ul className="space-y-2 text-sm">
             <li className="flex items-center justify-between gap-3"><span>Double authentification</span>{auth?.totp ? <Pill tone="positive">Activée</Pill> : <Pill tone="negative">Désactivée</Pill>}</li>

@@ -12,6 +12,9 @@ import { ConnectionsView } from "./connections";
 import { AgentsView } from "./agents";
 import { DashboardView, type Dashboards } from "./dashboard";
 import { SettingsView } from "./settings";
+import { ModulesView } from "./modules/ModulesView";
+import { useModules } from "./modules";
+import { TodayView } from "./today";
 import { SetupView, TrafficView } from "./modules/analytics";
 import { SearchView } from "./modules/google";
 import { Button, Card, Delta, EmptyBox, Icon, KpiCard, Mark, Segmented, ShareList, Skeleton, Svg, Table, fmt, inputCls } from "./ui";
@@ -103,43 +106,62 @@ function Shell({ me, onLogout }: { me: Me; onLogout: () => void }) {
   // Réinitialise les filtres propres à chaque vue
   const home = { site: undefined, tab: undefined, view: undefined, id: undefined, q: undefined, project: undefined, source: undefined, month: undefined };
 
+  const mods = useModules();
+  const crmOn = mods.active("crm"), pubsOn = mods.active("publications");
+  const pinned = projects.filter((p) => p.pinned);
+  const pin = async (p: Project) => { await api(`/api/projects/${p.id}`, { method: "PATCH", json: { pinned: !p.pinned } }); loadProjects(); };
+  const projectItem = (p: Project) => (
+    <NavItem key={p.id} icon={<circle cx="8" cy="8" r="3" fill={p.color ?? "currentColor"} stroke="none" />} active={q.view === "project" && q.id === p.id} onClick={() => nav({ ...home, view: "project", id: p.id })}>
+      <span className="truncate">{p.name}</span>
+    </NavItem>
+  );
   const sidebar = (
-    <nav aria-label="Navigation" className="flex flex-1 flex-col gap-1 px-4 pb-5">
-      {me.demo || !dash ? <NavItem icon={Icon.grid} active={!q.site && !q.view} onClick={() => nav(home)}>Vue d'ensemble</NavItem>
-        : dash.dashboards.map((d, i) => (
-          <NavItem key={d.id} icon={Icon.grid} active={!q.site && (q.view === "page" ? q.id === d.id : !q.view && i === 0)} onClick={() => nav(i === 0 ? home : { ...home, view: "page", id: d.id })}>
-            <span className="truncate">{d.name}</span>
-          </NavItem>
-        ))}
-      {!me.demo && <NavItem icon={Icon.plus} active={false} onClick={async () => {
-        const name = prompt("Nom de la nouvelle page");
-        if (name?.trim()) { const d = await api<{ id: string }>("/api/dashboards", { method: "POST", json: { name } }); loadDash(); nav({ ...home, view: "page", id: d.id }); }
-      }}>Nouvelle page</NavItem>}
-      <div className="mt-6 mb-1 px-3 text-xs text-muted">Outils</div>
-      <NavItem icon={Icon.grid} active={q.view === "portfolio"} onClick={() => nav({ ...home, view: "portfolio" })}>Portefeuille</NavItem>
-      {!me.demo && <NavItem icon={Icon.users} active={q.view === "crm"} onClick={() => nav({ ...home, view: "crm" })}>Contacts</NavItem>}
-      {!me.demo && <NavItem icon={Icon.calendar} active={q.view === "pubs"} onClick={() => nav({ ...home, view: "pubs" })}>Publications</NavItem>}
-      <NavItem icon={Icon.mail} active={q.view === "report"} onClick={() => nav({ ...home, view: "report" })}>Rapport hebdo</NavItem>
-      {!me.demo && <NavItem icon={Icon.bot} active={q.view === "agents"} onClick={() => nav({ ...home, view: "agents" })}>Agents IA</NavItem>}
-      {!me.demo && <NavItem icon={Icon.book} active={q.view === "start"} onClick={() => nav({ ...home, view: "start" })}>Démarrage</NavItem>}
-      {!me.demo && <NavItem icon={Icon.link} active={q.view === "connections"} onClick={() => nav({ ...home, view: "connections" })}>Connexions</NavItem>}
-      <div className="mt-6 mb-1 px-3 text-xs text-muted">Projets</div>
-      {projects.map((p) => (
-        <NavItem key={p.id} icon={<circle cx="8" cy="8" r="3" fill={p.color ?? "currentColor"} stroke="none" />} active={q.view === "project" && q.id === p.id} onClick={() => nav({ ...home, view: "project", id: p.id })}>
-          <span className="truncate">{p.name}</span>
-        </NavItem>
-      ))}
-      <NavItem icon={Icon.plus} active={q.view === "newproject"} onClick={() => nav({ ...home, view: "newproject" })}>Nouveau projet</NavItem>
-      <div className="mt-6 mb-1 px-3 text-xs text-muted">Sites</div>
-      {sites?.map((s) => (
-        <NavItem key={s.id} icon={Icon.globe} active={s.domain === q.site} onClick={() => nav({ site: s.domain, view: undefined })}>
-          <span className="truncate">{s.domain}</span>
-          {s.today > 0 && <span className="num ml-auto text-xs text-muted" title="Visiteurs aujourd'hui">{fmt(s.today)}</span>}
-        </NavItem>
-      ))}
-      {!me.demo && <NavItem icon={Icon.plus} active={q.view === "add"} onClick={() => nav({ site: undefined, view: "add" })}>Ajouter un site</NavItem>}
+    <nav aria-label="Navigation" className="flex flex-1 flex-col gap-1 overflow-y-auto px-4 pb-5">
+      <ul aria-label="Rubriques" className="space-y-1">
+        <li><NavItem icon={Icon.check} active={!q.site && (!q.view || q.view === "today")} onClick={() => nav(home)}>Aujourd'hui</NavItem></li>
+        <li>
+          <NavGroup id="tableaux" label="Tableaux" icon={Icon.grid} active={q.view === "page"}>
+            {(dash?.dashboards ?? []).map((d) => (
+              <NavItem key={d.id} icon={Icon.grid} active={q.view === "page" && (q.id ? q.id === d.id : d === dash!.dashboards[0])} onClick={() => nav({ ...home, view: "page", id: d.id })}><span className="truncate">{d.name}</span></NavItem>
+            ))}
+            {!me.demo && <NavItem icon={Icon.plus} active={false} onClick={async () => {
+              const name = prompt("Nom de la nouvelle page");
+              if (name?.trim()) { const d = await api<{ id: string }>("/api/dashboards", { method: "POST", json: { name } }); loadDash(); nav({ ...home, view: "page", id: d.id }); }
+            }}>Nouvelle page</NavItem>}
+          </NavGroup>
+        </li>
+        <li>
+          <NavGroup id="projets" label="Projets" icon={Icon.users} active={["projects", "portfolio", "project", "newproject", "crm", "pubs"].includes(q.view ?? "")}
+            pinned={pinned.length > 0 && <ul aria-label="Projets épinglés" className="space-y-1">{pinned.map((p) => <li key={p.id}>{projectItem(p)}</li>)}</ul>}>
+            <NavItem icon={Icon.grid} active={q.view === "projects" || q.view === "portfolio"} onClick={() => nav({ ...home, view: "projects" })}>Tous les projets</NavItem>
+            {projects.map((p) => (
+              <div key={p.id} className="group flex items-center">
+                <div className="min-w-0 flex-1">{projectItem(p)}</div>
+                <button type="button" onClick={() => pin(p)} aria-label={`${p.pinned ? "Désépingler" : "Épingler"} ${p.name}`} aria-pressed={!!p.pinned}
+                  className={`grid size-8 shrink-0 place-items-center rounded-lg text-sm hover:text-ink ${p.pinned ? "text-accent" : "text-muted opacity-60 group-hover:opacity-100 focus-visible:opacity-100"}`}>{p.pinned ? "★" : "☆"}</button>
+              </div>
+            ))}
+            <NavItem icon={Icon.plus} active={q.view === "newproject"} onClick={() => nav({ ...home, view: "newproject" })}>Nouveau projet</NavItem>
+            {!me.demo && crmOn && <NavItem icon={Icon.users} active={q.view === "crm"} onClick={() => nav({ ...home, view: "crm" })}>Contacts</NavItem>}
+            {!me.demo && pubsOn && <NavItem icon={Icon.calendar} active={q.view === "pubs"} onClick={() => nav({ ...home, view: "pubs" })}>Publications</NavItem>}
+          </NavGroup>
+        </li>
+        <li>
+          <NavGroup id="sites" label="Suivi des sites" icon={Icon.globe} active={!!q.site || q.view === "add"}>
+            {sites?.map((s) => (
+              <NavItem key={s.id} icon={Icon.globe} active={s.domain === q.site} onClick={() => nav({ site: s.domain, view: undefined })}>
+                <span className="truncate">{s.domain}</span>
+                {s.today > 0 && <span className="num ml-auto text-xs text-muted" title="Visiteurs aujourd'hui">{fmt(s.today)}</span>}
+              </NavItem>
+            ))}
+            {!me.demo && <NavItem icon={Icon.plus} active={q.view === "add"} onClick={() => nav({ site: undefined, view: "add" })}>Ajouter un site</NavItem>}
+          </NavGroup>
+        </li>
+        {!me.demo && <li><NavItem icon={Icon.link} active={q.view === "modules" || q.view === "connections"} onClick={() => nav({ ...home, view: "modules" })}>Modules</NavItem></li>}
+        {!me.demo && <li><NavItem icon={Icon.bot} active={q.view === "agents"} onClick={() => nav({ ...home, view: "agents" })}>Agents</NavItem></li>}
+        <li><NavItem icon={Icon.gear} active={q.view === "settings" || q.view === "report"} onClick={() => nav({ ...home, view: "settings" })}>Réglages</NavItem></li>
+      </ul>
       <div className="mt-auto space-y-1 pt-6">
-        <NavItem icon={Icon.gear} active={q.view === "settings"} onClick={() => nav({ ...home, view: "settings" })}>Réglages</NavItem>
         <a href="https://github.com/Nadir-DNA/searchtide" target="_blank" rel="noreferrer" className="flex h-10 items-center gap-3 rounded-xl px-3 text-sm text-muted hover:text-ink"><Svg>{Icon.book}</Svg>Documentation</a>
         {!me.demo && <button onClick={() => api("/api/logout", { method: "POST" }).then(onLogout)} className="flex h-10 w-full items-center gap-3 rounded-xl px-3 text-sm text-muted hover:text-ink"><Svg>{Icon.out}</Svg>Déconnexion</button>}
         <div className="flex items-center justify-between rounded-2xl border border-border bg-surface px-3 py-2 text-sm">
@@ -176,24 +198,42 @@ function Shell({ me, onLogout }: { me: Me; onLogout: () => void }) {
           : q.view === "crm" ? <CrmView tab={q.tab ?? ""} go={go} q={q} />
           : q.view === "pubs" ? <PubsView q={q} go={go} />
           : q.view === "report" ? <ReportView />
-          : q.view === "settings" ? <SettingsView />
+          : q.view === "settings" ? <SettingsView go={go} />
           : q.view === "agents" ? <AgentsView />
+          : q.view === "modules" ? <ModulesView open={q.open} go={go} />
           : q.view === "connections" ? <ConnectionsView />
           : q.view === "start" ? <Onboarding go={go} />
-          : q.view === "portfolio" ? <PortfolioView days={days} go={go} />
-          : q.view === "project" && q.id ? <ProjectView key={q.id} id={q.id} days={days} go={go} />
+          : q.view === "projects" || q.view === "portfolio" ? <PortfolioView days={days} go={go} />
+          : q.view === "project" && q.id ? <ProjectView key={q.id} id={q.id} days={days} go={go} tab={q.tab ?? "vue"} me={me} onPinned={loadProjects} />
           : q.view === "newproject" ? <ManageProject project={null} onClose={() => go(home)} onSaved={(p) => { loadProjects(); if (p) go({ ...home, view: "project", id: p.id }); }} />
           : q.view === "add" ? <AddSite onAdded={(s) => { load(); go({ site: s.domain, tab: "setup", view: undefined }); }} />
           : site ? <SiteView key={site.id} site={site} me={me} days={days} tab={q.tab ?? "traffic"} go={go} onChange={load} />
+          : q.view === "page" ? (me.demo ? <Overview days={days} demo={me.demo} go={go} /> : !dash ? <KpiSkeleton /> : (() => {
+            const d = dash.dashboards.find((x) => x.id === q.id) || dash.dashboards[0];
+            return <DashboardView key={d.id} dash={d} catalog={dash.catalog} sizes={dash.sizes} days={days} go={go} onChanged={loadDash} />;
+          })())
           : !sites.length && !projects.length && !me.demo && !localStorage.getItem(SKIP_KEY) ? <Onboarding go={go} />
           : me.demo ? <Overview days={days} demo={me.demo} go={go} />
-          : !dash ? <KpiSkeleton />
-          : (() => {
-            const d = (q.view === "page" && dash.dashboards.find((x) => x.id === q.id)) || dash.dashboards[0];
-            return <DashboardView key={d.id} dash={d} catalog={dash.catalog} sizes={dash.sizes} days={days} go={go} onChanged={loadDash} />;
-          })()}
+          : <TodayView go={go} banner={!sites.length && !projects.length ? <p className="mb-4 text-sm text-muted">Démarrage pas terminé. <button onClick={() => go({ view: "start" })} className="text-ink underline">Reprendre le démarrage</button></p> : null} />}
       </div>
     </div>
+  );
+}
+
+/** Rubrique dépliante ; son état ouvert/fermé est retenu par navigateur. Les favoris (pinned) restent visibles même repliée. */
+function NavGroup({ id, label, icon, active, pinned, children }: { id: string; label: string; icon: ReactNode; active: boolean; pinned?: ReactNode; children: ReactNode }) {
+  const key = `st-nav-${id}`;
+  const [open, setOpen] = useState(() => { try { const v = localStorage.getItem(key); return v ? v === "1" : active; } catch { return active; } });
+  const toggle = () => { const v = !open; setOpen(v); try { localStorage.setItem(key, v ? "1" : "0"); } catch { /* navigation privée */ } };
+  return (
+    <>
+      <button onClick={toggle} aria-expanded={open} className={`flex h-9 w-full items-center gap-3 rounded-lg px-3 text-left text-sm transition-colors ${active && !open ? "bg-active text-ink" : "text-muted hover:bg-raised hover:text-ink"}`}>
+        <Svg>{icon}</Svg><span className="flex-1">{label}</span>
+        <svg viewBox="0 0 16 16" className={`size-3.5 transition-transform ${open ? "rotate-90" : ""}`} aria-hidden><path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" strokeWidth="1.5" /></svg>
+      </button>
+      {pinned && <div className="mt-1 pl-3">{pinned}</div>}
+      {open && <div className="mt-1 space-y-1 border-l border-rule pl-3 ml-5">{children}</div>}
+    </>
   );
 }
 

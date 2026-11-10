@@ -5,6 +5,7 @@ import { ErrorLine, Header, KpiSkeleton, useData } from "./App";
 import { STAGES } from "./modules/shared";
 import { BarChart } from "./chart";
 import { SourcesCard } from "./sources";
+import { ProjectTabBar, ProjectTabBody } from "./projects/ProjectTabs";
 import { useCatalog } from "./connections";
 import { Button, Card, Delta, EmptyBox, KpiCard, Pill, Table, fmt, inputCls } from "./ui";
 
@@ -16,7 +17,7 @@ export type Indicator = {
 };
 export type Project = {
   id: string; name: string; color: string | null; url: string | null; sites: string[]; crm_key: string | null; indicators: Indicator[];
-  funnel: { id: string; label: string; value: number | null; rate: number | null }[];
+  funnel: { id: string; label: string; value: number | null; rate: number | null }[]; pinned?: boolean;
 };
 type Go = (n: Record<string, string | undefined>) => void;
 
@@ -64,7 +65,7 @@ export function ProjectCards({ days, go }: { days: number; go: Go }) {
 }
 
 // ── Page d'un projet ──
-export function ProjectView({ id, days, go }: { id: string; days: number; go: Go }) {
+export function ProjectView({ id, days, go, tab = "vue", me = { gsc: false, demo: false }, onPinned }: { id: string; days: number; go: Go; tab?: string; me?: { gsc: boolean; demo: boolean }; onPinned?: () => void }) {
   const { data: p, error, reload } = useData<Project>(`/api/projects/${id}?days=${days}`);
   const [selected, setSelected] = useState<string | null>(null);
   const [manage, setManage] = useState(false);
@@ -77,8 +78,13 @@ export function ProjectView({ id, days, go }: { id: string; days: number; go: Go
     <>
       <Header title={<span className="flex items-center gap-3"><span className="size-3 rounded-full" style={{ background: p.color ?? "var(--color-accent)" }} aria-hidden />{p.name}</span>}
         sub={p.url ? <a href={p.url} target="_blank" rel="noreferrer" className="hover:text-ink">{p.url.replace(/^https?:\/\//, "")} ↗</a> : undefined} days={days} go={go}>
+        <Button variant="secondary" aria-pressed={!!p.pinned} onClick={async () => { await api(`/api/projects/${p.id}`, { method: "PATCH", json: { pinned: !p.pinned } }); reload(); onPinned?.(); }}>
+          {p.pinned ? "★ Épinglé" : "☆ Épingler"}
+        </Button>
         <Button variant="secondary" onClick={() => setManage(true)}>Gérer le projet</Button>
       </Header>
+      <ProjectTabBar project={p} tab={tab} go={go} />
+      {tab !== "vue" ? <ProjectTabBody project={p} tab={tab} days={days} go={go} me={me} onChanged={reload} /> :
       <div className="space-y-4">
         {p.indicators.length ? (
           <>
@@ -111,7 +117,7 @@ export function ProjectView({ id, days, go }: { id: string; days: number; go: Go
           <ProjectSites project={p} days={days} go={go} />
           <ProjectCrm project={p} go={go} />
         </div>
-      </div>
+      </div>}
       {manage && <ManageProject project={p} onClose={() => setManage(false)} onSaved={reload} onDeleted={() => go({ view: undefined, id: undefined })} />}
     </>
   );
