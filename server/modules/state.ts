@@ -90,6 +90,11 @@ export function activateFromExistingData() {
     if ((JSON.parse(p.sites) as string[]).some((d) => gsc.has(d))) add(p.id, "google");
     if (p.crm_key) { add(p.id, "crm"); add(p.id, "publications"); }
   }
+  // La propriété Search Console de chaque site est recopiée dans le réglage Google du projet ; la colonne du site reste lue en repli.
+  const googleSettings = (pid: string) => {
+    const p = projects.find((x) => x.id === pid)!;
+    return { gsc_property: Object.fromEntries(sites.filter((x) => x.gsc_property && (JSON.parse(p.sites) as string[]).includes(x.domain)).map((x) => [x.domain, x.gsc_property])) };
+  };
   const owned = new Set(projects.flatMap((p) => JSON.parse(p.sites) as string[]));
   const orphans = sites.filter((s) => !owned.has(s.domain));
 
@@ -97,11 +102,11 @@ export function activateFromExistingData() {
   try {
     const now = Date.now();
     for (const m of allModules()) db.prepare("INSERT OR IGNORE INTO modules (id, enabled, updated_at) VALUES (?, ?, ?)").run(m.id, instance.has(m.id) ? 1 : 0, now);
-    for (const [pid, mids] of perProject) for (const mid of mids) db.prepare("INSERT OR IGNORE INTO project_modules (project_id, module_id) VALUES (?, ?)").run(pid, mid);
+    for (const [pid, mids] of perProject) for (const mid of mids) db.prepare("INSERT OR IGNORE INTO project_modules (project_id, module_id, settings) VALUES (?, ?, ?)").run(pid, mid, JSON.stringify(mid === "google" ? googleSettings(pid) : {}));
     for (const s of orphans) {
       const pid = randomUUID();
       db.prepare("INSERT INTO projects (id, name, sites, created_at) VALUES (?, ?, ?, ?)").run(pid, s.domain, JSON.stringify([s.domain]), now);
-      if (s.gsc_property && instance.has("google")) db.prepare("INSERT INTO project_modules (project_id, module_id) VALUES (?, 'google')").run(pid);
+      if (s.gsc_property && instance.has("google")) db.prepare("INSERT INTO project_modules (project_id, module_id, settings) VALUES (?, 'google', ?)").run(pid, JSON.stringify({ gsc_property: { [s.domain]: s.gsc_property } }));
     }
     db.prepare("INSERT INTO migrations (name, applied_at) VALUES (?, ?)").run(NAME, now);
     db.exec("COMMIT");

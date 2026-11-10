@@ -10,7 +10,7 @@ import { randomUUID, timingSafeEqual } from "node:crypto";
 import { db, localDay, type Site } from "./db.ts";
 import { collect } from "./collect.ts";
 import { lastDays, overview, searchStats, strikingDistance, trafficStats, type Range } from "./stats.ts";
-import { gscConfigured, listProperties, syncAll, syncSite } from "./gsc.ts";
+import { convertGoogleEnv, gscConfigured, listProperties, syncAll, syncSite } from "./gsc.ts";
 import { handleMcp, mcpAccess } from "./mcp.ts";
 import { registerBusiness } from "./business.ts";
 import { registerReport } from "./report.ts";
@@ -26,7 +26,7 @@ import { registerDashboards } from "./dashboards.ts";
 import { registerOutreach } from "./outreach.ts";
 import { backup, loginLimiter, verifyTotp } from "./security.ts";
 import { markAdmin, markClient } from "./admin.ts";
-import { activateFromExistingData } from "./modules/state.ts";
+import { activateFromExistingData, isEnabled } from "./modules/state.ts";
 import { registerModules } from "./modules/api.ts";
 
 const PRODUCTION = process.env.NODE_ENV === "production";
@@ -149,7 +149,7 @@ const rangeOf = (c: Context): Range => {
   return ok(from) && ok(to) ? { from: from!, to: to! } : lastDays(Math.min(Math.max(Number(days) || 28, 1), 500));
 };
 
-app.get("/api/me", (c) => c.json({ ok: true, gsc: gscConfigured(), demo: DEMO }));
+app.get("/api/me", (c) => c.json({ ok: true, gsc: gscConfigured() && isEnabled("google"), demo: DEMO }));
 app.get("/api/overview", (c) => c.json(overview(rangeOf(c))));
 
 app.get("/api/sites", (c) => c.json(db.prepare(`SELECT s.*, g.synced_at, g.last_day, g.error AS sync_error,
@@ -207,6 +207,7 @@ registerConnections(app);
 registerStripeOAuth(app);
 registerSources(app);
 startVault();
+try { convertGoogleEnv(); } catch (e) { console.error("[google] GOOGLE_SERVICE_ACCOUNT_JSON illisible, non converti :", (e as Error).message); }
 activateFromExistingData();
 registerOps(app);
 registerPortfolio(app);

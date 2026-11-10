@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { ActivateLink } from "./modules/ActivatePrompt";
 import { api, AuthError, type Overview as OverviewData, type Search, type Site, type Traffic } from "./api";
 import { BarChart, Donut, fillDays } from "./chart";
 import { CrmView, PubsView, ReportView } from "./business";
@@ -320,7 +321,8 @@ function AddSite({ onAdded }: { onAdded: (s: Site) => void }) {
 function SiteView({ site, me, days, tab, go, onChange }: {
   site: Site; me: Me; days: number; tab: string; go: (n: Record<string, string | undefined>) => void; onChange: () => void;
 }) {
-  const tabs = [["traffic", "Trafic"], ["search", "Recherche Google"], ["setup", "Installation"]] as const;
+  // L'onglet Recherche n'existe que si le module Google est actif et connecté (la démonstration le montre toujours)
+  const tabs = [["traffic", "Trafic"], ...(me.gsc || me.demo ? [["search", "Recherche Google"] as const] : []), ["setup", "Installation"]] as const;
   return (
     <>
       <Header title={site.domain} days={tab === "setup" ? undefined : days} go={go} demo={me.demo}
@@ -329,7 +331,7 @@ function SiteView({ site, me, days, tab, go, onChange }: {
         <Segmented label="Sections du site" value={tab as (typeof tabs)[number][0]} onChange={(v) => go({ tab: v === "traffic" ? undefined : v })} options={tabs} />
       </div>
       {tab === "search" ? <SearchView site={site} me={me} days={days} onChange={onChange} onSetup={() => go({ tab: "setup" })} />
-        : tab === "setup" ? <SetupView site={site} me={me} onChange={onChange} />
+        : tab === "setup" ? <SetupView site={site} me={me} onChange={onChange} go={go} />
         : <TrafficView site={site} days={days} onSetup={() => go({ tab: "setup" })} />}
     </>
   );
@@ -483,7 +485,7 @@ function Copyable({ text }: { text: string }) {
   );
 }
 
-function SetupView({ site, me, onChange }: { site: Site; me: Me; onChange: () => void }) {
+function SetupView({ site, me, onChange, go }: { site: Site; me: Me; onChange: () => void; go: (n: Record<string, string | undefined>) => void }) {
   const [props, setProps] = useState<string[] | null>(null);
   const [error, setError] = useState("");
   useEffect(() => { if (me.gsc && !me.demo) api<string[]>("/api/gsc/properties").then(setProps).catch((e) => setError(e.message)); }, [me]);
@@ -505,7 +507,7 @@ function SetupView({ site, me, onChange }: { site: Site; me: Me; onChange: () =>
       </SettingCard>
       <SettingCard title="Google Search Console" sub="Mots-clés, clics, impressions et position de chaque page. Importés automatiquement toutes les 6 heures.">
         {!me.gsc ? (
-          <p className="text-sm">Non configuré sur cette instance : renseignez <code className="font-mono text-xs">GOOGLE_SERVICE_ACCOUNT_JSON</code> puis redémarrez (voir la documentation).</p>
+          <p className="text-sm">Google n'est pas encore activé. <ActivateLink module="google" name="Google" go={go} /> : la connexion se fait dans l'interface, sans redémarrage.</p>
         ) : error ? <p role="alert" className="text-sm text-negative">{error}</p> : (
           <label className="block text-sm">Propriété Search Console
             <select className={`${inputCls} mt-2`} value={site.gsc_property ?? ""} disabled={me.demo} onChange={(e) => link(e.target.value)}>
@@ -517,8 +519,8 @@ function SetupView({ site, me, onChange }: { site: Site; me: Me; onChange: () =>
           </label>
         )}
       </SettingCard>
-      <SettingCard title="Agents IA" sub="Vos agents (Claude, Cursor…) lisent les statistiques par le serveur MCP de l'instance, avec la clé API_KEY.">
-        <Copyable text={`claude mcp add --transport http searchtide ${location.origin}/mcp --header "Authorization: Bearer VOTRE_CLE"`} />
+      <SettingCard title="Agents IA" sub="Vos agents (Claude Code, Codex, OpenCode, Hermes…) lisent les statistiques par le serveur MCP, chacun avec sa propre clé.">
+        <Button variant="secondary" onClick={() => go({ site: undefined, tab: undefined, view: "agents" })}>Créer une clé pour un agent</Button>
       </SettingCard>
       {!me.demo && (
         <SettingCard title="Supprimer le site" sub="Efface le site et toutes ses statistiques. Définitif.">

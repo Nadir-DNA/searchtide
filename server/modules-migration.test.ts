@@ -14,6 +14,7 @@ function activate(dbPath: string, env: Record<string, string> = {}, run = true) 
       enabled: db.prepare("SELECT id FROM modules WHERE enabled = 1 ORDER BY id").all().map((r) => r.id),
       projectModules: db.prepare("SELECT p.name, m.module_id FROM project_modules m JOIN projects p ON p.id = m.project_id WHERE m.enabled = 1 ORDER BY p.name, m.module_id").all().map((r) => r.name + ":" + r.module_id),
       projects: db.prepare("SELECT name, sites FROM projects ORDER BY name").all(),
+      google: db.prepare("SELECT m.settings FROM project_modules m JOIN projects p ON p.id = m.project_id WHERE p.name = 'Alpha' AND m.module_id = 'google'").get()?.settings ?? null,
       done: !!db.prepare("SELECT 1 FROM migrations WHERE name = '2026-11-10-modules-activation'").get() }));`],
     { env: { ...process.env, DATABASE_PATH: dbPath, SECRET: SECRET_40, GOOGLE_SERVICE_ACCOUNT_JSON: "", ...env }, stdio: ["ignore", "pipe", "pipe"] });
   return JSON.parse(out.toString().trim().split("\n").at(-1)!);
@@ -38,6 +39,7 @@ test("migration : active ce qui est utilisé, crée un projet pour un site orphe
     assert.deepEqual(r.enabled, ["agents", "analytics", "crm", "google", "pages", "projets", "publications", "stripe"]);
     assert.deepEqual(r.projectModules, ["Alpha:crm", "Alpha:google", "Alpha:publications", "Alpha:stripe"]);
     assert.ok(r.projects.some((p: any) => p.name === "b.fr" && JSON.parse(p.sites).includes("b.fr")));
+    assert.deepEqual(JSON.parse(r.google), { gsc_property: { "a.fr": "sc-domain:a.fr" } }); // propriété recopiée dans le réglage du projet
     assert.equal(r.done, true);
   } finally { t.done(); }
 });
