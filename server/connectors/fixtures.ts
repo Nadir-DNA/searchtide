@@ -11,6 +11,7 @@ const utf16 = (text: string) => new Response(Buffer.concat([Buffer.from([0xff, 0
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
+let lastIssuer = "";
 export const FIXTURES: Record<string, Fixture> = {
   stripe: {
     cfg: { config: {}, secrets: { key: "rk_" + "test_FIXTUREabcdefghij0123456789" } },
@@ -34,9 +35,20 @@ export const FIXTURES: Record<string, Fixture> = {
   google: {
     cfg: { config: { playBucket: "gs://pubsite_prod_rev_01234567890123456789" }, secrets: { json: GOOGLE_JSON } },
     params: { daily_installs: { package: "com.exemple.app" }, active_installs: { package: "com.exemple.app" }, rating: { package: "com.exemple.app" } },
-    respond: (url) => {
-      if (url.startsWith("https://oauth2.googleapis.com/token")) return json({ access_token: "ya29.FIXTUREaccessTOKENdemo", expires_in: 3600 });
-      if (url.includes("searchconsole.googleapis.com/webmasters/v3/sites")) return json({ siteEntry: [{ siteUrl: "sc-domain:exemple.com" }, { siteUrl: "https://www.exemple.com/" }] });
+    respond: (url, init) => {
+      if (url.startsWith("https://oauth2.googleapis.com/token")) {
+        // Le JWT porte l'adresse du compte de service : elle permet de simuler un compte sans propriété.
+        try {
+          const body = String(init?.body ?? "");
+          const assertion = decodeURIComponent((body.match(/(?:^|&)assertion=([^&]+)/) ?? [])[1] ?? "");
+          lastIssuer = JSON.parse(Buffer.from(assertion.split(".")[1] ?? "", "base64url").toString()).iss ?? "";
+        } catch { lastIssuer = ""; }
+        return json({ access_token: "ya29.FIXTUREaccessTOKENdemo", expires_in: 3600 });
+      }
+      if (url.includes("searchconsole.googleapis.com/webmasters/v3/sites")) {
+        if (lastIssuer.startsWith("zero")) return json({ siteEntry: [] });
+        return json({ siteEntry: [{ siteUrl: "sc-domain:exemple.com" }, { siteUrl: "https://www.exemple.com/" }] });
+      }
       if (url.includes("stats%2Finstalls%2F")) return utf16("Date,Package Name,Daily User Installs,Active Device Installs\n2026-11-08,com.exemple.app,12,300\n2026-11-09,com.exemple.app,15,310\n");
       if (url.includes("stats%2Fratings%2F")) return utf16("Date,Package Name,Daily Average Rating,Total Average Rating\n2026-11-09,com.exemple.app,4.5,4.4\n");
       if (url.includes("storage.googleapis.com/storage/v1/b/")) return json({ items: [] });

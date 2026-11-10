@@ -102,6 +102,21 @@ function FieldInput({ f, value, onChange, editing }: { f: Field; value: string; 
   );
 }
 
+/** Copie une valeur non secrète (adresse du compte de service Google) avec annonce lecteur d'écran. */
+function CopyText({ value }: { value: string }) {
+  const [done, setDone] = useState(false);
+  return (
+    <span className="inline-flex max-w-full flex-wrap items-center gap-1.5 align-middle">
+      <code className="min-w-0 break-all rounded bg-raised px-2 py-0.5 font-mono text-xs text-ink">{value}</code>
+      <button type="button" title="Copier l'adresse" onClick={() => navigator.clipboard?.writeText(value).then(() => { setDone(true); setTimeout(() => setDone(false), 1500); })}
+        className="shrink-0 rounded-lg border border-control px-2.5 py-0.5 text-xs">{done ? "Copié" : "Copier"}</button>
+      <span role="status" aria-live="polite" className="sr-only">{done ? "Copié" : ""}</span>
+    </span>
+  );
+}
+
+const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/;
+
 export function Drawer({ m, catalog, onClose, reload }: { m: Manifest; catalog: Catalog; onClose: () => void; reload: () => Promise<void> }) {
   const ref = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -216,7 +231,12 @@ export function Drawer({ m, catalog, onClose, reload }: { m: Manifest; catalog: 
             <div role={out.kind === "error" ? "alert" : "status"} className={`rounded-xl px-3 py-2 text-sm ${out.kind === "error" ? "bg-negative-bg text-negative" : "bg-positive-bg text-positive"}`}>
               <p className="break-words">{out.text}</p>
               {out.detail && <p className="mt-1 break-words text-xs">{out.detail}</p>}
-              {out.warnings?.map((w, i) => <p key={i} className="mt-1 break-words text-xs text-ink">⚠ {w}</p>)}
+              {out.warnings?.map((w, i) => {
+                const email = m.id === "google" ? w.match(EMAIL)?.[0] : undefined;
+                if (!email) return <p key={i} className="mt-1 break-words text-xs text-ink">⚠ {w}</p>;
+                const [before, after] = w.split(email);
+                return <p key={i} className="mt-1 break-words text-xs text-ink">⚠ {before}<CopyText value={email} />{after}</p>;
+              })}
               {out.copy && (
                 <div className="mt-2 flex items-center gap-2 text-ink">
                   <code className="min-w-0 flex-1 rounded bg-raised px-2 py-1 font-mono text-xs break-all" aria-label={out.copy.label}>{out.copy.value}</code>
@@ -250,7 +270,9 @@ export function Drawer({ m, catalog, onClose, reload }: { m: Manifest; catalog: 
               {m.connections.map((c) => (
                 <li key={c.id} className="py-3">
                   <p className="break-words text-sm">{c.label}{c.test_mode && <span className="ml-2 rounded bg-raised px-1.5 py-0.5 text-xs text-muted">test</span>}</p>
-                  <p className="mt-0.5 break-words font-mono text-xs text-muted">{c.hint}</p>
+                  {m.id === "google" && EMAIL.test(c.hint)
+                    ? <p className="mt-0.5 break-words text-xs text-muted"><CopyText value={c.hint} /></p>
+                    : <p className="mt-0.5 break-words font-mono text-xs text-muted">{c.hint}</p>}
                   <p className={`mt-1 text-xs ${c.status === "connected" ? "text-positive" : "text-negative"}`}>● {CONN_TEXT[c.status]} <span className="text-muted">· {ago(c.tested_at)}</span></p>
                   {c.status_detail && <p className="mt-1 break-words text-xs text-negative">{c.status_detail}</p>}
                   {!catalog.demo && (
