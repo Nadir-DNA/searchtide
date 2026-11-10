@@ -36,6 +36,14 @@ const json = (body: unknown, status = 200, headers: Record<string, string> = {})
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", ...headers } });
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 
+const hex = (bytes: Uint8Array) => [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
+
+/** Signature Stripe (`Stripe-Signature`) : HMAC-SHA256 en hexadécimal. */
+async function hmacHex(text: string, secret: string) {
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  return hex(new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(text))));
+}
+
 async function hmac(text: string, secret: string) {
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
   return b64url(new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(text))));
@@ -87,6 +95,9 @@ const page = (title: string, body: string, status = 200) => new Response(`<!doct
 <style>body{font:16px/1.5 system-ui,sans-serif;max-width:40rem;margin:3rem auto;padding:0 1rem;color:#111}a{color:#0b6b5b}button{font:inherit;padding:.55rem 1rem;border-radius:999px;border:1px solid #bbb;background:#fff;cursor:pointer}.primary{background:#0b6b5b;color:#fff;border-color:#0b6b5b}code{background:#f3f4f6;padding:.1rem .3rem;border-radius:.3rem}</style></head><body>${body}</body></html>`,
   { status, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
 
+/** Vrai tant qu'un texte de politique attend une valeur (date de mise en ligne). */
+export const policyIncomplete = (fr: string, en: string) => fr.includes("[À compléter") || en.includes("[À compléter");
+
 function privacyPage() {
   return page("Searchtide Connect — confidentialité / privacy", `<h1>Searchtide Connect</h1><section lang="fr" style="white-space:pre-wrap">${esc(PRIVACY_FR)}</section><hr><section lang="en" style="white-space:pre-wrap">${esc(PRIVACY_EN)}</section>`);
 }
@@ -105,7 +116,7 @@ export async function handle(req: Request, env: Env): Promise<Response> {
     log(200); return json({ ok: true, mode: env.MODE });
   }
   if (url.pathname === "/privacy") {
-    if (env.MODE === "live" && (PRIVACY_FR.includes("[À compléter") || PRIVACY_EN.includes("[À compléter"))) { log(503); return new Response("Politique incomplète : déploiement en production refusé.", { status: 503 }); }
+    if (env.MODE === "live" && policyIncomplete(PRIVACY_FR, PRIVACY_EN)) { log(503); return new Response("Politique incomplète : déploiement en production refusé.", { status: 503 }); }
     log(200); return privacyPage();
   }
   if (missingSecrets(env).length) { log(503); return json({ ok: false, error: "Configuration incomplète" }, 503); }
@@ -184,7 +195,8 @@ export async function handle(req: Request, env: Env): Promise<Response> {
     const instCode = random(24);
     await store.createCode(await sha256(instCode), { ...st, stripeUserId: String(tok.stripe_user_id), livemode: !!tok.livemode, expiresAt: now + 60_000 });
     log(200, st.instanceId);
-    return Response.redirect(back(`code=${encodeURIComponent(instCode)}`), 302);
+    // L'instance retrouve son vérificateur PKCE par le state signé : il doit revenir avec le code.
+    return Response.redirect(back(`code=${encodeURIComponent(instCode)}&state=${encodeURIComponent(raw)}`), 302);
   }
 
   if (url.pathname === "/v1/token") {
@@ -247,7 +259,7 @@ export async function handle(req: Request, env: Env): Promise<Response> {
     const sig = req.headers.get("stripe-signature") ?? "";
     const parts = Object.fromEntries(sig.split(",").map((p) => p.split("=")) as [string, string][]);
     if (!parts.t || !parts.v1) { log(400); return json({ error: "Signature absente" }, 400); }
-    const expected = await hmac(`${parts.t}.${raw}`, env.WEBHOOK_SECRET!);
+    const expected = await hmacHex(`${parts.t}.${raw}`, env.WEBHOOK_SECRET!);
     if (!same(parts.v1, expected)) { log(400); return json({ error: "Signature invalide" }, 400); }
     if (!/^\d+$/.test(parts.t) || Math.abs(now / 1000 - Number(parts.t)) > 300) { log(400); return json({ error: "Signature expirée" }, 400); }
     const event = JSON.parse(raw || "{}");

@@ -1,7 +1,8 @@
 // CA26 à CA33, CA46 à CA53 : relais Searchtide Connect, Stripe et D1 simulés (aucun appel réseau).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { handle, type Env } from "./src/worker.ts";
+import { handle, policyIncomplete, type Env } from "./src/worker.ts";
+import { PRIVACY_FR, PRIVACY_EN } from "./src/privacy.ts";
 import { MemoryStore, sha256 } from "./src/store.ts";
 
 const b64url = (b: Uint8Array) => btoa(String.fromCharCode(...b)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
@@ -140,7 +141,7 @@ test("CA30 : webhook signé invalide les jetons, signature fausse refusée ; ré
   assert.equal((await post("/v1/webhook", JSON.parse(raw), env, { "stripe-signature": "t=1,v1=faux" })).status, 400);
   const t = String(Math.floor(clock / 1000));
   const key = await crypto.subtle.importKey("raw", enc("webhook-secret-fake"), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  const sig = b64url(new Uint8Array(await crypto.subtle.sign("HMAC", key, enc(`${t}.${raw}`))));
+  const sig = [...new Uint8Array(await crypto.subtle.sign("HMAC", key, enc(`${t}.${raw}`)))].map((b) => b.toString(16).padStart(2, "0")).join("");
   const wh = await handle(new Request("https://connect.test/v1/webhook", { method: "POST", headers: { "stripe-signature": `t=${t},v1=${sig}` }, body: raw }), env);
   assert.equal(wh.status, 200);
   assert.equal((await post("/v1/stripe/read", { object: "balance" }, env, { authorization: `Bearer ${f.token}` })).status, 401);
@@ -166,7 +167,7 @@ test("CA48 : purge des états, codes, journaux de 7 jours et jetons inactifs de 
   assert.equal(store.tokens.has(old), false);
 });
 
-test("CA50/CA52 : politique FR/EN, mode production bloqué si [À compléter] ; mode test refuse un compte live", async () => {
+test("CA50/CA52 : politique FR/EN datée, garde du placeholder ; mode test refuse un compte live", async () => {
   const { env } = setup();
   const p = await get("/privacy", env);
   assert.equal(p.status, 200);
@@ -174,7 +175,9 @@ test("CA50/CA52 : politique FR/EN, mode production bloqué si [À compléter] ; 
   assert.match(html, /Français|Searchtide Connect/);
   assert.match(html, /France/);
   assert.match(html, /github\.com\/Nadir-DNA\/searchtide\/tree\/main\/relay/);
-  assert.equal((await get("/privacy", { ...env, MODE: "live" })).status, 503);
+  assert.equal((await get("/privacy", { ...env, MODE: "live" })).status, 200, "date remplie : le mode live sert la politique");
+  assert.equal(policyIncomplete("Dernière mise à jour : [À compléter", ""), true);
+  assert.equal(policyIncomplete(PRIVACY_FR, PRIVACY_EN), false);
   const calls: Call[] = [];
   const liveEnv = setup({ __fetch: (async (u: any, i: RequestInit = {}) => {
     calls.push({ url: String(u), init: i });
@@ -238,7 +241,7 @@ test("Webhook : une signature valide mais trop ancienne est refusée", async () 
   const { env } = setup(); const raw = JSON.stringify({ type: "x" });
   const t = String(Math.floor(clock / 1000) - 301);
   const key = await crypto.subtle.importKey("raw", enc("webhook-secret-fake"), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  const sig = b64url(new Uint8Array(await crypto.subtle.sign("HMAC", key, enc(`${t}.${raw}`))));
+  const sig = [...new Uint8Array(await crypto.subtle.sign("HMAC", key, enc(`${t}.${raw}`)))].map((b) => b.toString(16).padStart(2, "0")).join("");
   assert.equal((await handle(new Request("https://connect.test/v1/webhook", { method: "POST", headers: { "stripe-signature": `t=${t},v1=${sig}` }, body: raw }), env)).status, 400);
 });
 
@@ -253,4 +256,15 @@ test("CA58 : la limitation stocke une empreinte HMAC, pas l'adresse IP, et la pu
   store.rates.set(keys[0], { window: "2000-01-01T00", count: 1 });
   await store.purge(clock);
   assert.equal(store.rates.size, 0);
+});
+
+test("Le retour OAuth renvoie le code ET le state, pour que l'instance retrouve son vérificateur PKCE", async () => {
+  const { env } = setup();
+  const s = await (await post("/v1/start", { instance_id: "inst-1234", return_url: "https://i.test/cb", code_challenge: challenge }, env)).json() as any;
+  const state = new URL(s.authorize_url).searchParams.get("state")!;
+  const cb = await handle(new Request(`https://connect.test/oauth/callback?state=${encodeURIComponent(state)}&code=ac_TEST`, { method: "GET" }), env);
+  assert.equal(cb.status, 302);
+  const loc = new URL(cb.headers.get("location")!);
+  assert.match(loc.searchParams.get("code")!, /^[A-Za-z0-9_-]{24,}$/);
+  assert.equal(loc.searchParams.get("state"), state);
 });

@@ -16,7 +16,7 @@ STRIPE_CLIENT_ID = "ca_VbMjeBkFrNeeJX1qrGGG1PeXZnzq2hla"
 binding = "DB"
 database_name = "searchtide-connect"
 # Renseigner après `wrangler d1 create searchtide-connect` (identifiant non secret).
-database_id = "A_REMPLACER_APRES_CREATION"
+database_id = "391d80fc-18dd-4d97-b77f-8bf5cb6adad0"
 
 [triggers]
 crons = ["0 * * * *"]
