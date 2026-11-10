@@ -85,3 +85,11 @@ Pour un diagnostic, suffisent : le connecteur concerné, le message exact affich
 | <https://support.google.com/accounts/answer/185833> | 200 |
 | <https://ntfy.sh> | 200 |
 | <https://docs.ntfy.sh/> | 200 |
+
+## Connexion avec Stripe ou clé limitée ?
+
+La **clé limitée `rk_`** est recommandée : lecture seule garantie par Stripe et aucune donnée ne quitte l'instance. **Connexion avec Stripe** est une **bêta pour comptes de test** : elle passe par le service Searchtide Connect, qui voit les données demandées et n'en conserve aucune. Si le service est indisponible, Searchtide propose la clé limitée.
+
+## Comment connecter Supabase ?
+
+Exécutez le bloc SQL du [guide Supabase](supabase.md) (rôle `searchtide_ro` + 4 fonctions), puis collez l'adresse **Session pooler** (port 5432) dans Connexions → Supabase. N'utilisez pas l'adresse directe `db.….supabase.co` ni le port 6543.

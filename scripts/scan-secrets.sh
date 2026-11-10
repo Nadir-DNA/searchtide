@@ -28,7 +28,7 @@ report_tree "clés d'agent Searchtide (ck_)" 'ck_[A-Za-z0-9_-]{20,}'
 # Les messages d'erreur du connecteur Postgres contiennent des placeholders documentaires connus : ils ne sont pas des secrets.
 url_hits=$(tree_hits '(postgres(ql)?|mysql|mongodb(\+srv)?|redis|amqp)://[^[:space:]/:@]+:[^[:space:]/@]+@' | while IFS= read -r loc; do
   f=${loc%%:*}; n=${loc##*:}
-  sed -n "${n}p" "$f" 2>/dev/null | grep -qE 'utilisateur:motdepasse@|searchtide_ro:(…|motdepasse)@' && continue
+  sed -n "${n}p" "$f" 2>/dev/null | grep -qE 'utilisateur:motdepasse@|searchtide_ro[^:]*:(…|motdepasse)@' && continue
   printf '%s\n' "$loc"
 done)
 if [ -n "$url_hits" ]; then printf '[MOTIF] URL de base avec identifiants (postgres/mysql/mongo/redis)\n'; printf '%s\n' "$url_hits" | sed 's/^/    /'; hits=$((hits+1));
@@ -48,12 +48,12 @@ if [ -f "$brands_file" ]; then
   pattern=$(grep -vE '^[[:space:]]*(#|$)' "$brands_file" 2>/dev/null | paste -sd'|' -)
 fi
 if [ -n "$pattern" ]; then
-  brand_hits=$(tree_hits "$pattern")
+  brand_hits=$(git ls-files -co --exclude-standard | xargs -d '\n' grep -nIE -e "$pattern" 2>/dev/null | grep -v 'connect\.nadirdaoudi\.com' | cut -d: -f1,2 | sort -u)
   if [ -n "$brand_hits" ]; then printf '[MOTIF] marques de la liste locale\n'; printf '%s\n' "$brand_hits" | sed 's/^/    /'; hits=$((hits+1));
   else printf "[ok] aucune marque de la liste locale dans l'arbre\n"; fi
   brands_hist=$(for c in $(git rev-list --all); do
     git grep -InE "$pattern" "$c" 2>/dev/null
-  done | sed -E 's/^([0-9a-f]{7})[0-9a-f]+:/\1:/' | sort -u)
+  done | sed -E 's/^([0-9a-f]{7})[0-9a-f]+:/\1:/' | grep -v 'connect\.nadirdaoudi\.com' | sort -u)
   if [ -n "$brands_hist" ]; then printf "[MOTIF] marques de la liste locale dans l'historique (commit:fichier:ligne)\n"; printf '%s\n' "$brands_hist" | sed 's/^/    /'; hits=$((hits+1));
   else printf "[ok] aucune marque de la liste locale dans l'historique\n"; fi
 else

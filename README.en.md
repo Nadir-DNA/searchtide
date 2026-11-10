@@ -85,7 +85,8 @@ Everything is configured in **Connections**: a short guide, the required fields,
 |---|---|---|---|
 | **Searchtide analytics** | Visits, pages, channels, referrers, countries, devices, campaigns, events, share of traffic coming from AI assistants | built in (tracking script) | [analytics](docs/guides/analytics.md) |
 | **Google Search Console** | Clicks, impressions, CTR, position, opportunities; history kept beyond Google's 16 months. *Play is optional on the same connection:* daily installs, active installs, average rating | service account (JSON file); `gs://` bucket for Play | [google](docs/guides/google.md) |
-| **Stripe** | Net revenue, MRR, active subscriptions, new customers | restricted `rk_` read-only key — a full `sk_` key is refused | [stripe](docs/guides/stripe.md) |
+| **Stripe** | Net revenue, MRR, active subscriptions, new customers | restricted `rk_` key (recommended) or **Connect with Stripe** (beta, test accounts, via Searchtide Connect) | [stripe](docs/guides/stripe.md) · [connect](docs/guides/stripe-oauth.md) |
+| **Supabase** | users, signups, 7/30-day sign-ins, database size | read-only Postgres role + 4 aggregate functions | [supabase](docs/guides/supabase.md) |
 | **Postgres** *(read-only)* | Any indicator you can compute in SQL: signups, activation, retention | URL of a read-only account; a single statement, run in `READ ONLY` | [postgres](docs/guides/postgres.md) |
 | **SMTP / Gmail** | Weekly report and email alerts | Gmail app password, or any SMTP server | [smtp](docs/guides/smtp.md) |
 | **ntfy** | Phone alerts | generated topic, copied into the ntfy app | [ntfy](docs/guides/ntfy.md) |
@@ -149,12 +150,12 @@ Never attach this volume to a ticket or a support archive. Lost password: delete
 
 - Acceptance testing with real accounts covers Stripe, SMTP, Google Search Console and ntfy. Postgres is tested against a real server **locally only: those real tests are skipped in CI**. **PageSpeed, JSON API and Google Play have not been re-run against a real account** since this version.
 - End-to-end tests run on Chromium only (no Firefox, no WebKit).
-- One-click Stripe connection (OAuth) does not exist yet: the restricted `rk_` key is the only method.
+- **Connect with Stripe** is a **beta for test accounts only** (optional Searchtide Connect service): the restricted `rk_` key remains the recommended method for a real account.
 - The interface and most documentation are in French.
 
 ## Roadmap
 
-- **0.3**: one-click Stripe connection (OAuth) — design written, no code yet.
+- **0.3**: Stripe OAuth in production (after platform account verification).
 - **Later, no date**: deferred connectors (Cloudflare, Gmail read-only, third-party CRM, remote S3 backup).
 
 ## Contributing
