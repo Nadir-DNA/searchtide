@@ -53,3 +53,21 @@ test("S1 : sans fichier local, le contrôle des marques est annoncé comme non c
     assert.doesNotMatch(r.out, /\[ok\] aucune marque/);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+test("S1 : les placeholders documentaires exacts du connecteur Postgres ne sont pas des alertes, une vraie URL en est une", () => {
+  const dir = repoWith({
+    "server/pg.ts": "throw new Error('postgres://utilisateur:motdepasse@hôte:5432/base');",
+    "server/guide.ts": "const u = 'postgres://searchtide_ro:…@hôte:5432/base'; const p = 'postgres://searchtide_ro:motdepasse@hôte:5432/base';",
+  });
+  try {
+    const clean = scan(dir, "/nonexistent/brands.txt");
+    assert.equal(clean.code, 0, clean.out);
+    assert.doesNotMatch(clean.out, /\[MOTIF\] URL de base/);
+    writeFileSync(join(dir, "server", "vrai.ts"), "const u = 'postgres://lecteur:" + "MotDePasseReel7731" + "@db.interne:5432/prod';\n");
+    execFileSync("git", ["add", "-A"], { cwd: dir });
+    execFileSync("git", ["-c", "user.name=Test", "-c", "user.email=test@exemple.test", "commit", "-qm", "vrai"], { cwd: dir });
+    const dirty = scan(dir, "/nonexistent/brands.txt");
+    assert.equal(dirty.code, 1, dirty.out);
+    assert.match(dirty.out, /\[MOTIF\] URL de base/);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
