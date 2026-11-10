@@ -31,11 +31,11 @@ jobs:
       - name: Vérifier les types
         run: npm run typecheck
 
-      - name: Tests unitaires
-        run: npm test
-
       - name: Construire l'interface
         run: npm run build
+
+      - name: Tests unitaires
+        run: npm test
 
       - name: Installer Chromium pour Playwright
         run: npx playwright install --with-deps chromium
