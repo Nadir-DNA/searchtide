@@ -1,4 +1,4 @@
-// T20, CA21 : score de santé par projet (04-produit §6). Cas fixés : couverture 50 % avec action applicable / 56 % sans, période précédente à 0,
+// T20, CA21 : score de santé par projet (04-produit §6). Cas fixés : couverture 50 % avec action applicable / 55 % sans, période précédente à 0,
 // poids modifiés (renormalisation), seuils, poids enregistrés, aperçu, branchement sur les données du portefeuille.
 import { test, beforeEach } from "node:test";
 import assert from "node:assert/strict";
@@ -18,12 +18,12 @@ const base = (over: Partial<Inputs> = {}): Inputs => ({
 });
 const part = (h: ReturnType<typeof computeHealth>, k: string) => h.parts.find((p) => p.key === k)!;
 
-test("CA21 : projet sans objectif ni entonnoir, poids par défaut — couverture 50 ÷ 100 = 50 % avec le CRM, 50 ÷ 90 ≈ 56 % sans (Action non applicable)", () => {
+test("CA21 : projet sans objectif ni entonnoir, poids par défaut — couverture 50 ÷ 100 = 50 % avec le CRM, 50 ÷ 90 ≈ 55 % sans (tronqué) (Action non applicable)", () => {
   const crm = computeHealth(base(), DEFAULT_WEIGHTS, { crm: true });
   assert.equal(crm.coverage, 50); assert.equal(crm.score, 80);       // (30×100 + 20×50) ÷ 50
   assert.deepEqual(crm.missing, ["Objectifs", "Conversion", "Action"]);
   const pub = computeHealth(base(), DEFAULT_WEIGHTS, { crm: false });
-  assert.equal(pub.coverage, 56); assert.equal(pub.score, 80);       // 50 ÷ 90 = 55,6 %
+  assert.equal(pub.coverage, 55); assert.equal(pub.score, 80);       // 50 ÷ 90 = 55,6 %
   assert.deepEqual(pub.missing, ["Objectifs", "Conversion"]);
   assert.equal(part(pub, "action").applicable, false); assert.equal(part(pub, "action").why, "Non applicable sur cette instance");
 });
@@ -110,7 +110,7 @@ function seedProject(name: string, domain: string, now: number, before: number) 
   return saveProject(null, { name, sites: [domain] })!;
 }
 
-test("CA21 (données réelles) : tendance des visites + fiabilité → score, couverture 50 % avec le CRM / 56 % en démonstration ; poids modifiés → score renormalisé", () => {
+test("CA21 (données réelles) : tendance des visites + fiabilité → score, couverture 50 % avec le CRM / 55 % en démonstration ; poids modifiés → score renormalisé", () => {
   const p = seedProject("Santé", "sante.test", 12, 6);                                          // visites ×2 → tendance 100
   const bad = saveIndicator(null, p.id, { label: "Saisie en panne", mode: "total", source: "manual" })!;
   db.prepare("UPDATE indicators SET last_error = 'panne' WHERE id = ?").run(bad.id);           // 1 indicateur + 1 site = 2 éléments, 1 en erreur → fiabilité 50
@@ -120,7 +120,7 @@ test("CA21 (données réelles) : tendance des visites + fiabilité → score, co
   assert.deepEqual(row.health!.missing, ["Objectifs", "Conversion", "Action"]);
   process.env.DEMO = "1";                                                                       // sans CRM : Action non applicable
   row = portfolio(r).projects.find((x) => x.id === p.id)!;
-  assert.equal(row.health!.coverage, 56); assert.equal(row.health!.score, 80); assert.equal(row.health!.tone, "none"); assert.equal(row.health!.partial, true);
+  assert.equal(row.health!.coverage, 55); assert.equal(row.health!.score, 80); assert.equal(row.health!.tone, "none"); assert.equal(row.health!.partial, true);
   delete process.env.DEMO;
   row = portfolio(r, { trend: 10, goals: 0, reliability: 40, conversion: 0, action: 0 }).projects.find((x) => x.id === p.id)!;
   assert.equal(row.health!.score, 60);
@@ -157,7 +157,7 @@ test("API : poids lisibles par tous, modifiables par l'administrateur seulement 
 test("note basse : le seuil de 60 % compare la couverture brute, pas l'arrondi d'affichage", () => {
   // 59,6 % mesurés : affiché 60 %, mais brut sous 60 → partiel.
   const raw = computeHealth({ trend: { visits: { now: 2, before: 1 } }, goals: { total: 0, reached: 0 }, reliability: { items: 1, errors: 0 }, conversion: null, action: null }, { trend: 59.6, goals: 40.4, reliability: 0, conversion: 0, action: 0 }, { crm: false });
-  assert.equal(raw.coverage, 60);
+  assert.equal(raw.coverage, 59);
   assert.equal(raw.partial, true);
   assert.equal(raw.tone, "none");
 });

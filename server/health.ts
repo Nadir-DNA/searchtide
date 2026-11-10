@@ -50,9 +50,10 @@ export function computeHealth(inp: Inputs, weights: Weights = DEFAULT_WEIGHTS, o
   const sum = parts.filter((p) => p.measured).reduce((n, p) => n + p.weight * p.value!, 0);
   const score = measuredW > 0 ? Math.round(sum / measuredW) : null;
   const rawCoverage = applicableW > 0 ? (100 * measuredW) / applicableW : 0;
-  const coverage = Math.round(rawCoverage);
-  // B2 : sous 60 % de couverture **brute**, le score est partiel et neutre ; l'arrondi ne sert qu'à l'affichage.
+  // B2 : sous 60 % de couverture **brute**, le score est partiel et neutre.
   const partial = rawCoverage < 60;
+  // M3 : quand c'est partiel, la couverture est tronquée (59,6 % → 59 %) ; sinon arrondi normal.
+  const coverage = partial ? Math.floor(rawCoverage) : Math.round(rawCoverage);
   const tone = score == null || partial ? "none" : score >= 70 ? "positive" : score >= 40 ? "warn" : "negative";
   const missing = parts.filter((p) => p.applicable && !p.measured).map((p) => p.label);
   return { score, coverage, tone, partial, missing, parts };
