@@ -89,7 +89,7 @@ export async function stripeMetric(a: StripeAuth, metric: string, day: string | 
     return txs.filter((x) => ["charge", "payment", "refund", "payment_refund", "adjustment", "payment_failure_refund"].includes(x.type)).reduce((n, x) => n + x.net, 0) / 100;
   }
   if (metric === "new_customers") return (await listRows(a, "customers", range, ctx)).length;
-  const subs = await listRows(a, "subscriptions", { status: "active", ...(a.relay ? {} : { "expand[]": "data.discounts" }) }, ctx);
+  const subs = await listRows(a, "subscriptions", { status: "active", "expand[]": "data.discounts" }, ctx);
   if (metric === "active_subscriptions") return subs.length;
   if (metric === "mrr") return subs.reduce((n, s) => n + monthlyNet(s), 0) / 100;
   throw new Error(`Mesure Stripe inconnue : ${metric}`);

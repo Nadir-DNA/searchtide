@@ -194,7 +194,7 @@ export function registerConnections(app: Hono) {
     if (!getConnection(id)) return c.json({ error: "Connexion introuvable" }, 404);
     const affected = indicatorsUsing(id).length;
     let relay = false; try { relay = !!JSON.parse(String((db.prepare("SELECT config FROM connections WHERE id = ?").get(id) as any)?.config ?? "{}")).relay; } catch { /* ignore */ }
-    if (relay) { try { const { revokeRelayConnection } = await import("../stripe-oauth.ts"); await revokeRelayConnection(id); } catch { /* la suppression locale prime */ } return c.json({ ok: true, affected }); }
+    if (relay) { try { const { revokeRelayToken } = await import("../stripe-oauth.ts"); await revokeRelayToken(id); } catch { /* la suppression locale prime */ } }
     db.exec("BEGIN");
     try {
       db.prepare("UPDATE indicators SET last_error = ?, last_run = ? WHERE json_extract(config, '$.connection_id') = ?").run(SOURCE_RETIREE, Date.now(), id);

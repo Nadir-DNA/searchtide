@@ -1,10 +1,16 @@
 // v0.2.2 : relais côté instance (validation d'URL, PKCE, identifiant stable, lecture Stripe via relais, droits admin).
 import { test } from "node:test";
+process.env.SECRET ??= "t".repeat(40);
 import assert from "node:assert/strict";
 import { Hono } from "hono";
 import { newPkce, instanceId, relayConfigured } from "./relay.ts";
 import { stripe } from "./connectors/stripe.ts";
 import { registerStripeOAuth } from "./stripe-oauth.ts";
+import { createConnection, removeConnection } from "./connections.ts";
+import { db } from "./db.ts";
+import { saveIndicator, saveProject } from "./projects.ts";
+import { registerConnections } from "./connectors/api.ts";
+import { markAdmin } from "./admin.ts";
 import type { Ctx } from "./connectors/types.ts";
 
 test("RELAY_URL : https exigé, localhost toléré, vide = désactivé", () => {
@@ -47,4 +53,17 @@ test("CA33 : sans session administrateur, le démarrage OAuth est refusé", asyn
   const app = new Hono(); registerStripeOAuth(app);
   const r = await app.request("/api/stripe-oauth/start", { method: "POST" });
   assert.equal(r.status, 403);
+});
+
+test("CA57 : retirer une connexion OAuth marque ses indicateurs « Source retirée »", async () => {
+  db.exec("DELETE FROM indicators; DELETE FROM projects; DELETE FROM connections;");
+  const c = createConnection({ kind: "stripe", label: "Relais", config: { relay: true, relay_url: "https://connect.test" }, secrets: { token: "relay_jeton" }, fingerprintOf: "relay:acct_1" });
+  const p = saveProject(null, { name: "Projet relais" })!;
+  const ind = saveIndicator(null, p.id, { label: "CA", mode: "total", source: "stripe", unit: "€", config: { metric: "revenue", connection_id: c.id } })!;
+  const app = new Hono(); app.use("*", (ctx, next) => { markAdmin(ctx); return next(); }); registerConnections(app);
+  const r = await app.request(`/api/connections/${c.id}`, { method: "DELETE" });
+  assert.equal(r.status, 200);
+  const row = db.prepare("SELECT last_error FROM indicators WHERE id = ?").get(ind.id) as any;
+  assert.match(String(row.last_error), /Source retirée/);
+  assert.equal(removeConnection(c.id), false, "déjà supprimée");
 });

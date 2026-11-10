@@ -23,3 +23,15 @@ test("CA32/CA52 : le bouton reste inactif sans consentement, puis propose la cl�
   await expect(page.getByRole("dialog", { name: "Stripe" })).toBeVisible();
   expect(await noHScroll(page)).toBe(true);
 });
+
+test("CA51 : relais indisponible → message, bouton désactivé, clé limitée utilisable", async ({ page }) => {
+  await page.route("**/api/stripe-oauth/status", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ enabled: true, ok: false, mode: null, error: "unreachable", url: "https://connect.test" }) }));
+  await login(page);
+  await page.goto("/?view=connections");
+  await expect(page.getByRole("alert")).toContainText("Searchtide Connect est indisponible");
+  await expect(page.getByRole("button", { name: /Continuer vers Stripe/ })).toBeDisabled();
+  const key = page.getByRole("button", { name: "Utiliser une clé limitée" });
+  await key.focus(); await page.keyboard.press("Enter");
+  await expect(page.getByRole("dialog", { name: "Stripe" })).toBeVisible();
+  expect(await noHScroll(page)).toBe(true);
+});

@@ -363,10 +363,14 @@ function StripeConnect({ onUseKey }: { onUseKey: () => void }) {
     <Card className="mb-6 p-5">
       <h2 className="text-sm font-medium">Connexion avec Stripe</h2>
       {unavailable ? (
-        <p role="alert" className="mt-2 text-sm text-negative">Le service Searchtide Connect est indisponible. Utilisez une clé limitée (aucune donnée ne quitte votre instance).</p>
+        <>
+          <p role="alert" className="mt-2 text-sm text-negative">Le service Searchtide Connect est indisponible. Utilisez une clé limitée (aucune donnée ne quitte votre instance).</p>
+          <div className="mt-3 flex flex-wrap items-center gap-2"><Button disabled>{label}</Button><button type="button" onClick={onUseKey} className="text-sm text-accent underline">Utiliser une clé limitée</button></div>
+        </>
       ) : (
         <>
           <p className="mt-1 text-sm text-muted">Optionnel. Vous serez redirigé vers Stripe ; Searchtide Connect lit votre compte à votre place et ne conserve aucune donnée Stripe.</p>
+          <p className="mt-2 text-sm text-ink">Le service <strong>voit les données Stripe demandées</strong> (montants, abonnements) pour répondre à votre instance. Stripe affichera « <strong>lecture et écriture</strong> » : le relais n'émet que des lectures.</p>
           <label className="mt-3 flex items-start gap-2 text-sm">
             <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-0.5 size-4 shrink-0" />
             <span>J'autorise Searchtide Connect, opéré par Nadir DAOUDI, à lire mon compte Stripe. <a href={`${st.url ?? ""}/privacy`} target="_blank" rel="noreferrer noopener" className="underline">Politique de confidentialité</a> · <a href="https://github.com/Nadir-DNA/searchtide/tree/main/relay" target="_blank" rel="noreferrer noopener" className="underline">Code du relais</a>.</span>
