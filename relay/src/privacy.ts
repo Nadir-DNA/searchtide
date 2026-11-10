@@ -1,4 +1,4 @@
-// Texte servi par GET /privacy, repris de 04-politique-confidentialite-relais.md. Seule la date de mise en ligne reste [À compléter] avant le déploiement.
+// Texte servi par GET /privacy, repris de 04-politique-confidentialite-relais.md.
 export const PRIVACY_FR = `**Searchtide Connect** est un petit service qui permet à votre instance Searchtide de lire vos données Stripe après que vous avez cliqué sur « Connexion avec Stripe ». Il est optionnel : vous pouvez toujours connecter Stripe avec une clé restreinte \`rk_\`, sans aucun échange avec ce service.
 
 ### Qui est responsable
@@ -46,7 +46,7 @@ Stripe n'offre pas, pour ce type de connexion, d'autorisation « lecture seule �
 ### Changements
 Ce texte peut évoluer ; la date de dernière mise à jour figure ci-dessous. Une modification qui élargit les données traitées sera annoncée dans les notes de version, et exigera un nouveau consentement.
 
-Dernière mise à jour : **[À compléter : date de mise en ligne]**.
+Dernière mise à jour : **10 novembre 2026**.
 
 ---`;
 
@@ -70,4 +70,4 @@ export const PRIVACY_EN = `**Searchtide Connect** is a small service that lets y
 
 **Sub-processors.** Stripe and Cloudflare.
 
-**Changes.** A change that widens the data processed will be announced in release notes and will require new consent. Last updated: **[To complete: date]**.`;
+**Changes.** A change that widens the data processed will be announced in release notes and will require new consent. Last updated: **10 November 2026**.`;

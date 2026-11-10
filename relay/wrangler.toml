@@ -26,3 +26,5 @@ crons = ["0 * * * *"]
 #   wrangler secret put STRIPE_OAUTH_KEY  (sk_test, OAuth seulement)
 #   wrangler secret put WEBHOOK_SECRET
 #   wrangler secret put STATE_SECRET
+#   wrangler secret put RATE_SECRET      (HMAC de l'IP, 32 octets aléatoires)
+# Six valeurs au total avec STRIPE_CLIENT_ID, public et ci-dessus (vars).
