@@ -153,3 +153,11 @@ test("API : poids lisibles par tous, modifiables par l'administrateur seulement 
   assert.equal(saved.status, 200); assert.equal(getWeights().trend, 10);
   assert.equal((await (await call(admin, "GET", "/api/portfolio?days=7")).json()).projects.find((x: any) => x.id === p.id).health.coverage, 100);
 });
+
+test("note basse : le seuil de 60 % compare la couverture brute, pas l'arrondi d'affichage", () => {
+  // 59,6 % mesurés : affiché 60 %, mais brut sous 60 → partiel.
+  const raw = computeHealth({ trend: { visits: { now: 2, before: 1 } }, goals: { total: 0, reached: 0 }, reliability: { items: 1, errors: 0 }, conversion: null, action: null }, { trend: 59.6, goals: 40.4, reliability: 0, conversion: 0, action: 0 }, { crm: false });
+  assert.equal(raw.coverage, 60);
+  assert.equal(raw.partial, true);
+  assert.equal(raw.tone, "none");
+});
