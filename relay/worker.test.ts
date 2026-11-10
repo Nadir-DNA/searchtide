@@ -1,0 +1,187 @@
+// CA26 à CA33, CA46 à CA53 : relais Searchtide Connect, Stripe et D1 simulés (aucun appel réseau).
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { handle, type Env } from "./src/worker.ts";
+import { MemoryStore, sha256 } from "./src/store.ts";
+
+const b64url = (b: Uint8Array) => btoa(String.fromCharCode(...b)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+const enc = (s: string) => new TextEncoder().encode(s);
+const verifier = "v".repeat(43);
+const challenge = b64url(new Uint8Array(await crypto.subtle.digest("SHA-256", enc(verifier))));
+let clock = Date.parse("2026-11-10T10:00:00Z");
+const now = () => clock;
+
+type Call = { url: string; init: RequestInit };
+function fakeFetch(calls: Call[]) {
+  return (async (u: any, i: RequestInit = {}) => {
+    const url = String(u); calls.push({ url, init: i });
+    if (url.startsWith("https://connect.stripe.com/oauth/token")) return Response.json({ stripe_user_id: "acct_TEST", livemode: false, scope: "read_write" });
+    if (url.startsWith("https://connect.stripe.com/oauth/deauthorize")) return Response.json({ stripe_user_id: "acct_TEST" });
+    if (url.includes("/customers")) return Response.json({ data: [{ id: "cus_1", created: 1, currency: "eur", email: "secret@exemple.com", name: "Nom", address: "rue" }], has_more: false });
+    if (url.includes("/balance")) return Response.json({ available: [{ amount: 100, currency: "eur" }], pending: [] });
+    if (url.includes("/account")) return Response.json({ id: "acct_TEST", business_profile: { name: "Boutique" }, country: "FR", default_currency: "eur", livemode: false });
+    return Response.json({ data: [], has_more: false });
+  }) as typeof fetch;
+}
+function setup(over: Partial<Env> = {}) {
+  const store = new MemoryStore(); const calls: Call[] = [];
+  const env: Env = {
+    STRIPE_CLIENT_ID: "ca_TEST", STRIPE_KEY: "sk_test_FAKE", WEBHOOK_SECRET: "whsec_FAKE", STATE_SECRET: "state-secret-0123456789",
+    MODE: "test", RELAY_URL: "https://connect.test", __store: store, __fetch: fakeFetch(calls), __now: now, ...over,
+  };
+  return { store, calls, env };
+}
+const post = (path: string, body: unknown, env: Env, headers: Record<string, string> = {}) =>
+  handle(new Request(`https://connect.test${path}`, { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify(body) }), env);
+const get = (path: string, env: Env) => handle(new Request(`https://connect.test${path}`), env);
+
+async function flow(env: Env, host = "instance.test") {
+  const s = await (await post("/v1/start", { instance_id: "inst-1234", instance_host: host, return_url: "https://instance.test/oauth/callback", code_challenge: challenge }, env)).json() as any;
+  const state = new URL(s.authorize_url).searchParams.get("state")!;
+  const cb = await get(`/oauth/callback?code=ac_1&state=${encodeURIComponent(state)}`, env);
+  assert.equal(cb.status, 302);
+  const code = new URL(cb.headers.get("location")!).searchParams.get("code")!;
+  const t = await (await post("/v1/token", { code, code_verifier: verifier, instance_id: "inst-1234" }, env)).json() as any;
+  return { state, code, token: t.token as string, hint: t.hint as string, s };
+}
+
+test("CA53/health : 503 si un secret manque, 200 avec le mode", async () => {
+  const { env } = setup({ STRIPE_KEY: undefined });
+  assert.equal((await get("/v1/health", env)).status, 503);
+  const ok = await get("/v1/health", setup().env);
+  assert.equal(ok.status, 200);
+  assert.deepEqual(await ok.json(), { ok: true, mode: "test" });
+});
+
+test("CA29 : URL de retour https exigée (localhost toléré), page intermédiaire avec l'hôte", async () => {
+  const { env } = setup();
+  const bad = await post("/v1/start", { instance_id: "inst-1234", instance_host: "x.test", return_url: "http://x.test/cb", code_challenge: challenge }, env);
+  assert.equal(bad.status, 400);
+  const local = await post("/v1/start", { instance_id: "inst-1234", instance_host: "x.test", return_url: "http://localhost:3030/cb", code_challenge: challenge }, env);
+  assert.equal(local.status, 200);
+  const s = await (await post("/v1/start", { instance_id: "inst-1234", instance_host: "instance.test", return_url: "https://instance.test/cb", code_challenge: challenge }, env)).json() as any;
+  const page = await get(`/authorize?state=${encodeURIComponent(new URL(s.authorize_url).searchParams.get("state")!)}`, env);
+  assert.match(await page.text(), /instance\.test/);
+});
+
+test("CA28/CA47 : state rejoué refusé, mauvais vérificateur refusé, code à usage unique", async () => {
+  const { env } = setup();
+  const f = await flow(env);
+  const replay = await get(`/oauth/callback?code=ac_2&state=${encodeURIComponent(f.state)}`, env);
+  assert.equal(replay.status, 410);
+  const s = await (await post("/v1/start", { instance_id: "inst-1234", instance_host: "i.test", return_url: "https://i.test/cb", code_challenge: challenge }, env)).json() as any;
+  const state = new URL(s.authorize_url).searchParams.get("state")!;
+  const cb = await get(`/oauth/callback?code=ac_3&state=${encodeURIComponent(state)}`, env);
+  const code = new URL(cb.headers.get("location")!).searchParams.get("code")!;
+  const wrong = await post("/v1/token", { code, code_verifier: "w".repeat(43), instance_id: "inst-1234" }, env);
+  assert.equal(wrong.status, 400);
+  const ok = await post("/v1/token", { code, code_verifier: verifier, instance_id: "inst-1234" }, env);
+  assert.equal(ok.status, 200);
+});
+
+test("CA28 : un code d'instance expire après 60 s", async () => {
+  const { env } = setup();
+  const s = await (await post("/v1/start", { instance_id: "inst-1234", instance_host: "i.test", return_url: "https://i.test/cb", code_challenge: challenge }, env)).json() as any;
+  const state = new URL(s.authorize_url).searchParams.get("state")!;
+  const cb = await get(`/oauth/callback?code=ac_4&state=${encodeURIComponent(state)}`, env);
+  const code = new URL(cb.headers.get("location")!).searchParams.get("code")!;
+  clock += 61_000;
+  const late = await post("/v1/token", { code, code_verifier: verifier, instance_id: "inst-1234" }, env);
+  assert.equal(late.status, 400);
+  clock = Date.parse("2026-11-10T10:00:00Z");
+});
+
+test("CA26/27/46 : lecture en liste blanche, customers réduits, no-store, GET refusé", async () => {
+  const { env, calls } = setup();
+  const f = await flow(env);
+  const auth = { authorization: `Bearer ${f.token}` };
+  const getRead = await handle(new Request("https://connect.test/v1/stripe/read", { headers: auth }), env);
+  assert.equal(getRead.status, 405);
+  assert.equal((await post("/v1/stripe/read", { object: "charges" }, env, auth)).status, 403);
+  assert.equal((await post("/v1/stripe/read", { object: "customers", params: { email: "x" } }, env, auth)).status, 400);
+  const r = await post("/v1/stripe/read", { object: "customers", params: { limit: "10" } }, env, auth);
+  assert.equal(r.status, 200);
+  assert.equal(r.headers.get("cache-control"), "no-store");
+  const body = await r.json() as any;
+  assert.deepEqual(body.data[0], { id: "cus_1", created: 1, currency: "eur" });
+  assert.doesNotMatch(JSON.stringify(body), /secret@exemple|Nom|rue/);
+  const api = calls.find((c) => c.url.includes("/customers"))!;
+  assert.equal((api.init.headers as Record<string, string>)["Stripe-Account"], "acct_TEST");
+});
+
+test("CA31/CA46 : base sans donnée Stripe et journaux sans secret ni paramètre", async () => {
+  const { env, store } = setup();
+  const f = await flow(env);
+  const auth = { authorization: `Bearer ${f.token}` };
+  await post("/v1/stripe/read", { object: "customers", params: { limit: "1" } }, env, auth);
+  const dump = JSON.stringify({ tokens: [...store.tokens], states: [...store.states], codes: [...store.codes], logs: store.logs });
+  assert.doesNotMatch(dump, /cus_1|secret@exemple|sk_test_FAKE|whsec_|state-secret/);
+  for (const l of store.logs) assert.deepEqual(Object.keys(l).sort(), ["at", "instanceId", "route", "status"]);
+});
+
+test("CA49 : quota de 500 lectures par jour et 30 par minute, indépendant par jeton", async () => {
+  const { env, store } = setup();
+  const f = await flow(env);
+  const hash = await sha256(f.token);
+  const t = store.tokens.get(hash)!;
+  t.day = new Date(clock).toISOString().slice(0, 10); t.dayCount = 500;
+  const auth = { authorization: `Bearer ${f.token}` };
+  const r = await post("/v1/stripe/read", { object: "balance" }, env, auth);
+  assert.equal(r.status, 429);
+  assert.ok(Number(r.headers.get("retry-after")) > 0);
+  const other = await flow(env, "autre.test");
+  assert.equal((await post("/v1/stripe/read", { object: "balance" }, env, { authorization: `Bearer ${other.token}` })).status, 200);
+});
+
+test("CA30 : webhook signé invalide les jetons, signature fausse refusée ; révocation supprime le jeton", async () => {
+  const { env, store, calls } = setup();
+  const f = await flow(env);
+  const raw = JSON.stringify({ type: "account.application.deauthorized", account: "acct_TEST" });
+  assert.equal((await post("/v1/webhook", JSON.parse(raw), env, { "stripe-signature": "t=1,v1=faux" })).status, 400);
+  const t = String(Math.floor(clock / 1000));
+  const key = await crypto.subtle.importKey("raw", enc("whsec_FAKE"), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const sig = b64url(new Uint8Array(await crypto.subtle.sign("HMAC", key, enc(`${t}.${raw}`))));
+  const wh = await handle(new Request("https://connect.test/v1/webhook", { method: "POST", headers: { "stripe-signature": `t=${t},v1=${sig}` }, body: raw }), env);
+  assert.equal(wh.status, 200);
+  assert.equal((await post("/v1/stripe/read", { object: "balance" }, env, { authorization: `Bearer ${f.token}` })).status, 401);
+  const g = await flow(env, "rev.test");
+  assert.equal((await post("/v1/revoke", {}, env, { authorization: `Bearer ${g.token}` })).status, 200);
+  assert.equal((await post("/v1/stripe/read", { object: "balance" }, env, { authorization: `Bearer ${g.token}` })).status, 401);
+  assert.ok(calls.some((c) => c.url.includes("deauthorize")));
+});
+
+test("CA48 : purge des états, codes, journaux de 7 jours et jetons inactifs de 180 jours", async () => {
+  const { env, store } = setup();
+  const f = await flow(env);
+  const oldState = await (await post("/v1/start", { instance_id: "vieux-1234", instance_host: "v.test", return_url: "https://v.test/cb", code_challenge: challenge }, env)).json() as any;
+  const oldRaw = new URL(oldState.authorize_url).searchParams.get("state")!;
+  store.states.get(await sha256(oldRaw))!.expiresAt = clock - 1000;
+  store.logs.push({ route: "GET /x", status: 200, instanceId: null, at: clock - 8 * 86400_000 });
+  const old = await sha256(f.token);
+  store.tokens.get(old)!.lastUsed = clock - 181 * 86400_000;
+  await (env as any).__store.purge(clock);
+  assert.equal(store.states.size, 0);
+  assert.equal(store.codes.size, 0);
+  assert.equal(store.logs.filter((l) => l.at < clock - 7 * 86400_000).length, 0);
+  assert.equal(store.tokens.has(old), false);
+});
+
+test("CA50/CA52 : politique FR/EN, mode production bloqué si [À compléter] ; mode test refuse un compte live", async () => {
+  const { env } = setup();
+  const p = await get("/privacy", env);
+  assert.equal(p.status, 200);
+  const html = await p.text();
+  assert.match(html, /Français|Searchtide Connect/);
+  assert.equal((await get("/privacy", { ...env, MODE: "live" })).status, 503);
+  const calls: Call[] = [];
+  const liveEnv = setup({ __fetch: (async (u: any, i: RequestInit = {}) => {
+    calls.push({ url: String(u), init: i });
+    if (String(u).includes("oauth/token")) return Response.json({ stripe_user_id: "acct_LIVE", livemode: true });
+    return Response.json({});
+  }) as typeof fetch }).env;
+  const s = await (await post("/v1/start", { instance_id: "inst-1234", instance_host: "i.test", return_url: "https://i.test/cb", code_challenge: challenge }, liveEnv)).json() as any;
+  const state = new URL(s.authorize_url).searchParams.get("state")!;
+  const cb = await get(`/oauth/callback?code=ac_9&state=${encodeURIComponent(state)}`, liveEnv);
+  assert.equal(cb.status, 200);
+  assert.match(await cb.text(), /comptes de test/);
+});

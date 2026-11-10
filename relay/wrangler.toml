@@ -1,0 +1,27 @@
+name = "searchtide-connect"
+main = "src/worker.ts"
+compatibility_date = "2026-11-10"
+workers_dev = false
+
+# Domaine personnalisé (zone du domaine). Ne pas utiliser workers.dev.
+routes = [{ pattern = "connect.nadirdaoudi.com", custom_domain = true }]
+
+[vars]
+MODE = "test"
+RELAY_URL = "https://connect.nadirdaoudi.com"
+# client_id public de l'environnement « Searchtide Connect test ».
+STRIPE_CLIENT_ID = "ca_VbMjeBkFrNeeJX1qrGGG1PeXZnzq2hla"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "searchtide-connect"
+# Renseigner après `wrangler d1 create searchtide-connect` (identifiant non secret).
+database_id = "A_REMPLACER_APRES_CREATION"
+
+[triggers]
+crons = ["0 * * * *"]
+
+# Secrets (jamais dans ce fichier) :
+#   wrangler secret put STRIPE_KEY
+#   wrangler secret put WEBHOOK_SECRET
+#   wrangler secret put STATE_SECRET
