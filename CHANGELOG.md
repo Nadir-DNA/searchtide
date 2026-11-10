@@ -2,7 +2,7 @@
 
 Toutes les versions notables sont consignées ici. Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/).
 
-## [0.2.3] — à paraître
+## [0.2.3] — 2026-11-10
 
 Passage du relais Searchtide Connect en mode réel et remboursement de la dette technique du webhook.
 
