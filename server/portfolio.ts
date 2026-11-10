@@ -46,8 +46,29 @@ export const MEASURES: Record<string, { label: string; kind: "count" | "money" |
   "play:daily_installs": { label: "Installations par jour (Play)", kind: "count" },
   leads: { label: "Nouveaux contacts", kind: "count" },
 };
-type Measure = { value: number | null; previous: number | null; unit: string | null };
+type Measure = { value: number | null; previous: number | null; unit: string | null; manual?: boolean };
 const SUMMED = new Set(["count", "money"]);
+
+/** Somme des indicateurs saisis à la main portant ce rôle (CA ou contacts) ; null si aucun. `manual` sert à afficher « saisi ». */
+function manualMeasure(inds: Row[], role: "revenue" | "contacts"): Measure | null {
+  const list = inds.filter((i) => i.source === "manual" && i.config?.role === role && i.value != null);
+  if (!list.length) return null;
+  const prev = list.filter((i) => i.previous != null);
+  return {
+    value: list.reduce((n, i) => n + i.value, 0),
+    previous: prev.length ? prev.reduce((n, i) => n + i.previous, 0) : null,
+    unit: list.find((i) => i.unit)?.unit ?? null,
+    manual: true,
+  };
+}
+
+/** Somme des « nouveaux clients » Stripe d'un projet ; null si aucun indicateur de ce type. */
+function stripeContacts(inds: Row[]): Measure | null {
+  const list = inds.filter((i) => i.source === "stripe" && i.config?.metric === "new_customers" && i.value != null);
+  if (!list.length) return null;
+  const prev = list.filter((i) => i.previous != null);
+  return { value: list.reduce((n, i) => n + i.value, 0), previous: prev.length ? prev.reduce((n, i) => n + i.previous, 0) : null, unit: null };
+}
 
 /** Valeurs des indicateurs d'un projet pour une clé de mesure (somme pour les comptes et l'argent, moyenne pour les notes). */
 function indicatorMeasures(inds: Row[]): Record<string, Measure> {
@@ -139,13 +160,24 @@ export function portfolio(r: Range, weights: Weights = getWeights()) {
       action: x.crm_key ? { late: crm?.todo ?? 0 } : null,
     }, weights, { crm: crmApplicable() }) : null;
 
+    // B1 : le CA vient de Stripe si une connexion Stripe est rattachée, sinon des saisies « CA ».
+    // Même logique pour les contacts : CRM s'il existe, sinon Stripe (nouveaux clients), sinon saisie « contacts ».
+    const stripeConnected = inds.some((i) => i.source === "stripe");
+    const manualRevenue = manualMeasure(inds, "revenue");
+    const revenueMeasure: Measure | null = stripeConnected
+      ? { value: money(inds, "revenue", "value"), previous: money(inds, "revenue", "previous"), unit: inds.find((i) => i.source === "stripe" && i.config?.metric === "revenue")?.unit ?? "€" }
+      : manualRevenue;
+    const contactsMeasure: Measure | null = x.crm_key
+      ? { value: crm?.leads ?? 0, previous: crm?.leads_prev ?? 0, unit: null }
+      : stripeConnected ? stripeContacts(inds) : manualMeasure(inds, "contacts");
     return {
       id: x.id, name: x.name, color: x.color, url: x.url, sites: ss.map((s) => s.domain), to, health, mrrPrev: money(inds, "mrr", "previous"),
       measures: {
+        ...indicatorMeasures(inds),
         ...(ids.length ? { visitors: { value: now.visitors, previous: before.visitors, unit: null } } : {}),
         ...(ss.some((s) => s.gsc_property) ? { clicks: { value: now.clicks, previous: before.clicks, unit: null }, position: { value: now.position, previous: before.position, unit: null } } : {}),
-        ...(x.crm_key ? { leads: { value: crm?.leads ?? 0, previous: crm?.leads_prev ?? 0, unit: null } } : {}),
-        ...indicatorMeasures(inds),
+        ...(revenueMeasure ? { revenue: revenueMeasure } : {}),
+        ...(contactsMeasure ? { leads: contactsMeasure } : {}),
       } as Record<string, Measure>,
       visitors: now.visitors, visitorsPrev: before.visitors, clicks: now.clicks, clicksPrev: before.clicks,
       impressions: now.impressions, position: now.position, positionPrev: before.position,

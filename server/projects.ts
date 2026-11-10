@@ -77,7 +77,7 @@ const configs = {
   stripe: z.object({ env: envName.optional(), connection_id: z.string().optional(), metric: z.enum(["revenue", "new_customers", "active_subscriptions", "mrr"]), account: z.string().regex(/^acct_\w+$/).optional() }),
   http: z.object({ url: z.string().url(), path: z.string().max(200).default(""), env: envName.optional(), connection_id: z.string().optional() }),
   site: z.object({ domain: z.string(), metric: z.enum(["visitors", "pageviews", "clicks", "impressions"]) }),
-  manual: z.object({}),
+  manual: z.object({ role: z.enum(["revenue", "contacts"]).optional() }),
   pagespeed: z.object({ url: z.string().url(), metric: z.enum(["performance", "seo", "lcp", "cls"]), strategy: z.enum(["mobile", "desktop"]).default("mobile"), env: envName.optional(), connection_id: z.string().optional() }),
   play: z.object({ env: envName.optional(), connection_id: z.string().optional(), package: z.string().regex(/^[a-z][a-z0-9_.]+$/), metric: z.enum(["daily_installs", "active_installs", "rating"]) }),
 };

@@ -344,7 +344,8 @@ function IndicatorForm({ projectId, ind, sites, onClose, onSaved }: { projectId:
     const config = source === "pg" ? { sql: f.sql, ...link } : source === "stripe" ? { metric: f.metric, ...(useEnv && f.account ? { account: f.account } : {}), ...link }
       : source === "http" ? { url: f.url, path: f.path, ...link } : source === "site" ? { domain: f.domain, metric: f.metric }
       : source === "pagespeed" ? { url: f.url, metric: f.metric, strategy: f.strategy, ...link }
-      : source === "play" ? { package: f.package, metric: f.metric, ...link } : {};
+      : source === "play" ? { package: f.package, metric: f.metric, ...link }
+      : source === "manual" ? { ...(f.role ? { role: f.role } : {}) } : {};
     return { label: f.label, unit: f.unit, mode: f.mode, source, config, goal: f.goal ? Number(f.goal.replace(",", ".")) : null, goal_period: f.goal_period };
   };
   async function runTest(form: HTMLFormElement) {
@@ -441,7 +442,18 @@ function IndicatorForm({ projectId, ind, sites, onClose, onSaved }: { projectId:
           Le compte de service Google de la connexion est utilisé ; le bucket des rapports Play se règle dans cette connexion (Connexions → Google).
         </p>
       )}
-      {source === "manual" && <p className="text-sm text-muted">La valeur se saisit sur la page du projet, ou par un agent avec l'outil indicator_record.</p>}
+      {source === "manual" && (
+        <>
+          <Field label="Rôle dans le Portefeuille">
+            <select name="role" defaultValue={c.role ?? ""} className={inputCls}>
+              <option value="">Aucun</option>
+              <option value="revenue">Chiffre d'affaires</option>
+              <option value="contacts">Nouveaux contacts</option>
+            </select>
+          </Field>
+          <p className="text-sm text-muted">La valeur se saisit sur la page du projet, ou par un agent avec l'outil indicator_record.</p>
+        </>
+      )}
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Objectif (facultatif)"><input name="goal" inputMode="decimal" defaultValue={ind.goal?.target ?? ""} className={inputCls} placeholder="Ex. 20" /></Field>
         <Field label="Période de l'objectif"><select name="goal_period" defaultValue={ind.goal?.period ?? "month"} className={inputCls}><option value="month">Par mois</option><option value="week">Par semaine</option></select></Field>

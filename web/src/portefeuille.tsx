@@ -8,7 +8,7 @@ import { Button, Card, EmptyBox, fmt } from "./ui";
 import { columnTotal } from "./portefeuille-total";
 
 type Go = (n: Record<string, string | undefined>) => void;
-type Measure = { value: number | null; previous: number | null; unit: string | null };
+type Measure = { value: number | null; previous: number | null; unit: string | null; manual?: boolean };
 type Health = { score: number | null; coverage: number; tone: "positive" | "warn" | "negative" | "none"; partial: boolean; missing: string[] };
 type Column = { key: string; label: string; kind: "count" | "money" | "score" | "rating" | "position" | "seconds" | "ratio"; lowerIsBetter?: boolean };
 type Row = { id: string; name: string; color: string | null; measures: Record<string, Measure>; health: Health | null };
@@ -135,8 +135,9 @@ export function PortfolioView({ days, go }: { days: number; go: Go }) {
                       {p.health?.score == null ? <span className="text-muted">—</span> : (
                         <span className={`num font-medium ${p.health.partial ? "text-muted" : TONE[p.health.tone]}`}>
                           <span aria-hidden className="mr-1.5">●</span>{p.health.score}
-                          {p.health.partial && <><span aria-hidden title={`Score partiel : ${p.health.missing.join(", ")}`} className="ml-1.5 text-negative">⚠</span><span className="sr-only"> Score partiel : {p.health.missing.join(", ")}</span></>}
-                          <span className="sr-only">{p.health.tone === "positive" ? " bon" : p.health.tone === "warn" ? " moyen" : p.health.tone === "negative" ? " faible" : ""}</span>
+                          {p.health.partial
+                            ? <span className="ml-1.5 text-xs font-normal text-muted" title={`Composantes manquantes : ${p.health.missing.join(", ")}`}>Partiel · {p.health.coverage} % mesuré</span>
+                            : <span className="sr-only">{p.health.tone === "positive" ? " bon" : p.health.tone === "warn" ? " moyen" : p.health.tone === "negative" ? " faible" : ""}</span>}
                         </span>
                       )}
                     </td>
@@ -144,7 +145,7 @@ export function PortfolioView({ days, go }: { days: number; go: Go }) {
                     {cols.map((c) => {
                       const m = p.measures[c.key];
                       return m ? (
-                        <><td key={c.key} className="num px-3 py-3 text-right">{show(m, c)}</td><td key={c.key + "d"} className="num py-3 pr-3 text-right text-xs"><Variation m={m} c={c} /></td></>
+                        <><td key={c.key} className="num px-3 py-3 text-right">{show(m, c)}{m.manual && <span className="ml-1 text-xs font-normal text-muted">saisi</span>}</td><td key={c.key + "d"} className="num py-3 pr-3 text-right text-xs"><Variation m={m} c={c} /></td></>
                       ) : (
                         <td key={c.key} colSpan={2} className="px-3 py-3 text-right text-muted" title="Source non rattachée">
                           —{" "}<button type="button" onClick={() => go({ view: "project", id: p.id, site: undefined })} aria-label={`Rattacher une source à ${p.name} pour ${c.label}`} className="text-xs text-accent underline">Rattacher</button>
