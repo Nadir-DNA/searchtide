@@ -1,11 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { db } from "./db.ts";
-import { channelOf, collect, parseUA } from "./collect.ts";
+import { channelOf, collect, parseUA, refusals } from "./collect.ts";
 import { strikingDistance, trafficStats } from "./stats.ts";
 
 const UA = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1";
-db.prepare("INSERT INTO sites VALUES ('s1', 'exemple.com', 'Exemple', NULL, 0)").run();
+db.prepare("INSERT INTO sites (id, domain, name, gsc_property, created_at) VALUES ('s1', 'exemple.com', 'Exemple', NULL, 0)").run();
+db.prepare("INSERT INTO sites (id, domain, name, gsc_property, created_at) VALUES ('s2', 'last-hit.test', 'Last hit', NULL, 0)").run();
+db.prepare("INSERT INTO sites (id, domain, name, gsc_property, created_at) VALUES ('s3', 'limite.test', 'Limite', NULL, 0)").run();
 
 test("canaux", () => {
   assert.equal(channelOf(null, null), "direct");
@@ -25,9 +27,23 @@ test("collecte et statistiques", () => {
   const t = Date.parse("2026-11-01T10:00:00Z");
   assert.equal(collect({ site: "exemple.com", url: "https://www.exemple.com/a?utm_campaign=lancement", referrer: "https://chatgpt.com/" }, "1.1.1.1", UA, "MA", t), true);
   assert.equal(collect({ site: "exemple.com", url: "https://exemple.com/b", referrer: "https://exemple.com/a" }, "1.1.1.1", UA, "MA", t + 1000), true);
+  // 1.1 : last_hit écrit à la première visite, pas réécrit dans les 30 s suivantes (site dédié)
+  const lastHit = () => (db.prepare("SELECT last_hit FROM sites WHERE id = 's2'").get() as { last_hit: number | null }).last_hit;
+  assert.equal(collect({ site: "last-hit.test", url: "https://last-hit.test/a" }, "1.1.1.1", UA, null, t), true);
+  assert.equal(lastHit(), t);
+  assert.equal(collect({ site: "last-hit.test", url: "https://last-hit.test/b" }, "1.1.1.1", UA, null, t + 1000), true);
+  assert.equal(lastHit(), t, "pas de réécriture dans les 30 s");
+  assert.equal(collect({ site: "last-hit.test", url: "https://last-hit.test/c" }, "1.1.1.1", UA, null, t + 31_000), true);
+  assert.equal(lastHit(), t + 31_000);
   assert.equal(collect({ site: "exemple.com", url: "https://autre.com/" }, "2.2.2.2", UA, null, t), false, "domaine étranger refusé");
   assert.equal(collect({ site: "exemple.com", url: "https://exemple.com/" }, "3.3.3.3", "Googlebot/2.1", null, t), false, "robot ignoré");
   assert.equal(collect({ site: "inconnu.com", url: "https://inconnu.com/" }, "3.3.3.3", UA, null, t), false);
+  // D3 : les refus sont comptés par raison, sans IP ni user-agent
+  assert.equal(refusals("s1", "exemple.com")["hôte différent"], 1);
+  assert.equal(refusals("s1", "exemple.com")["robot ou outil"], 1);
+  assert.equal(refusals("s1", "exemple.com")["domaine inconnu"] ?? 0, 0);
+  assert.deepEqual(Object.keys(refusals("s1", "exemple.com")).sort(), ["hôte différent", "robot ou outil"]);
+  assert.equal(refusals("inconnu.com", "inconnu.com")["domaine inconnu"], 1);
 
   const s = trafficStats("s1", { from: "2026-11-01", to: "2026-11-01" });
   assert.deepEqual(s.totals, { visitors: 1, pageviews: 2, ai: 1 });
@@ -35,6 +51,15 @@ test("collecte et statistiques", () => {
   assert.equal(s.aiReferrers[0].key, "chatgpt.com");
   assert.equal(s.campaigns[0].key, "lancement");
   assert.equal(s.channels.find((c) => c.key === "direct")?.pageviews, 1, "navigation interne = direct");
+});
+
+test("F3 : limite par site et par IP, réponse inchangée, refus comptés", () => {
+  const now = Date.parse("2026-11-02T10:00:00Z");
+  let accepted = 0;
+  for (let i = 0; i < 130; i++) if (collect({ site: "limite.test", url: "https://limite.test/p" }, "9.9.9.9", UA, null, now)) accepted++;
+  assert.ok(accepted < 130, "le burst est limité");
+  assert.ok(accepted >= 100, "le seuil reste généreux");
+  assert.ok((refusals("s3", "limite.test")["trop de visites"] ?? 0) >= 1);
 });
 
 test("opportunités Search Console", () => {

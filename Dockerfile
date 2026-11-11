@@ -14,4 +14,5 @@ COPY package.json ./
 COPY server ./server
 VOLUME /data
 EXPOSE 3030
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 CMD wget -qO- http://127.0.0.1:3030/healthz || exit 1
 CMD ["node", "--no-warnings", "server/index.ts"]

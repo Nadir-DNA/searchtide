@@ -1,6 +1,6 @@
 {
   "name": "searchtide",
-  "version": "0.2.3",
+  "version": "0.3.0",
   "description": "Analytics web et suivi SEO tout-en-un, gratuit et open source, pilotable par des agents (MCP).",
   "license": "MIT",
   "author": "Nadir DAOUDI",
@@ -14,19 +14,22 @@
     "dev:web": "vite",
     "build": "vite build",
     "start": "node --env-file-if-exists=.env server/index.ts",
-    "test": "DATABASE_PATH=:memory: node --test server/*.test.ts server/connectors/*.test.ts relay/*.test.ts scripts/*.test.ts",
+    "test": "DATABASE_PATH=:memory: node --test server/*.test.ts server/browser/*.test.ts server/publishers/*.test.ts server/connectors/*.test.ts relay/*.test.ts scripts/*.test.ts",
     "typecheck": "tsc --noEmit",
     "2fa": "node scripts/activer-2fa.mjs",
     "e2e": "npm run build && playwright test",
     "demo": "DEMO=1 DATABASE_PATH=data/demo.db node --no-warnings --env-file-if-exists=.env server/index.ts",
-    "deploy:relay": "node scripts/deploy-relay.mjs"
+    "deploy:relay": "node scripts/deploy-relay.mjs",
+    "backup:verify": "node scripts/backup-verify.mjs"
   },
   "dependencies": {
     "@hono/node-server": "^2.1.6",
     "@modelcontextprotocol/server": "^2.4.0",
+    "playwright-core": "^1.65.0",
     "hono": "^4.13.17",
     "nodemailer": "^10.4.0",
     "pg": "^8.23.1",
+    "qrcode": "^1.5.4",
     "zod": "^4.6.7"
   },
   "devDependencies": {
@@ -42,7 +45,6 @@
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.2.1",
     "concurrently": "^9.2.1",
-    "qrcode": "^1.5.4",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "tailwindcss": "^4.3.5",

@@ -5,36 +5,31 @@ import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { db } from "./db.ts";
 import { migrate } from "./migrations.ts";
+import { allModules, type WidgetDef } from "./modules/index.ts";
+import { isEnabled } from "./modules/state.ts";
+import { visibleProjectIds } from "./agents.ts";
 
 type Row = Record<string, any>;
 migrate("dashboards-1", `CREATE TABLE dashboards (id TEXT PRIMARY KEY, name TEXT NOT NULL, icon TEXT, position INTEGER NOT NULL DEFAULT 0,
   widgets TEXT NOT NULL DEFAULT '[]', updated_at INTEGER NOT NULL, updated_by TEXT)`);
 
-/** Catalogue des blocs : ce que l'interface sait afficher et ce que les agents peuvent placer. */
-export const WIDGETS = {
-  pulse: { label: "Chiffres du portefeuille", description: "Visites, clics Google, chiffre d'affaires, nouveaux contacts, relances : tous projets confondus.", size: "full", options: {} },
-  traffic_by_project: { label: "Visites par projet", description: "Barres empilées jour par jour, une couleur par projet.", size: "two-thirds", options: {} },
-  todo: { label: "À traiter", description: "Alertes : relevés en panne, sites muets, baisses, objectifs en retard, relances, publications du jour.", size: "third", options: {} },
-  projects_table: { label: "Projets", description: "Tableau comparatif de tous les projets (visites, Google, CA, contacts, indicateur clé, objectif).", size: "full", options: {} },
-  pipeline: { label: "Pipeline commercial", description: "Contacts par étape, montant en négociation, gagné ce mois.", size: "half", options: {} },
-  publications: { label: "Publications de la semaine", description: "Calendrier éditorial de la semaine en cours.", size: "half", options: {} },
-  project: { label: "Un projet", description: "Les indicateurs d'un projet en chiffres.", size: "full", options: { project: "id ou crm_key du projet (obligatoire)" } },
-  indicator: { label: "Courbe d'un indicateur", description: "Graphique jour par jour d'un indicateur, aux couleurs de son projet.", size: "half", options: { indicator: "id de l'indicateur (obligatoire, voir projects_kpis)" } },
-  goals: { label: "Objectifs", description: "Avancement de tous les objectifs, avec projection au rythme actuel.", size: "half", options: { project: "id ou crm_key pour se limiter à un projet (facultatif)" } },
-  site: { label: "Trafic d'un site", description: "Visiteurs par jour et provenance d'un site suivi.", size: "half", options: { site: "domaine, ex. exemple.com (obligatoire)" } },
-  seo: { label: "Mots-clés à travailler", description: "Mots-clés en position 4 à 20 d'un site, les plus faciles à faire monter.", size: "half", options: { site: "domaine (obligatoire)" } },
-  note: { label: "Note", description: "Texte libre (Markdown simple : titres #, listes -, **gras**, liens). Idéal pour un briefing écrit par un agent.", size: "half", options: { text: "contenu Markdown (obligatoire)" } },
-  agent_log: { label: "Journal des agents", description: "Les derniers appels des agents IA, avec leur nom.", size: "half", options: { agent: "nom d'un agent pour filtrer (facultatif)", limit: "nombre de lignes, 5 à 50 (facultatif)" } },
-} as const;
+/** Catalogue des blocs : la réunion des blocs déclarés par les modules (server/modules), lue à chaque appel. */
+export const widgetDefs = (): Record<string, WidgetDef> => Object.fromEntries(allModules().flatMap((m) => Object.entries(m.widgets ?? {})));
+/** Catalogue avec, pour chaque bloc, son module et s'il est disponible (module actif). */
+export function widgetCatalog(): Record<string, WidgetDef & { module: string; moduleName: string; available: boolean }> {
+  const out: Record<string, WidgetDef & { module: string; moduleName: string; available: boolean }> = {};
+  for (const m of allModules()) for (const [k, w] of Object.entries(m.widgets ?? {})) out[k] = { ...w, module: m.id, moduleName: m.name, available: isEnabled(m.id) };
+  return out;
+}
 export const SIZES = ["quarter", "third", "half", "two-thirds", "full"] as const;
 
 const widget = z.object({
   id: z.string().min(1).max(40).default(() => randomUUID().slice(0, 8)),
-  type: z.enum(Object.keys(WIDGETS) as [keyof typeof WIDGETS, ...(keyof typeof WIDGETS)[]]),
+  type: z.string().refine((t) => t in widgetDefs(), "Type de bloc inconnu, voir le catalogue"),
   size: z.enum(SIZES).optional(),
   title: z.string().max(80).optional(),
   options: z.record(z.string(), z.union([z.string().max(20_000), z.number(), z.boolean()])).default({}),
-}).transform((w) => ({ ...w, size: w.size ?? WIDGETS[w.type].size }));
+}).transform((w) => ({ ...w, size: w.size ?? widgetDefs()[w.type].size }));
 export type Widget = z.infer<typeof widget>;
 const widgets = z.array(widget).max(60);
 
@@ -101,7 +96,16 @@ export function editWidgets(id: string, by: string, op:
 const err = (e: unknown) => e instanceof z.ZodError ? e.issues.map((i) => `${i.path.join(".")} : ${i.message}`).join(", ") : (e as Error).message;
 
 export function registerDashboards(app: Hono) {
-  app.get("/api/dashboards", (c) => c.json({ dashboards: listDashboards(), catalog: WIDGETS, sizes: SIZES }));
+  app.get("/api/dashboards", (c) => {
+    const agent = (c as any).get("agent");
+    if (!agent) return c.json({ dashboards: listDashboards(), catalog: widgetCatalog(), sizes: SIZES });
+    const ids = visibleProjectIds(agent);
+    if (!ids) return c.json({ dashboards: listDashboards(), catalog: widgetCatalog(), sizes: SIZES });
+    // Une clé limitée ne voit que les blocs qui ne ciblent pas un autre projet.
+    const refs = (o: Record<string, unknown>) => ["project", "project_id", "projects", "crm_key"].flatMap((k) => typeof o[k] === "string" ? [String(o[k])] : Array.isArray(o[k]) ? (o[k] as unknown[]).map(String) : []);
+    const scoped = listDashboards().map((d) => ({ ...d, widgets: d.widgets.filter((w) => refs(w.options).every((v) => ids.has(v))) }));
+    return c.json({ dashboards: scoped, catalog: widgetCatalog(), sizes: SIZES });
+  });
   app.post("/api/dashboards", async (c) => {
     const b = await c.req.json().catch(() => ({}));
     try { return c.json(createDashboard(b.name, b.widgets ?? []), 201); } catch (e) { return c.json({ error: err(e) }, 400); }
@@ -114,7 +118,7 @@ export function registerDashboards(app: Hono) {
 
 const json = (data: unknown) => ({ content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] });
 const wInput = z.object({
-  type: z.enum(Object.keys(WIDGETS) as [string, ...string[]]).describe("Type de bloc, voir dashboard_catalog"),
+  type: z.string().describe("Type de bloc, voir dashboard_catalog"),
   size: z.enum(SIZES).optional().describe("Largeur : quarter, third, half, two-thirds, full"),
   title: z.string().optional().describe("Titre affiché à la place du titre par défaut"),
   options: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional().describe("Options du type (voir dashboard_catalog)"),
@@ -122,7 +126,7 @@ const wInput = z.object({
 
 export function registerDashboardTools(server: McpServer, readOnly: boolean, agent: string) {
   server.registerTool("dashboard_catalog", { description: "Types de blocs disponibles pour les pages de Searchtide, leurs options et les tailles possibles." },
-    async () => json({ widgets: WIDGETS, sizes: SIZES }));
+    async () => json({ widgets: widgetCatalog(), sizes: SIZES }));
   server.registerTool("dashboard_list", { description: "Pages de Searchtide (ordre du menu) avec leurs blocs." }, async () => json(listDashboards()));
   server.registerTool("dashboard_get", { description: "Une page de Searchtide et ses blocs, par id ou par nom.", inputSchema: z.object({ page: z.string() }) },
     async ({ page }) => json(getDashboard(page)));
@@ -135,7 +139,7 @@ export function registerDashboardTools(server: McpServer, readOnly: boolean, age
     description: "Renomme une page, la déplace dans le menu (position, 0 = en haut) ou remplace tous ses blocs d'un coup (liste ordonnée).",
     inputSchema: z.object({ page: z.string(), name: z.string().optional(), position: z.number().int().min(0).optional(), widgets: z.array(wInput.extend({ id: z.string().optional() })).optional() }),
   }, async ({ page, ...patch }) => json(saveDashboard(page, patch, agent)));
-  server.registerTool("dashboard_delete", { description: "Supprime une page (pas la dernière).", inputSchema: z.object({ page: z.string() }) },
+  if (!agent) server.registerTool("dashboard_delete", { description: "Supprime une page (pas la dernière).", inputSchema: z.object({ page: z.string() }) },
     async ({ page }) => { deleteDashboard(page); return json({ ok: true }); });
   server.registerTool("widget_add", {
     description: "Ajoute un bloc à une page, à la fin ou à une position (0 = en premier).",
@@ -149,6 +153,6 @@ export function registerDashboardTools(server: McpServer, readOnly: boolean, age
   server.registerTool("widget_move", { description: "Déplace un bloc à une position de la page (0 = en premier).",
     inputSchema: z.object({ page: z.string(), widget_id: z.string(), index: z.number().int().min(0) }) },
     async ({ page, widget_id, index }) => json(editWidgets(page, agent, { op: "move", widget_id, index })));
-  server.registerTool("widget_remove", { description: "Retire un bloc d'une page.", inputSchema: z.object({ page: z.string(), widget_id: z.string() }) },
-    async ({ page, widget_id }) => json(editWidgets(page, agent, { op: "remove", widget_id })));
+  if (!agent) server.registerTool("widget_remove", { description: "Retire un bloc d'une page.", inputSchema: z.object({ page: z.string(), widget_id: z.string() }) },
+    async ({ page, widget_id }) => json(editWidgets(page, "", { op: "remove", widget_id })));
 }

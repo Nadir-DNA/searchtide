@@ -76,11 +76,15 @@ export function strikingDistance(siteId: string, r: Range, limit = 30) {
 }
 
 /** Vue d'ensemble : un résumé par site, avec la période précédente. */
-export function overview(r: Range) {
+export function overview(r: Range, allowedDomains: Set<string> | null = null) {
   const p = previous(r);
-  const daily = all(`SELECT day, COUNT(DISTINCT site_id || visitor) AS visitors FROM events
-    WHERE day BETWEEN ? AND ? AND type = 'pageview' GROUP BY day ORDER BY day`, r.from, r.to);
-  const sites = (db.prepare("SELECT id, domain, name, gsc_property FROM sites ORDER BY domain").all() as Record<string, any>[]).map((s) => ({
+  const allSites = db.prepare("SELECT id, domain, name, gsc_property FROM sites ORDER BY domain").all() as Record<string, any>[];
+  const visible = allowedDomains ? allSites.filter((s) => allowedDomains.has(s.domain)) : allSites;
+  const ids = visible.map((s) => s.id);
+  const ph = ids.map(() => "?").join(", ");
+  const daily = ids.length ? all(`SELECT day, COUNT(DISTINCT site_id || visitor) AS visitors FROM events
+    WHERE site_id IN (${ph}) AND day BETWEEN ? AND ? AND type = 'pageview' GROUP BY day ORDER BY day`, ...ids, r.from, r.to) : [];
+  const sites = visible.map((s) => ({
     ...s, traffic: trafficTotals(s.id, r), trafficPrev: trafficTotals(s.id, p),
     search: s.gsc_property ? searchTotals(s.id, r) : null,
     today: (db.prepare("SELECT COUNT(DISTINCT visitor) AS n FROM events WHERE site_id = ? AND day = ? AND type = 'pageview'")

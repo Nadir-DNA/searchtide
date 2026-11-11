@@ -1,8 +1,9 @@
 // Connexions : le catalogue des services que l'on branche à Searchtide. Une carte = un service, un statut, une action.
 // Le contenu des cartes et du formulaire vient du serveur (/api/connectors) : ajouter un connecteur n'exige aucun écran.
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useDrawerKeys } from "./useDrawerKeys";
 import { api } from "./api";
-import { Button, Card, inputCls, restoreFocus } from "./ui";
+import { Button, Card, UndoBar, copyText, inputCls, restoreFocus } from "./ui";
 
 export type Field = { key: string; label: string; type: "text" | "url" | "number" | "select" | "json" | "textarea"; secret?: boolean; required?: boolean; help?: string; placeholder?: string; options?: { value: string; label: string }[]; default?: string; generate?: "topic" };
 export type Conn = { id: string; kind: string; label: string; hint: string; settings: Record<string, string>; status: "connected" | "error" | "reconnect"; status_detail: string | null; tested_at: number | null; livemode: boolean; test_mode: boolean };
@@ -47,28 +48,6 @@ const ago = (t: number | null) => {
 };
 
 /** Piège le focus dans le tiroir ; Échap le ferme. */
-export function useDrawerKeys(ref: React.RefObject<HTMLElement | null>, onClose: () => void) {
-  useEffect(() => {
-    const el = ref.current;
-    const focusable = () => [...(el?.querySelectorAll<HTMLElement>('a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])') ?? [])].filter((x) => x.getClientRects().length > 0);
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") { e.stopPropagation(); onClose(); return; }
-      if (e.key !== "Tab") return;
-      const f = focusable(); if (!f.length) return;
-      const first = f[0], last = f[f.length - 1], active = document.activeElement;
-      if (e.shiftKey && (active === first || !el?.contains(active))) { e.preventDefault(); last.focus(); }
-      else if (!e.shiftKey && (active === last || !el?.contains(active))) { e.preventDefault(); first.focus(); }
-    };
-    const onFocusIn = (e: FocusEvent) => { if (el && !el.contains(e.target as Node)) focusable()[0]?.focus(); };
-    // Focus perdu vers la page (aucune cible) alors que le tiroir est ouvert : on le ramène dans le tiroir
-    const onFocusOut = (e: FocusEvent) => {
-      if (e.relatedTarget) return;
-      setTimeout(() => { if (el?.isConnected && !el.contains(document.activeElement)) focusable()[0]?.focus(); }, 0);
-    };
-    document.addEventListener("keydown", onKey); document.addEventListener("focusin", onFocusIn); document.addEventListener("focusout", onFocusOut);
-    return () => { document.removeEventListener("keydown", onKey); document.removeEventListener("focusin", onFocusIn); document.removeEventListener("focusout", onFocusOut); };
-  }, [ref, onClose]);
-}
 
 function FieldInput({ f, value, onChange, editing }: { f: Field; value: string; onChange: (v: string) => void; editing: boolean }) {
   const [shown, setShown] = useState(false);
@@ -87,7 +66,7 @@ function FieldInput({ f, value, onChange, editing }: { f: Field; value: string; 
         <>
           <textarea id={id} value={value} onChange={(e) => onChange(e.target.value)} rows={4} spellCheck={false} autoComplete="off"
             placeholder={editing && f.secret ? "••••••••" : f.placeholder} className={`${common} mt-2 h-auto w-full py-2`} />
-          {f.type === "json" && <label className="mt-2 inline-block cursor-pointer text-xs text-accent underline">Choisir un fichier .json
+          {f.type === "json" && <label className="mt-2 inline-block cursor-pointer text-xs text-ink underline">Choisir un fichier .json
             <input type="file" accept=".json,application/json" className="sr-only" onChange={(e) => readFile(e.target.files?.[0])} /></label>}
         </>
       ) : (
@@ -108,11 +87,9 @@ function CopyText({ value }: { value: string }) {
   const [error, setError] = useState("");
   async function copy() {
     setError(""); setDone(false);
-    try {
-      if (!navigator.clipboard?.writeText) throw new Error("presse-papiers indisponible");
-      await navigator.clipboard.writeText(value);
-      setDone(true); setTimeout(() => setDone(false), 1500);
-    } catch { setError("Copie impossible ici, sélectionnez l'adresse"); }
+    const ok = await copyText(value);
+    if (ok) { setDone(true); setTimeout(() => setDone(false), 1500); }
+    else setError("Copie impossible ici, sélectionnez l'adresse");
   }
   return (
     <span className="inline-flex max-w-full flex-wrap items-center gap-1.5 align-middle">
@@ -177,16 +154,32 @@ export function Drawer({ m, catalog, onClose, reload }: { m: Manifest; catalog: 
     try { setConfirmRm({ conn: c, usage: await api<Usage>(`/api/connections/${c.id}/usage`) }); }
     catch (e) { setOut({ kind: "error", text: (e as Error).message }); }
   }
-  async function doRemove() {
+  const [copyFailed, setCopyFailed] = useState(false);
+  const [undo, setUndo] = useState<{ id: string; label: string; timer: number } | null>(null);
+  const [hiddenConns, setHiddenConns] = useState<string[]>([]);
+  const outRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (out?.kind === "error") outRef.current?.focus(); }, [out]);
+  function doRemove() {
     if (!confirmRm) return;
     const { conn, usage } = confirmRm;
-    try {
-      const r = await api<{ relayWarning?: boolean }>(`/api/connections/${conn.id}`, { method: "DELETE" });
-      setConfirmRm(null);
-      setOut({ kind: "ok", text: `« ${conn.label} » est retiré.`, detail: `${usage.indicators.length ? `${usage.indicators.length} indicateur${usage.indicators.length > 1 ? "s" : ""} passe${usage.indicators.length > 1 ? "nt" : ""} en « Source retirée », historique conservé. ` : ""}${r.relayWarning ? "Révoquée ici ; retirez aussi l'application dans votre Dashboard Stripe." : ""}`.trim() });
-      await reload();
-      closeRef.current?.focus();
-    } catch (e) { setOut({ kind: "error", text: (e as Error).message }); setConfirmRm(null); }
+    setConfirmRm(null);
+    setHiddenConns((h) => [...h, conn.id]);
+    // B8 : la suppression part après 5 s ; « Annuler » l'empêche.
+    const timer = window.setTimeout(async () => {
+      try {
+        const r = await api<{ relayWarning?: boolean }>(`/api/connections/${conn.id}`, { method: "DELETE" });
+        setOut({ kind: "ok", text: `« ${conn.label} » est retiré.`, detail: `${usage.indicators.length ? `${usage.indicators.length} indicateur${usage.indicators.length > 1 ? "s" : ""} passe${usage.indicators.length > 1 ? "nt" : ""} en « Source retirée », historique conservé. ` : ""}${r.relayWarning ? "Révoquée ici ; retirez aussi l'application dans votre Dashboard Stripe." : ""}`.trim() });
+        await reload();
+      } catch (e) { setOut({ kind: "error", text: (e as Error).message }); }
+      finally { setUndo(null); setHiddenConns((h) => h.filter((x) => x !== conn.id)); }
+    }, 5000);
+    setUndo({ id: conn.id, label: conn.label, timer });
+  }
+  function cancelRemove() {
+    if (!undo) return;
+    window.clearTimeout(undo.timer);
+    setHiddenConns((h) => h.filter((x) => x !== undo.id));
+    setUndo(null);
   }
 
   return (
@@ -213,7 +206,7 @@ export function Drawer({ m, catalog, onClose, reload }: { m: Manifest; catalog: 
             <ol className="mt-3 space-y-2.5 text-sm leading-6">
               {m.guide.map((g, i) => (
                 <li key={i} className="flex gap-3"><span aria-hidden className="num mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-raised text-xs text-muted">{i + 1}</span>
-                  <span className="min-w-0 break-words">{g.text}{g.url && <> <a href={g.url} target="_blank" rel="noreferrer noopener" className="whitespace-nowrap text-accent underline">Ouvrir ↗</a></>}</span></li>
+                  <span className="min-w-0 break-words">{g.text}{g.url && <> <a href={g.url} target="_blank" rel="noreferrer noopener" className="whitespace-nowrap text-ink underline">Ouvrir ↗</a></>}</span></li>
               ))}
             </ol>
           </div>
@@ -238,7 +231,8 @@ export function Drawer({ m, catalog, onClose, reload }: { m: Manifest; catalog: 
 
         <div aria-live="polite" className="mt-4">
           {out && (
-            <div role={out.kind === "error" ? "alert" : "status"} className={`rounded-xl px-3 py-2 text-sm ${out.kind === "error" ? "bg-negative-bg text-negative" : "bg-positive-bg text-positive"}`}>
+            <div ref={outRef} tabIndex={-1} role={out.kind === "error" ? "alert" : "status"} className={`rounded-xl px-3 py-2 text-sm ${out.kind === "error" ? "bg-negative-bg text-negative" : "bg-positive-bg text-positive"}`}>
+              {out.kind === "error" && <a className="mr-2 underline" href="https://github.com/Nadir-DNA/searchtide/blob/main/docs/guides/faq.md" target="_blank" rel="noreferrer">Que faire ?</a>}
               <p className="break-words">{out.text}</p>
               {out.detail && <p className="mt-1 break-words text-xs">{out.detail}</p>}
               {out.warnings?.map((w, i) => {
@@ -250,13 +244,15 @@ export function Drawer({ m, catalog, onClose, reload }: { m: Manifest; catalog: 
               {out.copy && (
                 <div className="mt-2 flex items-center gap-2 text-ink">
                   <code className="min-w-0 flex-1 rounded bg-raised px-2 py-1 font-mono text-xs break-all" aria-label={out.copy.label}>{out.copy.value}</code>
-                  <button type="button" onClick={() => navigator.clipboard?.writeText(out.copy!.value)} className="shrink-0 rounded-lg border border-control px-3 py-1 text-xs">Copier</button>
+                  <button type="button" onClick={async () => { const ok = await copyText(out.copy!.value); setCopyFailed(!ok); setTimeout(() => setCopyFailed(false), 2000); }} className="shrink-0 rounded-lg border border-control px-3 py-1 text-xs">Copier</button>
+                  {copyFailed && <span role="status" className="text-xs text-negative">Copie impossible : sélectionnez le texte.</span>}
                 </div>
               )}
             </div>
           )}
         </div>
 
+        {undo && <UndoBar text={`« ${undo.label} » supprimé dans 5 s.`} onUndo={cancelRemove} />}
         {confirmRm && (
           <div role="alertdialog" aria-modal="false" aria-labelledby="rm-title" className="mt-6 rounded-xl border border-negative bg-negative-bg p-4 text-sm">
             <h3 id="rm-title" className="font-medium">Retirer « {confirmRm.conn.label} » ?</h3>
@@ -277,7 +273,7 @@ export function Drawer({ m, catalog, onClose, reload }: { m: Manifest; catalog: 
           <div className="mt-6 border-t border-rule pt-6">
             <h3 className="text-sm font-medium">Comptes connectés</h3>
             <ul className="mt-3 divide-y divide-rule">
-              {m.connections.map((c) => (
+              {m.connections.filter((c) => !hiddenConns.includes(c.id)).map((c) => (
                 <li key={c.id} className="py-3">
                   <p className="break-words text-sm">{c.label}{c.test_mode && <span className="ml-2 rounded bg-raised px-1.5 py-0.5 text-xs text-muted">test</span>}</p>
                   {m.id === "google" && EMAIL.test(c.hint)
@@ -287,8 +283,8 @@ export function Drawer({ m, catalog, onClose, reload }: { m: Manifest; catalog: 
                   {c.status_detail && <p className="mt-1 break-words text-xs text-negative">{c.status_detail}</p>}
                   {!catalog.demo && (
                     <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm">
-                      <button type="button" disabled={busy} onClick={() => retest(c)} className="py-1 text-accent underline">Tester</button>
-                      <button type="button" onClick={() => { setEditing(c); setLabel(c.label); setOut(null); setValues(Object.fromEntries(m.fields.map((f) => [f.key, f.secret ? "" : String(c.settings?.[f.key] ?? f.default ?? "")]))); }} className="py-1 text-accent underline">Remplacer la clé</button>
+                      <button type="button" disabled={busy} onClick={() => retest(c)} className="py-1 text-ink underline">Tester</button>
+                      <button type="button" onClick={() => { setEditing(c); setLabel(c.label); setOut(null); setValues(Object.fromEntries(m.fields.map((f) => [f.key, f.secret ? "" : String(c.settings?.[f.key] ?? f.default ?? "")]))); }} className="py-1 text-ink underline">Remplacer la clé</button>
                       <button type="button" onClick={() => askRemove(c)} className="py-1 text-muted hover:text-negative">Retirer</button>
                     </div>
                   )}
@@ -315,7 +311,7 @@ function ConnectorCard({ m, onOpen, cardRef }: { m: Manifest; onOpen: () => void
       <p className="mt-3 text-sm leading-5 break-words text-muted">{m.unlocks.join(" · ")}</p>
       <p className="mt-auto flex items-center justify-between gap-3 pt-3 text-xs text-muted">
         <span>{m.builtin ? "Toujours disponible" : `~${m.minutes} min`}</span>
-        {!m.builtin && <span className="text-sm text-accent">{m.connections.length ? "Gérer" : "Connecter"}</span>}
+        {!m.builtin && <span className="text-sm text-ink">{m.connections.length ? "Gérer" : "Connecter"}</span>}
       </p>
     </>
   );
@@ -365,7 +361,7 @@ function StripeConnect({ onUseKey }: { onUseKey: () => void }) {
       {unavailable ? (
         <>
           <p role="alert" className="mt-2 text-sm text-negative">Le service Searchtide Connect est indisponible. Utilisez une clé limitée (aucune donnée ne quitte votre instance).</p>
-          <div className="mt-3 flex flex-wrap items-center gap-2"><Button disabled>{label}</Button><button type="button" onClick={onUseKey} className="text-sm text-accent underline">Utiliser une clé limitée</button></div>
+          <div className="mt-3 flex flex-wrap items-center gap-2"><Button disabled>{label}</Button><button type="button" onClick={onUseKey} className="text-sm text-ink underline">Utiliser une clé limitée</button></div>
         </>
       ) : (
         <>
@@ -377,7 +373,7 @@ function StripeConnect({ onUseKey }: { onUseKey: () => void }) {
           </label>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <Button onClick={go} disabled={!consent || busy}>{busy ? "Redirection…" : label}</Button>
-            <button type="button" onClick={onUseKey} className="text-sm text-accent underline">Utiliser une clé limitée</button>
+            <button type="button" onClick={onUseKey} className="text-sm text-ink underline">Utiliser une clé limitée</button>
           </div>
         </>
       )}

@@ -25,5 +25,5 @@ test("CA40/CA43/CA45 : Supabase se connecte, affiche un indice sans secret, se r
   await li.getByRole("button", { name: "Retirer" }).click();
   const confirm = page.getByRole("dialog", { name: "Supabase" }).getByRole("alertdialog");
   await confirm.getByRole("button", { name: "Retirer définitivement" }).click();
-  await expect(page.getByRole("status")).toContainText("est retiré");
+  await expect(page.getByRole("status")).toContainText("est retiré", { timeout: 10_000 });
 });

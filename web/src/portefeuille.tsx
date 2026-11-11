@@ -87,7 +87,7 @@ export function PortfolioView({ days, go }: { days: number; go: Go }) {
 
   return (
     <>
-      <Header title="Portefeuille" sub="Vos projets côte à côte : santé, couverture et chiffres clés" days={days} go={go}>
+      <Header title="Tous les projets" sub="Vos projets côte à côte : santé, couverture et chiffres clés" days={days} go={go}>
         <div className="relative">
           <Button variant="secondary" aria-expanded={open} aria-controls="colonnes" onClick={() => setOpen(!open)}>Colonnes ▾</Button>
           {open && (
@@ -148,7 +148,7 @@ export function PortfolioView({ days, go }: { days: number; go: Go }) {
                         <><td key={c.key} className="num px-3 py-3 text-right">{show(m, c)}{m.manual && <span className="ml-1 text-xs font-normal text-muted">saisi</span>}</td><td key={c.key + "d"} className="num py-3 pr-3 text-right text-xs"><Variation m={m} c={c} /></td></>
                       ) : (
                         <td key={c.key} colSpan={2} className="px-3 py-3 text-right text-muted" title="Source non rattachée">
-                          —{" "}<button type="button" onClick={() => go({ view: "project", id: p.id, site: undefined })} aria-label={`Rattacher une source à ${p.name} pour ${c.label}`} className="text-xs text-accent underline">Rattacher</button>
+                          —{" "}<button type="button" onClick={() => go({ view: "project", id: p.id, site: undefined })} aria-label={`Rattacher une source à ${p.name} pour ${c.label}`} className="text-xs text-ink underline">Rattacher</button>
                         </td>
                       );
                     })}

@@ -2,11 +2,13 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { api, type Overview as OverviewData, type Site } from "./api";
 import { ErrorLine, Header, KpiSkeleton, useData } from "./App";
-import { STAGES } from "./business";
+import { STAGES } from "./modules/shared";
 import { BarChart } from "./chart";
-import { SourcesCard } from "./sources";
+import { KpiCatalogPanel, SourcesCard } from "./sources";
+import { parseDayValues, type DayValue } from "./day-values";
+import { ProjectTabBar, ProjectTabBody } from "./projects/ProjectTabs";
 import { useCatalog } from "./connections";
-import { Button, Card, Delta, EmptyBox, KpiCard, Pill, Table, fmt, inputCls } from "./ui";
+import { Button, Card, Delta, EmptyBox, KpiCard, Pill, Table, UndoBar, downloadCsv, fmt, inputCls, useAsk } from "./ui";
 
 type Point = { day: string; value: number | null };
 export type Indicator = {
@@ -16,7 +18,7 @@ export type Indicator = {
 };
 export type Project = {
   id: string; name: string; color: string | null; url: string | null; sites: string[]; crm_key: string | null; indicators: Indicator[];
-  funnel: { id: string; label: string; value: number | null; rate: number | null }[];
+  funnel: { id: string; label: string; value: number | null; rate: number | null }[]; pinned?: boolean;
 };
 type Go = (n: Record<string, string | undefined>) => void;
 
@@ -64,7 +66,7 @@ export function ProjectCards({ days, go }: { days: number; go: Go }) {
 }
 
 // ── Page d'un projet ──
-export function ProjectView({ id, days, go }: { id: string; days: number; go: Go }) {
+export function ProjectView({ id, days, go, tab = "vue", me = { gsc: false, demo: false }, onPinned }: { id: string; days: number; go: Go; tab?: string; me?: { gsc: boolean; demo: boolean }; onPinned?: () => void }) {
   const { data: p, error, reload } = useData<Project>(`/api/projects/${id}?days=${days}`);
   const [selected, setSelected] = useState<string | null>(null);
   const [manage, setManage] = useState(false);
@@ -77,8 +79,13 @@ export function ProjectView({ id, days, go }: { id: string; days: number; go: Go
     <>
       <Header title={<span className="flex items-center gap-3"><span className="size-3 rounded-full" style={{ background: p.color ?? "var(--color-accent)" }} aria-hidden />{p.name}</span>}
         sub={p.url ? <a href={p.url} target="_blank" rel="noreferrer" className="hover:text-ink">{p.url.replace(/^https?:\/\//, "")} ↗</a> : undefined} days={days} go={go}>
+        <Button variant="secondary" aria-pressed={!!p.pinned} onClick={async () => { await api(`/api/projects/${p.id}`, { method: "PATCH", json: { pinned: !p.pinned } }); reload(); onPinned?.(); }}>
+          {p.pinned ? "★ Épinglé" : "☆ Épingler"}
+        </Button>
         <Button variant="secondary" onClick={() => setManage(true)}>Gérer le projet</Button>
       </Header>
+      <ProjectTabBar project={p} tab={tab} go={go} />
+      {tab !== "vue" ? <ProjectTabBody project={p} tab={tab} days={days} go={go} me={me} onChanged={reload} /> :
       <div className="space-y-4">
         {p.indicators.length ? (
           <>
@@ -96,12 +103,13 @@ export function ProjectView({ id, days, go }: { id: string; days: number; go: Go
                   : <EmptyBox>{current.last_error ? `Le relevé a échoué : ${current.last_error}` : current.source === "manual" ? "Aucune valeur saisie sur la période." : "Pas encore de données sur la période."}</EmptyBox>}
               </Card>
             )}
+            <Milestones projectId={p.id} key={notes?.length ?? 0} />
             <AddNote projectId={p.id} onAdded={reloadNotes} count={notes?.length ?? 0} />
           </>
         ) : <EmptyBox>Aucun indicateur. <button onClick={() => setManage(true)} className="text-ink underline">Ajouter le premier</button></EmptyBox>}
         {(goals.length > 0 || p.funnel.length > 1) && (
           <div className="grid gap-4 lg:grid-cols-2">
-            {goals.length > 0 && <Card title="Objectifs"><div className="space-y-4">{goals.map((i) => <GoalBar key={i.id} ind={i} />)}</div></Card>}
+            {goals.length > 0 && <Card title="Objectifs"><div className="space-y-4">{goals.map((i) => <GoalBar key={i.id} ind={i} onSaved={reload} />)}</div></Card>}
             {p.funnel.length > 1 && <Funnel steps={p.funnel} days={days} />}
           </div>
         )}
@@ -110,20 +118,37 @@ export function ProjectView({ id, days, go }: { id: string; days: number; go: Go
           <ProjectSites project={p} days={days} go={go} />
           <ProjectCrm project={p} go={go} />
         </div>
-      </div>
+      </div>}
       {manage && <ManageProject project={p} onClose={() => setManage(false)} onSaved={reload} onDeleted={() => go({ view: undefined, id: undefined })} />}
     </>
   );
 }
 
-export function GoalBar({ ind }: { ind: Indicator }) {
+export function GoalBar({ ind, onSaved }: { ind: Indicator; onSaved?: () => void }) {
+  const { ask, dialog } = useAsk();
   const g = ind.goal!;
   const onTrack = g.projection >= g.target;
+  async function editGoal() {
+    const v = await ask({
+      title: `Objectif de « ${ind.label} »`,
+      message: `Période : ${g.period === "week" ? "semaine" : "mois"}.`,
+      inputLabel: "Nouvelle cible",
+      inputDefault: String(g.target),
+      confirmLabel: "Enregistrer",
+      // C7 : une saisie non numérique ne doit jamais effacer l'objectif.
+      validate: (s) => { const n = Number(s.replace(",", ".")); return Number.isFinite(n) && n > 0 ? null : "Saisissez un nombre supérieur à 0."; },
+    });
+    if (v === null) return;
+    await api(`/api/indicators/${ind.id}`, { method: "PATCH", json: { goal: Number(v.replace(",", ".")), goal_period: g.period } });
+    onSaved?.();
+  }
   return (
     <div>
+      {dialog}
       <div className="flex items-baseline justify-between gap-3 text-sm">
         <span>{ind.label} <span className="text-muted">· {g.period === "week" ? "cette semaine" : "ce mois-ci"}</span></span>
-        <span className="num">{val(g.done, ind.unit)} / {val(g.target, ind.unit)}</span>
+        <span className="flex items-baseline gap-2"><span className="num">{val(g.done, ind.unit)} / {val(g.target, ind.unit)}</span>
+          {onSaved && <button type="button" onClick={editGoal} className="text-xs text-muted underline hover:text-ink">Modifier</button>}</span>
       </div>
       <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-raised" role="progressbar" aria-valuenow={Math.min(g.pct, 100)} aria-valuemin={0} aria-valuemax={100} aria-label={`${ind.label} : ${g.pct} % de l'objectif`}>
         <div className="h-full rounded-full bg-accent" style={{ width: `${Math.min(g.pct, 100)}%` }} />
@@ -156,18 +181,35 @@ function Funnel({ steps, days }: { steps: Project["funnel"]; days: number }) {
   );
 }
 
+/** Jalons des 30 prochains jours avec le nombre de jours restants. */
+function Milestones({ projectId }: { projectId: string }) {
+  const { data } = useData<{ id: string; day: string; label: string; daysLeft: number }[]>(`/api/milestones?project=${projectId}&days=30`);
+  if (!data?.length) return null;
+  return (
+    <ul aria-label="Jalons à venir" className="flex flex-wrap gap-2">
+      {data.map((m) => (
+        <li key={m.id} className={`rounded-full border px-3 py-1 text-sm ${m.daysLeft <= 7 ? "border-accent" : "border-border"}`}>
+          <span className="num font-medium">{m.daysLeft === 0 ? "Aujourd'hui" : `J-${m.daysLeft}`}</span> · {m.label}
+          <span className="ml-1.5 text-xs text-muted">{new Date(m.day).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function AddNote({ projectId, onAdded, count }: { projectId: string; onAdded: () => void; count: number }) {
   const [open, setOpen] = useState(false);
   async function add(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const f = Object.fromEntries(new FormData(e.currentTarget));
-    await api("/api/annotations", { method: "POST", json: { ...f, project_id: projectId } });
+    await api("/api/annotations", { method: "POST", json: { ...f, milestone: f.milestone === "on", project_id: projectId } });
     setOpen(false); onAdded();
   }
   return open ? (
     <form onSubmit={add} className="flex flex-wrap items-center gap-2 text-sm">
       <input name="day" type="date" required defaultValue={new Date().toISOString().slice(0, 10)} className={`${inputCls.replace("h-10 w-full", "h-9")} w-40`} aria-label="Date" />
-      <input name="label" required placeholder="Ex. nouvelle page d'accueil en ligne" className={`${inputCls.replace("h-10 w-full", "h-9")} min-w-0 flex-1`} aria-label="Repère" />
+      <input name="label" required placeholder="Ex. lancement de la version 2" className={`${inputCls.replace("h-10 w-full", "h-9")} min-w-0 flex-1`} aria-label="Repère" />
+      <label className="flex items-center gap-1.5 text-muted"><input type="checkbox" name="milestone" className="size-4" />Jalon (compte à rebours)</label>
       <Button variant="secondary">Ajouter</Button>
       <button type="button" onClick={() => setOpen(false)} className="text-muted hover:text-ink">Annuler</button>
     </form>
@@ -180,17 +222,59 @@ function AddNote({ projectId, onAdded, count }: { projectId: string; onAdded: ()
 }
 
 function ManualEntry({ ind, onSaved }: { ind: Indicator; onSaved: () => void }) {
+  const { ask, dialog } = useAsk();
   const [v, setV] = useState("");
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState("");
+  const [importing, setImporting] = useState(false);
+  const [msg, setMsg] = useState("");
   async function save(e: FormEvent) {
     e.preventDefault();
     await api(`/api/indicators/${ind.id}/value`, { method: "POST", json: { value: Number(v.replace(",", ".")) } });
     setV(""); onSaved();
   }
+  // C8 : validation stricte (valeur non vide, date réelle, 366 lignes maximum) avant tout envoi.
+  const parsed = (): { rows: DayValue[]; errors: string[] } => parseDayValues(text);
+  async function runImport() {
+    const { rows, errors } = parsed();
+    if (!rows.length) { setMsg("Aucune ligne valide."); return; }
+    const ok = await ask({
+      title: `Importer ${rows.length} valeur${rows.length > 1 ? "s" : ""} ?`,
+      message: <>{errors.length ? `${errors.length} ligne(s) ignorée(s). ` : ""}Une valeur déjà présente pour un jour est remplacée.</>,
+      confirmLabel: "Importer",
+    });
+    if (ok === null) return;
+    setImporting(true); setMsg("");
+    const failed: string[] = [];
+    for (const r of rows) {
+      try { await api(`/api/indicators/${ind.id}/value`, { method: "POST", json: { day: r.day, value: r.value } }); }
+      catch { failed.push(r.day); }
+    }
+    setImporting(false);
+    setMsg(`${rows.length - failed.length} valeur(s) importée(s)${failed.length ? ` · échec : ${failed.join(", ")}` : ""}.`);
+    setOpen(false); onSaved();
+  }
+  const preview = open ? parsed() : { rows: [], errors: [] };
   return (
-    <form onSubmit={save} className="flex items-center gap-2">
-      <input aria-label="Valeur du jour" value={v} onChange={(e) => setV(e.target.value)} inputMode="decimal" placeholder="Valeur du jour" className={`${inputCls.replace("h-10 w-full", "h-9")} w-36`} required />
-      <Button variant="secondary">Enregistrer</Button>
-    </form>
+    <div className="space-y-2">
+      {dialog}
+      <form onSubmit={save} className="flex items-center gap-2">
+        <input aria-label="Valeur du jour" value={v} onChange={(e) => setV(e.target.value)} inputMode="decimal" placeholder="Valeur du jour" className={`${inputCls.replace("h-10 w-full", "h-9")} w-36`} required />
+        <Button variant="secondary">Enregistrer</Button>
+        <button type="button" onClick={() => setOpen(!open)} className="text-xs text-muted underline hover:text-ink">{open ? "Fermer" : "Importer un CSV"}</button>
+      </form>
+      {open && (
+        <div className="rounded-xl border border-border p-3 text-sm">
+          <label className="block text-xs text-muted">CSV : une ligne par jour (jour,valeur)
+            <textarea value={text} onChange={(e) => setText(e.target.value)} rows={4} placeholder={"2026-11-01,12\n2026-11-02,18"} className={`${inputCls} mt-1 font-mono text-xs`} />
+          </label>
+          {preview.errors.length > 0 && <ul className="mt-2 space-y-1 text-xs text-negative">{preview.errors.slice(0, 5).map((e) => <li key={e}>{e}</li>)}</ul>}
+          {preview.rows.length > 0 && <p className="mt-2 text-xs text-muted">{preview.rows.length} ligne(s) prête(s), du {preview.rows[0].day} au {preview.rows.at(-1)!.day}.</p>}
+          <div className="mt-2"><Button type="button" variant="accent" disabled={!preview.rows.length || importing} onClick={runImport}>{importing ? "Import…" : "Importer"}</Button></div>
+        </div>
+      )}
+      {msg && <p role="status" className="text-xs text-muted">{msg}</p>}
+    </div>
   );
 }
 
@@ -253,9 +337,14 @@ function Panel({ title, onClose, children }: { title: string; onClose: () => voi
 }
 
 export function ManageProject({ project, onClose, onSaved, onDeleted }: { project: Project | null; onClose: () => void; onSaved: (p?: Project) => void; onDeleted?: () => void }) {
+  const { ask, dialog } = useAsk();
   const { data: sites } = useData<Site[]>("/api/sites");
+  const { data: archives, reload: reloadArchives } = useData<(Indicator & { archived_at: number })[]>(project ? `/api/projects/${project.id}/archives` : "/api/me");
   const [error, setError] = useState("");
   const [edit, setEdit] = useState<Partial<Indicator> | null>(null);
+  const [catalog, setCatalog] = useState(false);
+  const [undo, setUndo] = useState<{ id: string; label: string; timer: number } | null>(null);
+  const [hiddenInds, setHiddenInds] = useState<string[]>([]);
   async function save(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
@@ -267,15 +356,38 @@ export function ManageProject({ project, onClose, onSaved, onDeleted }: { projec
     } catch (err) { setError((err as Error).message); }
   }
   async function remove() {
-    if (!project || !confirm(`Supprimer le projet ${project.name} et l'historique de ses indicateurs ? Les sites et contacts sont conservés.`)) return;
+    if (!project) return;
+    if ((await ask({ title: `Supprimer le projet ${project.name} et l'historique de ses indicateurs ?`, message: "Les sites et contacts sont conservés.", confirmLabel: "Supprimer le projet" })) === null) return;
     await api(`/api/projects/${project.id}`, { method: "DELETE" }); onClose(); onDeleted?.();
   }
   async function removeInd(i: Indicator) {
-    if (!confirm(`Supprimer l'indicateur « ${i.label} » et son historique ?`)) return;
-    await api(`/api/indicators/${i.id}`, { method: "DELETE" }); onSaved();
+    if ((await ask({ title: `Supprimer l'indicateur « ${i.label} » et son historique ?`, message: "Suppression effective dans 5 s ; vous pourrez annuler.", confirmLabel: "Supprimer l'indicateur" })) === null) return;
+    setHiddenInds((h) => [...h, i.id]);
+    const timer = window.setTimeout(async () => {
+      try { await api(`/api/indicators/${i.id}`, { method: "DELETE" }); onSaved(); }
+      finally { setUndo(null); setHiddenInds((h) => h.filter((x) => x !== i.id)); }
+    }, 5000);
+    setUndo({ id: i.id, label: i.label, timer });
+  }
+  async function restoreArchive(i: Indicator) {
+    try { await api(`/api/indicators/${i.id}/restore`, { method: "POST" }); reloadArchives(); onSaved(); }
+    catch (e) { console.error(e); }
+  }
+  async function deleteArchive(i: Indicator) {
+    const v = await ask({ title: `Supprimer définitivement « ${i.label} » ?`, message: "La série archivée et ses valeurs seront effacées. Action irréversible.", requireText: i.label, confirmLabel: "Supprimer définitivement" });
+    if (v === null) return;
+    await api(`/api/indicators/${i.id}/permanent`, { method: "DELETE", json: { confirm: v } });
+    reloadArchives();
+  }
+  function cancelRemoveInd() {
+    if (!undo) return;
+    window.clearTimeout(undo.timer);
+    setHiddenInds((h) => h.filter((x) => x !== undo.id));
+    setUndo(null);
   }
   return (
     <Panel title={project ? `Gérer ${project.name}` : "Nouveau projet"} onClose={onClose}>
+      {dialog}
       <form onSubmit={save} className="rounded-2xl border border-border bg-surface p-5">
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Nom *"><input name="name" required defaultValue={project?.name} className={inputCls} autoFocus={!project} /></Field>
@@ -304,10 +416,14 @@ export function ManageProject({ project, onClose, onSaved, onDeleted }: { projec
         <div className="mt-5 flex items-center justify-between"><Button>{project ? "Enregistrer" : "Créer le projet"}</Button>{project && <button type="button" onClick={remove} className="text-sm text-negative hover:underline">Supprimer le projet</button>}</div>
       </form>
       {project && (
-        <Card title="Indicateurs" action={<Button onClick={() => setEdit({ mode: "daily", source: "pg", config: {} })}>Ajouter</Button>}>
-          {project.indicators.length ? (
+        <Card title="Indicateurs" action={<div className="flex flex-wrap gap-2">
+          <Button onClick={() => setCatalog(true)}>Ajouter un KPI</Button>
+          <Button variant="secondary" onClick={() => setEdit({ mode: "daily", source: "pg", config: {} })}>Autre source</Button>
+        </div>}>
+          {undo && <UndoBar text={`« ${undo.label} » supprimé dans 5 s.`} onUndo={cancelRemoveInd} />}
+          {project.indicators.filter((i) => !hiddenInds.includes(i.id)).length ? (
             <ul className="divide-y divide-rule">
-              {project.indicators.map((i) => (
+              {project.indicators.filter((i) => !hiddenInds.includes(i.id)).map((i) => (
                 <li key={i.id} className="flex items-center gap-3 py-3 text-sm">
                   <span className="min-w-0 flex-1"><span className="block truncate">{i.label}</span><span className="block truncate text-xs text-muted">{SOURCES.find(([k]) => k === i.source)?.[1]} · {i.mode === "daily" ? "par jour" : "niveau"}{i.last_error ? <span className="text-negative"> · {i.last_error}</span> : ""}</span></span>
                   <button onClick={() => setEdit(i)} className="text-muted hover:text-ink">Modifier</button>
@@ -318,6 +434,21 @@ export function ManageProject({ project, onClose, onSaved, onDeleted }: { projec
           ) : <EmptyBox>Aucun indicateur pour l'instant.</EmptyBox>}
         </Card>
       )}
+      {project && archives && archives.length > 0 && (
+        <Card title="Séries archivées" action={<span className="text-xs text-muted">Ancienne source, conservée</span>}>
+          <ul className="divide-y divide-rule">
+            {archives.map((i) => (
+              <li key={i.id} className="flex flex-wrap items-center gap-2 py-3 text-sm">
+                <span className="min-w-0 flex-1 truncate">{i.label}</span>
+                <button onClick={() => downloadCsv(`searchtide-archive-${i.id}.csv`, [["jour", "valeur"], ...i.series.map((x) => [x.day, x.value ?? ""])])} className="text-muted underline hover:text-ink">CSV</button>
+                <button onClick={() => restoreArchive(i)} className="text-ink underline">Restaurer</button>
+                <button onClick={() => deleteArchive(i)} className="text-negative hover:underline">Supprimer définitivement</button>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+      {catalog && project && <KpiCatalogPanel projectId={project.id} onClose={() => setCatalog(false)} onAdded={() => { setCatalog(false); onSaved(); }} />}
       {edit && project && <IndicatorForm projectId={project.id} ind={edit} sites={sites ?? []} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); onSaved(); }} />}
     </Panel>
   );
@@ -391,11 +522,11 @@ function IndicatorForm({ projectId, ind, sites, onClose, onSaved }: { projectId:
               <option value="__env">Variable d'environnement (avancé)</option>
             </select>
           </Field>
-          {!conns.length && !useEnv && source !== "http" && <p className="text-xs text-muted">Aucune connexion {catalog?.connectors.find((c) => c.id === kind)?.name ?? ""} : <a href="?view=connections" className="text-accent underline">ajoutez-la dans Connexions</a>, puis revenez ici.</p>}
+          {!conns.length && !useEnv && source !== "http" && <p className="text-xs text-muted">Aucune connexion {catalog?.connectors.find((c) => c.id === kind)?.name ?? ""} : <a href="?view=connections" className="text-ink underline">ajoutez-la dans Connexions</a>, puis revenez ici.</p>}
           {ind.id && ind.config?.env && (
             <p className="flex flex-wrap items-center gap-2 text-xs text-muted">
               <span className="rounded bg-raised px-1.5 py-0.5">via .env</span>
-              {conns.length > 0 && !useConn && <button type="button" onClick={() => { setConnId(conns[0].id); setTouched(true); }} className="text-accent underline">Passer sur une connexion</button>}
+              {conns.length > 0 && !useConn && <button type="button" onClick={() => { setConnId(conns[0].id); setTouched(true); }} className="text-ink underline">Passer sur une connexion</button>}
             </p>
           )}
           {useEnv && (

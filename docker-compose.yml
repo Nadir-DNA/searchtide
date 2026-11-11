@@ -2,7 +2,7 @@ services:
   searchtide:
     # Image publiée (T25) : docker compose pull && docker compose up -d --no-build
     # Sans image publiée, `docker compose up -d --build` construit localement et utilise ce même nom.
-    image: ${SEARCHTIDE_IMAGE:-ghcr.io/nadir-dna/searchtide:0.2.0}
+    image: ${SEARCHTIDE_IMAGE:-ghcr.io/nadir-dna/searchtide:0.2.3}
     build: .
     restart: unless-stopped
     healthcheck:
@@ -18,6 +18,8 @@ services:
       SECRET: ${SECRET:-}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       PUBLIC_URL: ${PUBLIC_URL:-}
+      # Derrière le tunnel Cloudflare : TRUST_PROXY=cloudflare dans .env (sinon l'adresse TCP est utilisée).
+      TRUST_PROXY: ${TRUST_PROXY:-}
     volumes:
       - searchtide_data:/data
       # Clé Google (optionnelle) : la monter dans un docker-compose.override.yml, voir le README

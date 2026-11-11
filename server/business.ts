@@ -5,6 +5,7 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/server";
 import { db, localDay } from "./db.ts";
 import { migrate } from "./migrations.ts";
+import { removeAllMedia } from "./publishers/media.ts";
 
 /** Le CRM contient des données de contacts : en démonstration (lecture ouverte à tous) il n'expose ni route ni outil MCP. */
 export const crmEnabled = () => process.env.DEMO !== "1";
@@ -51,6 +52,16 @@ CREATE INDEX IF NOT EXISTS publications_day ON publications(day);
 
 // Code de campagne (utm_campaign) de chaque publication, pour compter les visites qu'elle amène
 migrate("2026-11-09-campagnes", "ALTER TABLE publications ADD COLUMN campaign TEXT");
+// L2 : contenu, compte cible, état de file et preuve de publication (phase 1, fournisseur factice).
+migrate("2026-11-11-publications-l2", `ALTER TABLE publications ADD COLUMN text TEXT;
+ALTER TABLE publications ADD COLUMN account_id TEXT;
+ALTER TABLE publications ADD COLUMN state TEXT;
+ALTER TABLE publications ADD COLUMN scheduled_at INTEGER;
+ALTER TABLE publications ADD COLUMN published_at INTEGER;
+ALTER TABLE publications ADD COLUMN evidence_url TEXT;
+ALTER TABLE publications ADD COLUMN visible TEXT;
+ALTER TABLE publications ADD COLUMN updated_at INTEGER;`);
+migrate("2026-11-11-publications-idempotence", "ALTER TABLE publications ADD COLUMN idempotency_key TEXT");
 
 export const STAGES = ["new", "contacted", "qualified", "proposal", "won", "lost"] as const;
 export const PUB_STATUS = ["idea", "scheduled", "published"] as const;
@@ -79,6 +90,7 @@ const pubFields = z.object({
   project: str(50), network: str(50),
   status: z.enum(PUB_STATUS).default("scheduled"),
   url: str(500), notes: str(2000),
+  text: str(5000), account_id: str(50), visible: str(20),
   campaign: z.string().trim().max(60).regex(/^[a-z0-9-]*$/, "lettres minuscules, chiffres et tirets").nullish().transform((v) => v || null),
 });
 const slug = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40);
@@ -175,10 +187,13 @@ export function savePublication(id: string | null, input: unknown) {
   const v = pubFields.parse({ ...cur, ...(input as Row) });
   const pid = id ?? randomUUID();
   const campaign = v.campaign ?? cur?.campaign ?? `${slug(v.title)}-${v.day.slice(5).replace("-", "")}`;
-  db.prepare(`INSERT INTO publications (id, day, title, project, network, status, url, notes, campaign, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  db.prepare(`INSERT INTO publications (id, day, title, project, network, status, url, notes, campaign, text, account_id, visible, state, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET day = excluded.day, title = excluded.title, project = excluded.project, network = excluded.network,
-    status = excluded.status, url = excluded.url, notes = excluded.notes, campaign = excluded.campaign`)
-    .run(pid, v.day, v.title, v.project, v.network, v.status, v.url, v.notes, campaign, cur?.created_at ?? Date.now());
+    status = excluded.status, url = excluded.url, notes = excluded.notes, campaign = excluded.campaign,
+    text = excluded.text, account_id = excluded.account_id, visible = excluded.visible,
+    state = CASE WHEN publications.state IN ('published', 'running') THEN publications.state ELSE excluded.state END`)
+    .run(pid, v.day, v.title, v.project, v.network, v.status, v.url, v.notes, campaign, v.text ?? null, v.account_id ?? null, v.visible ?? null,
+      v.status === "published" ? "published" : "draft", cur?.created_at ?? Date.now(), Date.now());
   return db.prepare("SELECT * FROM publications WHERE id = ?").get(pid);
 }
 
@@ -296,7 +311,11 @@ export function registerBusiness(app: Hono) {
     try { const p = savePublication(c.req.param("id"), await c.req.json()); return p ? c.json(p) : c.json({ error: "Publication introuvable" }, 404); }
     catch (e) { return c.json({ error: bad(e) }, 400); }
   });
-  app.delete("/api/publications/:id", (c) => db.prepare("DELETE FROM publications WHERE id = ?").run(c.req.param("id")).changes ? c.json({ ok: true }) : c.json({ error: "Publication introuvable" }, 404));
+  app.delete("/api/publications/:id", (c) => {
+    const changed = db.prepare("DELETE FROM publications WHERE id = ?").run(c.req.param("id")).changes;
+    if (changed) removeAllMedia(c.req.param("id"));
+    return changed ? c.json({ ok: true }) : c.json({ error: "Publication introuvable" }, 404);
+  });
 }
 
 const json = (data: unknown) => ({ content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] });

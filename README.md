@@ -26,7 +26,9 @@ Ouvrez <http://localhost:3030>. Détails et deuxième capture (portefeuille mult
 
 ## Ce que ça fait
 
-- **Plusieurs projets, une vue.** Chaque projet rassemble ses sources, ses indicateurs et un score de santé ; la vue Portefeuille les compare côte à côte.
+- **Plusieurs projets, une vue.** Chaque projet rassemble ses domaines, ses modules, ses KPI (y compris calculés), ses objectifs et ses jalons ; « Tous les projets » les compare côte à côte.
+- **Ce qu'il faut faire aujourd'hui.** Le fil « Aujourd'hui » réunit pannes, échéances, objectifs en retard et actions qui font monter vos chiffres (mots-clés à travailler, relances).
+- **Des modules qu'on active.** Google, Stripe, Produit, Contacts… s'activent pour l'instance puis projet par projet ; un module inactif n'affiche jamais un faux zéro.
 - **Vos clés restent chez vous.** Les secrets des connexions sont chiffrés dans l'instance (AES-256-GCM, clé dérivée de `SECRET`) et ne sont jamais renvoyés par l'API, y compris aux agents.
 - **Vos agents lisent les chiffres, pas les clés.** Un serveur MCP expose le tableau de bord ; les connexions restent réservées à la session administrateur.
 
@@ -35,13 +37,13 @@ Ouvrez <http://localhost:3030>. Détails et deuxième capture (portefeuille mult
 ### Docker, une commande
 
 ```bash
-docker run -d --name searchtide -p 127.0.0.1:3030:3030 -v searchtide:/data ghcr.io/nadir-dna/searchtide:0.2.3
+docker run -d --name searchtide --restart unless-stopped -p 127.0.0.1:3030:3030 -v searchtide:/data ghcr.io/nadir-dna/searchtide:0.2.3
 docker logs searchtide    # mot de passe administrateur généré au premier lancement
 ```
 
 Aucun fichier à éditer : `SECRET` et le mot de passe sont générés au premier démarrage et conservés dans le volume `/data`. Le mot de passe n'est affiché qu'une fois — notez-le.
 
-Images `linux/amd64` et `linux/arm64`, tags `0.2.0`, `v0.2.0` et `latest`.
+Images `linux/amd64` et `linux/arm64`, tags `0.2.3` et `v0.2.3`.
 
 ### Docker Compose
 
@@ -77,9 +79,13 @@ Le script de suivi se colle dans le `<head>` du site :
 
 Une erreur de connexion ? Voir la [FAQ](docs/guides/faq.md) : elle reprend les messages que l'application peut afficher.
 
-## Les neuf sources
+## Les modules et leurs sources
 
-Tout se configure dans **Connexions** : un guide court, les champs utiles, puis « Tester » — une connexion n'est enregistrée que si le test réussit.
+Tout s'active dans **Modules** : un module apporte ses KPI, ses onglets de projet, ses blocs de page, ses outils pour les agents et ses tâches de fond. Un module qui dépend d'un service se connecte dans un tiroir (guide court, champs utiles, « Tester » : rien n'est enregistré si le test échoue), depuis Modules ou directement depuis la page d'un projet. Désactiver un module masque ce qu'il apporte et garde ses données.
+
+Modules optionnels sans source externe : **Contacts** (pipeline, relances), **Publications** (calendrier éditorial), **Prospection** (séquences d'e-mails, nécessite Contacts). Modules privés : voir [docs/guides/modules-prives.md](docs/guides/modules-prives.md).
+
+Les sources :
 
 | Source | Ce qu'elle apporte | Authentification | Guide |
 |---|---|---|---|
@@ -126,7 +132,7 @@ POST /api/sites/{id}/sync
 
 - **Coffre chiffré** : secrets AES-256-GCM, clé dérivée de `SECRET` par HKDF ; aucune API ne renvoie un secret en entier ; seul un court indice (préfixe et 4 derniers caractères) est affiché. Une rotation de `SECRET` passe les connexions en « à reconnecter » sans perdre l'historique.
 - **Trois niveaux de lecture** : session administrateur, clé d'API ou d'agent, démonstration anonyme. Seule la session administrateur voit les réglages et crée des connexions.
-- **Connexion** : 5 échecs en 15 minutes bloquent l'adresse IP ; double authentification TOTP avec `npm run 2fa`.
+- **Connexion** : 5 échecs en 15 minutes bloquent l'adresse IP ; double authentification TOTP **facultative** (désactivée par défaut, à activer dans Réglages → Sécurité, ou `TOTP_SECRET`/`npm run 2fa`), avec anti-rejeu des codes et codes de secours à usage unique ; recommandée si l'instance est exposée.
 - **Sauvegardes** : copie cohérente de la base chaque nuit vers 2 h UTC, 14 jours pour les copies locales (base, `secret`, `admin-password`). Les bundles de sauvegarde hors site (`.bundle.json.gz`) ne sont pas purgés automatiquement : à faire à la main.
 - **Surveillance** : `GET /healthz`.
 
@@ -153,7 +159,8 @@ Ne joignez jamais ce volume à un ticket ou à une archive de support. Mot de pa
 
 ## Feuille de route
 
-- **0.3** : Connexion avec Stripe hors bêta, une fois le relais stabilisé en production.
+- **0.3** : modules activables par projet, catalogue de KPI et KPI calculés, jalons, fil « Aujourd'hui », modules privés (voir [docs/release-v0.3.0.md](docs/release-v0.3.0.md)).
+- **0.4** : Connexion avec Stripe hors bêta, une fois le relais stabilisé en production.
 - **Ensuite, sans date** : connecteurs reportés (Cloudflare, Gmail en lecture, CRM tiers, sauvegarde distante S3).
 
 ## Contribuer
@@ -163,3 +170,14 @@ Les contributions sont bienvenues : voir [CONTRIBUTING.md](CONTRIBUTING.md). Pou
 ## Licence
 
 MIT © Nadir DAOUDI. Les dépendances et polices tierces sont sous licence permissive ou OFL-1.1 ; inventaire détaillé : [docs/licences.md](docs/licences.md).
+
+Les clés d'API et d'agent n'écrivent en REST que sur une liste blanche ; les suppressions et changements de source restent à l'administrateur, et les agents enregistrent les valeurs via MCP `indicator_record`.
+
+## Derrière un proxy (tunnel Cloudflare, reverse proxy)
+
+L'adresse IP utilisée par le limiteur de connexion (et par la collecte) est celle de la connexion TCP par défaut. Si et seulement si un proxy de confiance est devant l'instance, définissez `TRUST_PROXY` :
+
+- `TRUST_PROXY=cloudflare` lit `cf-connecting-ip` (tunnel Cloudflare du compose) ;
+- `TRUST_PROXY=1` lit le dernier `X-Forwarded-For` (proxy unique), `2` l'avant-dernier, etc.
+
+Ne définissez jamais cette variable si l'instance est joignable directement : un client pourrait falsifier son adresse et contourner le limiteur.

@@ -9,6 +9,8 @@ import { db } from "./db.ts";
 
 const SEED = `import { saveProject, saveIndicator, record } from "@server/projects.ts";
 import { createConnection } from "@server/connections.ts";
+import { setEnabled } from "@server/modules/state.ts";
+setEnabled("crm", true); setEnabled("publications", true);
 const p = saveProject(null, { name: "Projet MCP", sites: [] });
 const i = saveIndicator(null, p.id, { label: "Inscriptions", mode: "daily", source: "manual", config: {} });
 record(i.id, new Date().toISOString().slice(0, 10), 42);
@@ -39,7 +41,7 @@ async function rpc(base: string, key: string | undefined, id: number, method: st
 }
 
 async function createKey(base: string, cookie: string, name: string, readOnly?: boolean) {
-  const r = await fetch(`${base}/api/agents`, { method: "POST", headers: { Cookie: cookie, "content-type": "application/json" }, body: JSON.stringify(readOnly === undefined ? { name } : { name, read_only: readOnly }) });
+  const r = await fetch(`${base}/api/agents`, { method: "POST", headers: { Cookie: cookie, "content-type": "application/json" }, body: JSON.stringify({ name, read_only: readOnly, all_projects: true }) });
   const text = await r.text();
   assert.equal(r.status, 201, text);
   return JSON.parse(text) as { id: string; name: string; read_only: boolean; key: string };
@@ -111,6 +113,8 @@ test("MCP : clé complète = outils d'écriture en plus ; sans read_only, la cl�
     assert.equal(complet.read_only, false);
     const names = toolNames((await rpc(s.base, complet.key, 1, "tools/list")).body);
     for (const n of ["indicator_record", "dashboard_create", "widget_add", "crm_save_contact", "pubs_save"]) assert.ok(names.includes(n), `${n} attendu pour une clé complète`);
+    // En attendant les approbations (§15.2 point 4), les suppressions de page/bloc ne sont pas offertes à une clé.
+    assert.ok(!names.includes("dashboard_delete") && !names.includes("widget_remove"), "outils destructifs retirés pour une clé d'agent");
     const ro = toolNames((await rpc(s.base, defaut.key, 2, "tools/list")).body);
     assert.ok(!ro.includes("indicator_record"));
   } finally { s.stop(); t.done(); }
@@ -156,12 +160,12 @@ test("REST : une clé d'agent en lecture seule reçoit 403 sur une écriture, 20
     const cookie = await login(s.base);
     const agent = await createKey(s.base, cookie, "Lecteur REST", true);
     const auth = { Authorization: `Bearer ${agent.key}` };
-    const write = await fetch(`${s.base}/api/projects`, { method: "POST", headers: { ...auth, "content-type": "application/json" }, body: JSON.stringify({ name: "Interdit" }) });
+    const write = await fetch(`${s.base}/api/projects`, { method: "POST", headers: { ...auth, "content-type": "application/json" }, body: JSON.stringify({ name: "Interdit", all_projects: true }) });
     const writeText = await write.text();
     assert.equal(write.status, 403, writeText);
     assert.match(writeText, /lecture seule/i);
     assert.equal((await fetch(`${s.base}/api/projects`, { headers: auth })).status, 200);
-    assert.equal((await fetch(`${s.base}/api/agents`, { method: "POST", headers: { ...auth, "content-type": "application/json" }, body: JSON.stringify({ name: "Autre" }) })).status, 403);
+    assert.equal((await fetch(`${s.base}/api/agents`, { method: "POST", headers: { ...auth, "content-type": "application/json" }, body: JSON.stringify({ name: "Autre", all_projects: true }) })).status, 403);
   } finally { s.stop(); t.done(); }
 });
 

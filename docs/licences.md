@@ -30,6 +30,7 @@ Aucun GPL, AGPL, LGPL, SSPL ni licence non commerciale. `MIT-0` (nodemailer) est
 | @fontsource/ibm-plex-mono | 5.3.0 | OFL-1.1 |
 | @fontsource/ibm-plex-sans | 5.3.0 | OFL-1.1 |
 | @playwright/test | 1.65.0 | Apache-2.0 |
+| playwright-core (transport navigateur, §19) | 1.65.0 | Apache-2.0 |
 | @tailwindcss/vite | 4.3.5 | MIT |
 | @types/node, @types/nodemailer, @types/pg, @types/qrcode, @types/react, @types/react-dom | — | MIT |
 | @vitejs/plugin-react | 6.2.1 | MIT |

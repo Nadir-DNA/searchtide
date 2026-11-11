@@ -22,3 +22,23 @@ test("portefeuille : totaux par projet, sites hors projet regroupés, alertes", 
   assert.equal(o.totals.visitors, 4);
   assert.equal(o.daily.find((d) => d.day === "2026-11-09")![alpha.id], 2);
 });
+
+test("portefeuille : sans source, chiffre d'affaires, clics et contacts valent null et non 0", async () => {
+  const { setEnabled } = await import("./modules/state.ts");
+  setEnabled("crm", false); setEnabled("google", false); setEnabled("stripe", false);
+  const t = portfolio({ from: "2026-11-08", to: "2026-11-09" }).totals;
+  assert.equal(t.revenue, null); assert.equal(t.mrr, null); assert.equal(t.clicks, null); assert.equal(t.leads, null);
+  setEnabled("crm", true);
+  assert.equal(typeof portfolio({ from: "2026-11-08", to: "2026-11-09" }).totals.leads, "number");
+});
+
+test("portefeuille : les indicateurs d'un module retiré du projet disparaissent des projets", async () => {
+  const { setEnabled, setProjectModule } = await import("./modules/state.ts");
+  const { saveIndicator } = await import("./projects.ts");
+  const p = saveProject(null, { name: "Beta", sites: [] })!;
+  saveIndicator(null, p.id, { label: "MRR", mode: "total", source: "stripe", config: { metric: "mrr", env: "STRIPE_B" } });
+  setEnabled("stripe", true); setProjectModule(p.id, "stripe", false);
+  assert.equal(portfolio({ from: "2026-11-08", to: "2026-11-09" }).projects.find((x) => x.id === p.id)!.kpis.length, 0);
+  setProjectModule(p.id, "stripe", true);
+  assert.equal(portfolio({ from: "2026-11-08", to: "2026-11-09" }).projects.find((x) => x.id === p.id)!.kpis.length, 1);
+});

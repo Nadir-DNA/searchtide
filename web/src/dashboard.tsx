@@ -1,17 +1,20 @@
 // Pages personnalisables : une grille de blocs choisis dans un catalogue, rangés à la main (« Personnaliser ») ou par les agents IA (MCP).
 import { Fragment, useEffect, useState, type ReactNode } from "react";
+import { TodayCard } from "./today";
+import { ActivatePrompt } from "./modules/ActivatePrompt";
 import { api, type Search, type Site, type Traffic } from "./api";
 import { ErrorLine, Header, KpiSkeleton, useData } from "./App";
-import { PipelineCard, PubsCard } from "./business";
+import { PipelineCard } from "./modules/crm";
+import { PubsCard } from "./modules/publications";
 import { BarChart, fillDays } from "./chart";
-import { Matrix, Pulse, Todo, TrafficByProject, type Portfolio } from "./portfolio";
+import { Matrix, Pulse, TrafficByProject, type Portfolio } from "./portfolio";
 import { GoalBar, val, type Project } from "./projects";
-import { Button, Card, Delta, EmptyBox, KpiCard, Table, fmt, inputCls } from "./ui";
+import { Button, Card, Delta, EmptyBox, KpiCard, Table, fmt, inputCls, useAsk } from "./ui";
 
 type Go = (n: Record<string, string | undefined>) => void;
 export type Widget = { id: string; type: string; size: Size; title?: string; options: Record<string, string | number | boolean> };
 export type Dashboard = { id: string; name: string; position: number; updated_at: number; updated_by: string | null; widgets: Widget[] };
-type Catalog = Record<string, { label: string; description: string; size: Size; options: Record<string, string> }>;
+type Catalog = Record<string, { label: string; description: string; size: Size; options: Record<string, string>; module: string; moduleName: string; available: boolean }>;
 type Size = "quarter" | "third" | "half" | "two-thirds" | "full";
 export type Dashboards = { dashboards: Dashboard[]; catalog: Catalog; sizes: Size[] };
 
@@ -55,7 +58,9 @@ export function DashboardView({ dash, catalog, sizes, days, go, onChanged }: {
           {ws.map((w, i) => (
             <div key={w.id} className={`col-span-12 min-w-0 ${SPAN[w.size] ?? ""} ${edit ? "rounded-2xl outline-2 outline-offset-4 outline-dashed outline-control" : ""}`}>
               {edit && <WidgetBar w={w} i={i} n={ws.length} catalog={catalog} sizes={sizes} onMove={move} onPatch={patch} onRemove={() => save(ws.filter((_, k) => k !== i))} />}
-              <WidgetBody w={w} o={o as Portfolio} days={days} go={go} />
+              {catalog[w.type] && !catalog[w.type].available
+                ? <ActivatePrompt module={catalog[w.type].module} name={catalog[w.type].moduleName} what={catalog[w.type].description.charAt(0).toLowerCase() + catalog[w.type].description.slice(1).replace(/\.$/, "")} title={w.title ?? catalog[w.type].label} go={go} />
+                : <WidgetBody w={w} o={o as Portfolio} days={days} go={go} />}
             </div>
           ))}
           {!ws.length && !edit && <div className="col-span-12"><EmptyBox>Page vide. <button onClick={() => { setEdit(true); setAdding(true); }} className="text-ink underline">Ajouter un bloc</button></EmptyBox></div>}
@@ -72,17 +77,21 @@ export function DashboardView({ dash, catalog, sizes, days, go, onChanged }: {
 }
 
 function PageSettings({ dash, go, onChanged }: { dash: Dashboard; go: Go; onChanged: () => void }) {
+  const { ask, dialog } = useAsk();
   const [name, setName] = useState(dash.name);
   const [msg, setMsg] = useState("");
   const call = async (f: () => Promise<unknown>) => { try { setMsg(""); await f(); onChanged(); } catch (e) { setMsg((e as Error).message); } };
   return (
     <div className="mb-4 flex flex-wrap items-center gap-2 rounded-2xl border border-border bg-surface p-3 text-sm">
+      {dialog}
       <label className="flex items-center gap-2">Nom de la page
         <input value={name} onChange={(e) => setName(e.target.value)} className={`${inputCls.replace("h-10 w-full", "h-9")} w-56`} />
       </label>
       <Button variant="secondary" disabled={name === dash.name} onClick={() => call(() => api(`/api/dashboards/${dash.id}`, { method: "PUT", json: { name } }))}>Renommer</Button>
-      <button onClick={() => confirm(`Supprimer la page « ${dash.name} » ?`) && call(async () => { await api(`/api/dashboards/${dash.id}`, { method: "DELETE" }); go({ view: undefined, id: undefined }); })}
-        className="ml-auto h-9 rounded-full px-3 text-negative hover:bg-negative-bg">Supprimer la page</button>
+      <button onClick={async () => {
+        if ((await ask({ title: `Supprimer la page « ${dash.name} » ?`, message: "Les blocs de cette page sont retirés.", confirmLabel: "Supprimer la page" })) === null) return;
+        await call(async () => { await api(`/api/dashboards/${dash.id}`, { method: "DELETE" }); go({ view: undefined, id: undefined }); });
+      }} className="ml-auto h-9 rounded-full px-3 text-negative hover:bg-negative-bg">Supprimer la page</button>
       {msg && <span role="alert" className="w-full text-negative">{msg}</span>}
     </div>
   );
@@ -119,10 +128,10 @@ function AddWidget({ catalog, onAdd, onCancel }: { catalog: Catalog; onAdd: (w: 
       <ul className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
         {Object.entries(catalog).map(([k, c]) => (
           <li key={k}>
-            <button onClick={() => Object.keys(c.options).length ? setType(k) : onAdd({ id: Math.random().toString(36).slice(2, 10), type: k, size: c.size, options: {} })}
-              className="h-full w-full rounded-xl border border-border p-3 text-left hover:border-control hover:bg-raised">
+            <button disabled={!c.available} onClick={() => Object.keys(c.options).length ? setType(k) : onAdd({ id: Math.random().toString(36).slice(2, 10), type: k, size: c.size, options: {} })}
+              className="h-full w-full rounded-xl border border-border p-3 text-left enabled:hover:border-control enabled:hover:bg-raised disabled:opacity-55">
               <div className="text-sm font-medium">{c.label}</div>
-              <div className="mt-0.5 text-xs text-muted">{c.description}</div>
+              <div className="mt-0.5 text-xs text-muted">{c.available ? c.description : `Nécessite ${c.moduleName}`}</div>
             </button>
           </li>
         ))}
@@ -165,7 +174,7 @@ function WidgetBody({ w, o, days, go }: { w: Widget; o: Portfolio; days: number;
   switch (w.type) {
     case "pulse": return <Pulse t={o.totals} days={days} go={go} />;
     case "traffic_by_project": return <TrafficByProject o={o} title={t} />;
-    case "todo": return <Todo alerts={o.alerts} go={go} title={t} />;
+    case "todo": return <TodayCard go={go} title={t} />;
     case "projects_table": return <Matrix rows={o.projects} days={days} range={o.range} go={go} title={t} />;
     case "pipeline": return <PipelineCard go={go} title={t} />;
     case "publications": return <PubsCard go={go} title={t} />;

@@ -11,7 +11,9 @@ test("DEMO=1 : le serveur démarre, la lecture est ouverte, le CRM n'est pas exp
     assert.equal((await (await fetch(`${s.base}/api/me`)).json()).demo, true);
     for (const path of ["/api/contacts", "/api/publications", "/api/business", "/api/outreach/templates"]) {
       const r = await fetch(`${s.base}${path}`);
-      assert.doesNotMatch(r.headers.get("content-type") ?? "", /json/, `${path} ne doit pas répondre en JSON`);
+      // SEC-06 : routes réservées à l'administrateur en démonstration.
+      assert.equal(r.status, 403, `${path} réservé en démonstration`);
+      assert.doesNotMatch(await r.text(), /@|téléphone|email/i, `${path} n'expose aucune donnée`);
     }
     const post = await fetch(`${s.base}/api/contacts`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
     assert.equal(post.status, 401, "l'écriture reste protégée");

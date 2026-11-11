@@ -12,7 +12,7 @@ import { clearGoogleTokens } from "./google.ts";
 import { get, realCtx } from "./registry.ts";
 import { checkContract } from "./contract.ts";
 import { FIXTURES, GOOGLE_EMAIL, GOOGLE_JSON } from "./fixtures.ts";
-import { gscConfigured, syncSite } from "../gsc.ts";
+import { convertGoogleEnv, gscConfigured, syncSite } from "../gsc.ts";
 import { measure, saveIndicator, saveProject } from "../projects.ts";
 import "./index.ts";
 
@@ -141,8 +141,10 @@ test("Play sans bucket dans la connexion : message qui dit quoi faire", async ()
   await assert.rejects(measure(ind), /Aucun bucket Google Play n'est renseigné/);
 });
 
-test("ancien mode conservé : GOOGLE_SERVICE_ACCOUNT_JSON + PLAY_BUCKET sans connexion (CA20)", async () => {
+test("ancien mode : GOOGLE_SERVICE_ACCOUNT_JSON est converti en connexion au démarrage, PLAY_BUCKET reste lu (CA20, 0.3)", async () => {
   process.env.GOOGLE_SERVICE_ACCOUNT_JSON = GOOGLE_JSON; process.env.PLAY_BUCKET = BUCKET;
+  assert.equal(gscConfigured(), false, "la variable seule n'est plus lue");
+  assert.equal(convertGoogleEnv(), "converti");
   assert.equal(gscConfigured(), true);
   const p = saveProject(null, { name: "Env" })!;
   const ind = saveIndicator(null, p.id, { label: "Note", mode: "total", source: "play", config: { package: "com.exemple.app", metric: "rating" } })!;
