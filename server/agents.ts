@@ -56,6 +56,13 @@ export function visibleProjectIds(agent: AgentIdentity): Set<string> | null {
   return new Set((db.prepare("SELECT project_id FROM agent_scopes WHERE agent_id = ?").all(agent.id) as { project_id: string }[]).map((r) => r.project_id));
 }
 
+/** L1 : projets où la clé peut écrire (null = tous). Toujours inclus dans visibleProjectIds. */
+export function writableProjectIds(agent: AgentIdentity): Set<string> | null {
+  if (agent.allProjects) return null;
+  if (agent.readOnly) return new Set();
+  return new Set((db.prepare("SELECT project_id FROM agent_scopes WHERE agent_id = ? AND mode = 'write'").all(agent.id) as { project_id: string }[]).map((r) => r.project_id));
+}
+
 /** Domaines des sites des projets visibles (null = tous). Filtre /api/overview et /api/sites. */
 export function visibleDomains(agent: AgentIdentity): Set<string> | null {
   const ids = visibleProjectIds(agent);

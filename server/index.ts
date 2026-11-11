@@ -27,7 +27,7 @@ import { registerSources } from "./sources.ts";
 import { registerOps } from "./ops.ts";
 import { registerPortfolio } from "./portfolio.ts";
 import { registerStripeOAuth } from "./stripe-oauth.ts";
-import { canAccess, findAgent, projectForPath, registerAgents, visibleDomains, visibleProjectIds } from "./agents.ts";
+import { canAccess, findAgent, projectForPath, registerAgents, visibleDomains, visibleProjectIds, writableProjectIds } from "./agents.ts";
 import { registerApprovals } from "./approvals.ts";
 import { registerDashboards } from "./dashboards.ts";
 import { registerOutreach } from "./outreach.ts";
@@ -273,7 +273,7 @@ app.use("/mcp", auth);
 app.all("/mcp", async (c) => {
   const bearer = c.req.header("authorization")?.replace(/^Bearer /, "") ?? "";
   const agent = findAgent(bearer);
-  if (agent) return handleMcp(c.req.raw, { readOnly: agent.readOnly, agent: agent.name, scope: visibleProjectIds(agent) });
+  if (agent) return handleMcp(c.req.raw, { readOnly: agent.readOnly, agent: agent.name, scope: ((r) => r ? { read: r, write: writableProjectIds(agent)! } : null)(visibleProjectIds(agent)) });
   // Sans en-tête : session administrateur (cookie) ou démonstration anonyme. Un jeton non reconnu n'atteint
   // jamais ce point en POST (401 plus haut) ; s'il arrive par GET SSE, il obtient un serveur en lecture seule.
   const admin = !bearer && validSession(await getSignedCookie(c, SECRET, "st_session"), ADMIN_PASSWORD);
