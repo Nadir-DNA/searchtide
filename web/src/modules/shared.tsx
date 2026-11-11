@@ -17,6 +17,17 @@ export const PUB_STATE: Record<string, [string, string]> = {
   published: ["Publié", "text-positive"], failed: ["Échec", "text-negative"], needs_action: ["Action requise", "text-negative"],
   to_verify: ["À vérifier", "text-negative"], missed: ["Manqué", "text-negative"], cancelled: ["Annulé", "text-muted"],
 };
+/** Libellés des tentatives (journal de la file) : jamais d'état brut affiché. */
+export const ATTEMPT_LABEL: Record<string, string> = {
+  scheduled: "Programmé", running: "En cours", published: "Publié", failed: "Échec", needs_action: "Action requise", to_verify: "À vérifier", missed: "Manqué", cancelled: "Annulé", draft: "Brouillon",
+  refused: "Refusé par le réseau", rate: "Limite de débit", quota: "Quota atteint", network: "Erreur réseau", format: "Format invalide", unknown: "Résultat inconnu", auth: "Authentification",
+};
+/** Pastille du calendrier : selon l'état réel (state), avec la couleur qui va avec. */
+export const PUB_CHIP: Record<string, string> = {
+  published: "bg-positive-bg text-positive", scheduled: "bg-raised", running: "bg-raised", draft: "border border-dashed border-control text-muted",
+  failed: "bg-negative-bg text-negative", needs_action: "bg-negative-bg text-negative", to_verify: "bg-negative-bg text-negative", missed: "bg-negative-bg text-negative",
+  cancelled: "border border-control text-muted line-through",
+};
 export type Summary = {
   stages: Record<string, number>; projects: { project: string; n: number }[]; sources: { source: string; n: number }[];
   todo: number; pipelineValue: number; wonMonth: number; touchesWeek: number; pubsWeek: Pub[];

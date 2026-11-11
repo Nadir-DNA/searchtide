@@ -93,3 +93,14 @@ test("Idempotence : l'intention est écrite avant l'envoi ; une intention sans a
   const second = await publishToNetwork({ id: "p2", network: "x", text: "ok", idempotency_key: "k-ok" }, acc) as any;
   assert.equal(first.url, second.url);
 });
+
+test("L2-D4 : « À vérifier » se résout à la main — marquée publiée (preuve) ou remise en brouillon ; rien d'autre n'est résoluble", async () => {
+  const { resolveToVerify } = await import("./queue.ts");
+  project("pd4");
+  const mk = () => { const p = savePublication(null, { day: TODAY, title: "V", project: "pd4", network: "x", text: "t" }) as any; db.prepare("UPDATE publications SET state = 'to_verify', scheduled_at = 1, idempotency_key = 'kv' WHERE id = ?").run(p.id); return p.id as string; };
+  const a = mk(), b = mk();
+  assert.throws(() => resolveToVerify(a, "published", "ftp://x"), /invalide/);
+  assert.equal(resolveToVerify(a, "published", "https://exemple.test/p/1")!.state, "published");
+  assert.equal(resolveToVerify(b, "draft")!.state, "draft");
+  assert.throws(() => resolveToVerify(a, "draft"), /À vérifier/, "déjà publiée : plus résoluble");
+});

@@ -274,6 +274,24 @@ export async function queuePublication(id: string, o: { at?: number; now?: boole
   return getPublication(id);
 }
 
+/** Sortie explicite de « À vérifier » : l'administrateur a regardé sur le réseau. Jamais de décision automatique. */
+export function resolveToVerify(id: string, outcome: string, url?: string) {
+  const p = getPublication(id);
+  if (!p) throw new Error("Publication introuvable");
+  if (p.state !== "to_verify") throw new Error("Seule une publication « À vérifier » peut être résolue");
+  if (outcome === "published") {
+    let proof = "";
+    if (url) { try { const u = new URL(url); if (u.protocol !== "http:" && u.protocol !== "https:") throw new Error(); proof = u.toString(); } catch { throw new Error("Adresse de la publication invalide (http ou https)"); } }
+    setState(id, "published", { status: "published", url: proof || null, evidence_url: proof || null, published_at: Date.now() });
+    attempt(id, "published", "marquée publiée à la main après vérification", proof || undefined);
+  } else if (outcome === "draft") {
+    if (p.idempotency_key) db.prepare("DELETE FROM pub_idempotency WHERE key = ?").run(String(p.idempotency_key));
+    setState(id, "draft", { status: "idea", scheduled_at: null, idempotency_key: null, approval_id: null });
+    attempt(id, "draft", "remise en brouillon après vérification : rien n'a été publié");
+  } else throw new Error("Résultat attendu : published ou draft");
+  return getPublication(id);
+}
+
 export function cancelPublication(id: string) {
   const p = getPublication(id);
   if (!p) throw new Error("Publication introuvable");
@@ -321,6 +339,11 @@ export function registerPublishers(app: Hono) {
   app.post("/api/publications/:id/cancel", (c) => {
     const denied = admin(c); if (denied) return denied;
     try { return c.json(cancelPublication(c.req.param("id"))); } catch (e) { return c.json({ error: (e as Error).message }, 400); }
+  });
+  app.post("/api/publications/:id/resolve", async (c) => {
+    const denied = admin(c); if (denied) return denied;
+    const b = await c.req.json().catch(() => ({}));
+    try { return c.json(resolveToVerify(c.req.param("id"), String(b.outcome ?? ""), typeof b.url === "string" ? b.url : undefined)); } catch (e) { return c.json({ error: (e as Error).message }, 400); }
   });
   app.post("/api/publications/:id/retry", async (c) => {
     const denied = admin(c); if (denied) return denied;

@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "re
 import { api } from "../../api";
 import { ErrorLine, Header, KpiSkeleton, useData } from "../../App";
 import { Button, Card, EmptyBox, Pill, Segmented, Table, fmt, inputCls, copyText, useAsk } from "../../ui";
-import { PUB_STATE } from "../shared";
+import { ATTEMPT_LABEL, PUB_CHIP, PUB_STATE } from "../shared";
 import { type Contact, type Pub, type Summary, type Go, STAGES, type Stage, stageName, KINDS, PUB_STATUS, NETWORKS, filterCls, eur, today, dateFr, Sheet, Field } from "../shared";
 
 export function PubsCard({ go, title = "Publications de la semaine" }: { go: Go; title?: string }) {
@@ -63,8 +63,8 @@ export function PubsView({ q, go }: { q: Record<string, string>; go: Go }) {
                   <div className="space-y-1">
                     {byDay[d]?.map((p) => (
                       <button key={p.id} onClick={() => setEdit(p)} title={p.title}
-                        className={`block w-full truncate rounded-lg px-2 py-1 text-left text-xs ${p.status === "published" ? "bg-positive-bg text-positive" : p.status === "idea" ? "border border-dashed border-control text-muted" : "bg-raised"}`}>
-                        {p.network && <span className="text-muted">{p.network} · </span>}{p.title}
+                        className={`block w-full truncate rounded-lg px-2 py-1 text-left text-xs ${PUB_CHIP[p.state ?? (p.status === "published" ? "published" : "draft")] ?? "bg-raised"}`}>
+                        {p.network && <span className="opacity-70">{p.network} · </span>}{p.title}{p.state && !["published", "draft", "scheduled"].includes(p.state) && <span className="ml-1 font-medium">· {PUB_STATE[p.state]?.[0] ?? p.state}</span>}
                       </button>
                     ))}
                   </div>
@@ -188,6 +188,16 @@ function PubSheet({ pub, onClose, onSaved }: { pub: Partial<Pub>; onClose: () =>
     if ((await ask({ title: "Supprimer cette publication ?", message: "Le suivi de ses liens cesse.", confirmLabel: "Supprimer" })) === null) return;
     await api(`/api/publications/${id}`, { method: "DELETE" }); onSaved(); onClose();
   }
+  async function resolve(outcome: "published" | "draft") {
+    setBusy(true); setError("");
+    try {
+      let url: string | undefined;
+      if (outcome === "published") { const u = await ask({ title: "Marquer comme publiée ?", message: "Vous avez vérifié sur le réseau que la publication existe. Collez son adresse comme preuve.", confirmLabel: "Marquer publiée", inputLabel: "Adresse de la publication" }); if (u === null) return; url = u || undefined; }
+      const p = await api<Pub>(`/api/publications/${id}/resolve`, { method: "POST", json: { outcome, url } });
+      setState(p.state ?? ""); setEvidence(p.evidence_url ?? ""); onSaved();
+    } catch (err) { setError((err as Error).message); } finally { setBusy(false); }
+  }
+  const canQueue = !!id && ["draft", "failed", "missed", "needs_action", "scheduled", "cancelled"].includes(state);
   const limit = limits[network];
   const st = PUB_STATE[state] ?? [state, "text-muted"];
 
@@ -199,6 +209,16 @@ function PubSheet({ pub, onClose, onSaved }: { pub: Partial<Pub>; onClose: () =>
           <span className={st[1]}>● {st[0]}</span>
           {evidence && <a href={evidence} target="_blank" rel="noreferrer" className="text-ink underline">Voir la preuve</a>}
         </div>
+        {state === "to_verify" && (
+          <div role="status" className="rounded-xl border border-negative/40 bg-negative-bg p-3 text-sm">
+            <p>Le résultat est incertain : l'envoi a peut-être eu lieu. Rien ne sera renvoyé automatiquement. Regardez sur le réseau, puis choisissez :</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <Button type="button" variant="secondary" disabled={busy} onClick={() => resolve("published")}>Marquer publiée</Button>
+              <Button type="button" variant="secondary" disabled={busy} onClick={() => resolve("draft")}>Remettre en brouillon</Button>
+            </div>
+          </div>
+        )}
+        {state === "scheduled" && <p className="text-xs text-muted">Publication programmée : le contenu est figé. Annulez-la pour le modifier, puis reprogrammez.</p>}
         <Field label="Titre *"><input name="title" required defaultValue={pub.title} className={inputCls} autoFocus /></Field>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Date *"><input name="day" type="date" required defaultValue={pub.day} className={inputCls} /></Field>
@@ -227,8 +247,8 @@ function PubSheet({ pub, onClose, onSaved }: { pub: Partial<Pub>; onClose: () =>
         {error && <p role="alert" className="text-sm text-negative">{error}</p>}
         <div className="flex flex-wrap items-center gap-2">
           <Button>{id ? "Enregistrer le brouillon" : "Créer le brouillon"}</Button>
-          <Button type="button" variant="secondary" disabled={busy || !id} onClick={() => queue(true)}>Publier maintenant</Button>
-          <Button type="button" variant="secondary" disabled={busy || !id || !at} onClick={() => queue(false)}>Programmer</Button>
+          <Button type="button" variant="secondary" disabled={busy || !canQueue} onClick={() => queue(true)}>Publier maintenant</Button>
+          <Button type="button" variant="secondary" disabled={busy || !canQueue || !at} onClick={() => queue(false)}>Programmer</Button>
           {id && ["scheduled", "draft", "failed", "needs_action", "missed"].includes(state) && <button type="button" onClick={cancel} className="text-sm text-negative hover:underline">Annuler</button>}
           {id && ["failed", "needs_action", "missed"].includes(state) && <button type="button" onClick={retry} className="text-sm text-ink underline">Réessayer</button>}
           {id && <button type="button" onClick={remove} className="ml-auto text-sm text-negative hover:underline">Supprimer</button>}
@@ -261,7 +281,7 @@ function PubSheet({ pub, onClose, onSaved }: { pub: Partial<Pub>; onClose: () =>
           <div>
             <p className="text-sm">Tentatives</p>
             <ul className="mt-1 space-y-1 text-xs text-muted">
-              {attempts.map((a, i) => <li key={i}><span className="num">{new Date(a.ts).toLocaleString("fr-FR")}</span> · {a.state} {a.detail ? `· ${a.detail}` : ""}</li>)}
+              {attempts.map((a, i) => <li key={i}><span className="num">{new Date(a.ts).toLocaleString("fr-FR")}</span> · {ATTEMPT_LABEL[a.state] ?? "Autre"} {a.detail ? `· ${a.detail}` : ""}</li>)}
             </ul>
           </div>
         )}
@@ -276,6 +296,8 @@ type Account = { id: string; project: string; network: string; label: string; st
 function AccountsCard() {
   const { ask, dialog } = useAsk();
   const { data, reload } = useData<Account[]>("/api/pub-accounts");
+  const { data: mods } = useData<{ id: string; enabled: boolean }[]>("/api/modules");
+  const queueOff = mods?.some((m) => m.id === "publications" && !m.enabled);
   const [error, setError] = useState("");
   async function add(e: FormEvent<HTMLFormElement>) {
     e.preventDefault(); setError("");
@@ -297,6 +319,7 @@ function AccountsCard() {
         <input name="web_url" aria-label="Adresse de connexion" placeholder="https://… (navigateur)" className={inputCls} />
         <Button>Ajouter</Button>
       </form>
+      {queueOff && <p role="status" className="mb-2 text-sm text-negative">Le module Publications est désactivé : la file ne tourne pas, rien ne partira tant qu'il ne sera pas réactivé.</p>}
       {error && <p role="alert" className="mb-2 text-sm text-negative">{error}</p>}
       <Table rows={data ?? []} empty="Aucun compte de publication." cols={[
         { label: "Compte", render: (a) => a.label },
