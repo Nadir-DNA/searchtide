@@ -38,7 +38,17 @@ test("B2 HTTP : clé et anonyme refusés, ticket à usage unique, image reçue, 
 
     const replay = await within(fetch(`${s.base}/api/browser/live/stream?ticket=${encodeURIComponent(ticket)}`, { headers: { Cookie: headers.Cookie } }), 5_000);
     assert.match(await within(replay.text(), 5_000), /déjà connectée/, "ticket à usage unique");
+    // B2-D1 : coupure du flux par le client, puis reconnexion avec le même ticket = images reçues.
     await reader.cancel();
+    let again = "";
+    for (let i = 0; i < 20 && !/event: frame/.test(again); i++) {
+      const re = await within(fetch(`${s.base}/api/browser/live/stream?ticket=${encodeURIComponent(ticket)}`, { headers: { Cookie: headers.Cookie } }), 5_000);
+      const r2 = re.body!.getReader();
+      again = new TextDecoder().decode((await within(r2.read(), 20_000)).value);
+      await r2.cancel();
+      if (!/event: frame/.test(again)) await new Promise((r) => setTimeout(r, 500));
+    }
+    assert.match(again, /event: frame/, "même ticket après coupure du flux");
 
     assert.equal((await fetch(`${s.base}/api/browser/live/close`, { method: "POST", headers, body: "{}" })).status, 200);
     const status = await (await fetch(`${s.base}/api/browser/status`, { headers })).json();

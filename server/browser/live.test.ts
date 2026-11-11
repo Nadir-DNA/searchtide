@@ -96,6 +96,7 @@ test("B2-D1/D2 : reconnexion avec le même ticket après désabonnement ; ticket
     // D2 : ticket non utilisé à 65 s = refusé ; la vue reste ouverte (fermeture à l'inactivité).
     assert.throws(() => subscribe(live.ticket, () => { /* refusé */ }, Date.now() + 65_000), /expiré/);
     assert.equal(liveStatus().open, true);
+    await assert.rejects(sendInput(live.ticket, { type: "text", text: "x" }, Date.now() + 62_000), /expiré/);   // B2-D2 : aussi pour les entrées
     // D1 : première connexion, désabonnement, reconnexion avec le MÊME ticket.
     const frames: string[] = [];
     const off = subscribe(live.ticket, (j) => frames.push(j), Date.now() + 30_000);

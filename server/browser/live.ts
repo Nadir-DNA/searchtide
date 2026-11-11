@@ -129,10 +129,11 @@ export function subscribe(ticket: string, send: (jpeg: string) => void, now = Da
 }
 
 /** Relaie une entrée validée ; les frappes ne sont ni journalisées ni conservées. */
-export async function sendInput(ticket: string, raw: unknown): Promise<void> {
+export async function sendInput(ticket: string, raw: unknown, now = Date.now()): Promise<void> {
   const live = current;
   if (!live || live.closed || live.token !== ticket) throw new Error("Vue absente ou fermée");
-  const now = Date.now();
+  // B2-D2 : même expiration que pour le flux : un ticket jamais utilisé ne sert pas non plus aux entrées.
+  if (!live.used && now - live.issuedAt > TICKET_TTL) throw new Error("Ticket expiré : ouvrez une nouvelle vue");
   live.events = live.events.filter((t) => now - t < 1000);
   if (live.events.length >= MAX_EVENTS_PER_SECOND) throw new Error("Trop d'entrées : réessayez dans une seconde");
   live.events.push(now);

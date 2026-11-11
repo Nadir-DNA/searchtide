@@ -315,9 +315,11 @@ app.get("/api/browser/live/stream", async (c) => {
     let unsubscribe = () => { /* pas encore abonné */ };
     try { unsubscribe = subscribe(ticket, (jpeg) => { void stream.writeSSE({ event: "frame", data: jpeg }); }); }
     catch (e) { await stream.writeSSE({ event: "error", data: (e as Error).message }); return; }
+    // B2-D1 : la coupure du client libère la vue tout de suite (la boucle ci-dessous ne s'interrompt pas toute seule).
+    stream.onAbort(() => unsubscribe());
     try {
       // Une image finale peut arriver après la fermeture ; le flux se termine avec la vue.
-      while (liveStatus().open) await stream.sleep(1000);
+      while (liveStatus().open && !stream.aborted) await stream.sleep(1000);
       await stream.writeSSE({ event: "closed", data: "vue fermée" });
     } finally { unsubscribe(); }
   });
