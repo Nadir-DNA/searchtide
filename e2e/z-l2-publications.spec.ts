@@ -13,6 +13,10 @@ test("L2 : compte, brouillon, publication immédiate avec preuve, texte trop lon
   await page.goto("/?view=pubs");
   const project = `e2e-pub-${Date.now().toString(36)}`;
 
+  // Un compte exige un projet existant (clé du projet).
+  expect((await page.request.post("/api/projects", { data: { name: project, crm_key: project } })).ok()).toBe(true);
+  await page.reload();
+
   // 1. Un compte de publication factice pour ce projet.
   await page.getByLabel("Projet du compte").fill(project);
   await page.getByLabel("Réseau du compte").selectOption("x");
