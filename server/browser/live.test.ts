@@ -105,6 +105,11 @@ test("B2-D1/D2 : reconnexion avec le même ticket après désabonnement ; ticket
     const frames2: string[] = [];
     const off2 = subscribe(live.ticket, (j) => frames2.push(j), Date.now() + 120_000);   // déjà utilisé : l'expiration ne s'applique plus
     await waitUntil(() => frames2.length > 0);
+    // B2-D5 : A coupé puis B abonné ; le désabonnement tardif de A ne libère pas la place de B.
     off2();
+    const offB = subscribe(live.ticket, () => { /* B */ });
+    off2();   // désabonnement tardif (second appel) de l'ancien flux
+    assert.throws(() => subscribe(live.ticket, () => { /* C */ }), /déjà connectée/);
+    offB();
   } finally { await closeLive().catch(() => { /* déjà fermée */ }); await f.close(); }
 });

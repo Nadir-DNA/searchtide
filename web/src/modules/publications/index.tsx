@@ -17,7 +17,7 @@ export function PubsCard({ go, title = "Publications de la semaine" }: { go: Go;
               <span className={`num w-20 shrink-0 ${p.day === today() ? "font-medium text-ink" : "text-muted"}`}>{dateFr(p.day, { weekday: "short", day: "numeric" })}</span>
               <span className="min-w-0 flex-1 truncate">{p.title}</span>
               <span className="hidden text-muted sm:inline">{[p.project, p.network].filter(Boolean).join(" · ")}</span>
-              <StatusPill s={p.status} />
+              <StatusPill s={p.status} state={p.state} />
             </li>
           ))}
         </ul>
@@ -26,7 +26,9 @@ export function PubsCard({ go, title = "Publications de la semaine" }: { go: Go;
   );
 }
 
-function StatusPill({ s }: { s: Pub["status"] }) {
+function StatusPill({ s, state }: { s: Pub["status"]; state?: string | null }) {
+  // L'état réel (échec, à vérifier, annulée…) prime sur le statut éditorial (Idée / Prévue / Publiée).
+  if (state && !["draft", "scheduled", "published"].includes(state)) return <Pill tone="negative">{PUB_STATE[state]?.[0] ?? state}</Pill>;
   return <Pill tone={s === "published" ? "positive" : "neutral"}>{PUB_STATUS.find(([k]) => k === s)?.[1]}</Pill>;
 }
 
@@ -77,7 +79,7 @@ export function PubsView({ q, go }: { q: Record<string, string>; go: Go }) {
               <ul className="divide-y divide-rule">
                 {data.filter((p) => p.day.startsWith(month)).map((p) => (
                   <li key={p.id}><button onClick={() => setEdit(p)} className="flex h-12 w-full items-center gap-3 text-left text-sm">
-                    <span className="num w-14 shrink-0 text-muted">{dateFr(p.day)}</span><span className="min-w-0 flex-1 truncate">{p.title}</span><StatusPill s={p.status} />
+                    <span className="num w-14 shrink-0 text-muted">{dateFr(p.day)}</span><span className="min-w-0 flex-1 truncate">{p.title}</span><StatusPill s={p.status} state={p.state} />
                   </button></li>
                 ))}
               </ul>
@@ -247,8 +249,8 @@ function PubSheet({ pub, onClose, onSaved }: { pub: Partial<Pub>; onClose: () =>
         {error && <p role="alert" className="text-sm text-negative">{error}</p>}
         <div className="flex flex-wrap items-center gap-2">
           <Button>{id ? "Enregistrer le brouillon" : "Créer le brouillon"}</Button>
-          <Button type="button" variant="secondary" disabled={busy || !canQueue} onClick={() => queue(true)}>Publier maintenant</Button>
-          <Button type="button" variant="secondary" disabled={busy || !canQueue || !at} onClick={() => queue(false)}>Programmer</Button>
+          {(!id || canQueue) && <Button type="button" variant="secondary" disabled={busy || !canQueue} onClick={() => queue(true)}>Publier maintenant</Button>}
+          {(!id || canQueue) && <Button type="button" variant="secondary" disabled={busy || !canQueue || !at} onClick={() => queue(false)}>Programmer</Button>}
           {id && ["scheduled", "draft", "failed", "needs_action", "missed"].includes(state) && <button type="button" onClick={cancel} className="text-sm text-negative hover:underline">Annuler</button>}
           {id && ["failed", "needs_action", "missed"].includes(state) && <button type="button" onClick={retry} className="text-sm text-ink underline">Réessayer</button>}
           {id && <button type="button" onClick={remove} className="ml-auto text-sm text-negative hover:underline">Supprimer</button>}

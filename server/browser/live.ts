@@ -125,7 +125,7 @@ export function subscribe(ticket: string, send: (jpeg: string) => void, now = Da
     .then((r: { data?: string }) => { if (r.data) send(r.data); })
     .catch(() => { /* vue fermée */ });
   // B2-D1 : le désabonnement libère la place : le même ticket peut se reconnecter (réseau coupé, onglet rechargé).
-  return () => { live.subscribers.delete(send); live.connected = false; };
+  return () => { if (live.subscribers.delete(send)) live.connected = live.subscribers.size > 0; };   // B2-D5 : un désabonnement tardif ne libère pas la place d'un flux plus récent
 }
 
 /** Relaie une entrée validée ; les frappes ne sont ni journalisées ni conservées. */
