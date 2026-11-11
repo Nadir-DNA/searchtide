@@ -1,6 +1,9 @@
 // L1 tranche 2 : approbations génériques, admin seul, hachage lié, usage unique atomique, plafond.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readdirSync } from "node:fs";
+import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { login, startServer, tempDb } from "./test-server.ts";
 
 test("L1 : approbation — hachage, admin seul, concurrence, plafond", async () => {
@@ -208,6 +211,11 @@ test("J2 : suppression d'un projet gardée par approbation, portée revérifiée
     assert.equal((await fetch(`${s.base}/api/approvals/${req.id}/approve`, { method: "POST", headers: admin })).status, 200);
     assert.equal((await fetch(`${s.base}/api/projects/${other.id}`, { method: "DELETE", headers: { ...k, "x-approval-id": req.id } })).status, 404);
     assert.equal((await fetch(`${s.base}/api/projects/${p.id}`, { method: "DELETE", headers: { ...k, "x-approval-id": req.id } })).status, 200);
+    const snaps = readdirSync(join(t.dir, "backups")).filter((f) => f.startsWith("pre-suppression-"));
+    assert.equal(snaps.length, 1, "instantané pris avant la suppression (la tentative hors portée n'en prend pas)");
+    const snap = new DatabaseSync(join(t.dir, "backups", snaps[0]));
+    assert.equal((snap.prepare("SELECT COUNT(*) c FROM projects WHERE id = ?").get(p.id) as any).c, 1, "l'instantané contient encore le projet");
+    snap.close();
     assert.equal((await fetch(`${s.base}/api/projects/${p.id}`, { headers: admin })).status, 404, "projet supprimé");
     assert.equal((await fetch(`${s.base}/api/projects/${other.id}`, { headers: admin })).status, 200, "témoin intact");
     assert.equal((await fetch(`${s.base}/api/projects/${p.id}`, { method: "DELETE", headers: { ...k, "x-approval-id": req.id } })).status, 404, "usage unique et cible absente");

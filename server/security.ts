@@ -1,6 +1,6 @@
 // Sécurité de l'instance : limite des essais de connexion, double authentification (TOTP), sauvegardes.
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { db } from "./db.ts";
 import { bootFiles } from "./bootstrap.ts";
@@ -110,5 +110,17 @@ export function backupBundle(dir: string, keep = 14, now = new Date()) {
   rmSync(file, { force: true });
   writeFileSync(file, content, { mode: 0o600 });
   chmodSync(file, 0o600);
+  return file;
+}
+
+/** Instantané de sécurité avant une suppression définitive (cascade) : copie cohérente de la base, droits 600, les 5 plus récents gardés. */
+export function snapshotBeforeDelete(label: string, dir = process.env.BACKUP_DIR ?? (process.env.DATABASE_PATH?.startsWith("/data/") ? "/data/backups" : "data/backups")) {
+  mkdirSync(dir, { recursive: true });
+  const safe = label.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 40) || "projet";
+  const file = join(dir, `pre-suppression-${safe}-${Date.now()}.db`);
+  db.exec(`VACUUM INTO '${file.replace(/'/g, "''")}'`);
+  chmodSync(file, 0o600);
+  const old = readdirSync(dir).filter((f) => /^pre-suppression-.*\.db$/.test(f)).sort((a, b) => statSync(join(dir, a)).mtimeMs - statSync(join(dir, b)).mtimeMs);
+  for (const f of old.slice(0, -5)) rmSync(join(dir, f), { force: true });
   return file;
 }

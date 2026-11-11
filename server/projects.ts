@@ -16,6 +16,7 @@ import { shouldMaskConfig } from "./viewer.ts";
 import { canAccess, visibleProjectIds } from "./agents.ts";
 import { consumeApproval } from "./approvals.ts";
 import { securityEvent } from "./security-events.ts";
+import { snapshotBeforeDelete } from "./security.ts";
 import { getModule } from "./modules/index.ts";
 import { collectVia, currentCtx } from "./connectors/use.ts";
 import { connections } from "./connections.ts";
@@ -520,6 +521,8 @@ export function registerProjects(app: Hono) {
       const id = c.req.param("id");
       if (!db.prepare("SELECT 1 FROM projects WHERE id = ?").get(id)) return c.json({ error: "Introuvable" }, 404);
       if (!canAccess(agent as any, id, "write")) return c.json({ error: "Introuvable" }, 404);
+      // Suppression en cascade définitive : instantané de la base d'abord ; sans lui, rien n'est supprimé.
+      try { snapshotBeforeDelete(`projet-${id}`); } catch (e) { return c.json({ error: `Instantané avant suppression impossible : ${(e as Error).message}` }, 500); }
       db.exec("BEGIN");
       try {
         const consumed = consumeApproval(approvalId, { agentId: agent.id, action: "project_delete", projectId: id, targetId: id, payload: {} });
@@ -530,6 +533,8 @@ export function registerProjects(app: Hono) {
         return c.json({ ok: true });
       } catch (e) { db.exec("ROLLBACK"); return c.json({ error: (e as Error).message }, 400); }
     }
+    if (!db.prepare("SELECT 1 FROM projects WHERE id = ?").get(c.req.param("id"))) return c.json({ error: "Projet introuvable" }, 404);
+    try { snapshotBeforeDelete(`projet-${c.req.param("id")}`); } catch (e) { return c.json({ error: `Instantané avant suppression impossible : ${(e as Error).message}` }, 500); }
     return db.prepare("DELETE FROM projects WHERE id = ?").run(c.req.param("id")).changes ? c.json({ ok: true }) : c.json({ error: "Projet introuvable" }, 404);
   });
 

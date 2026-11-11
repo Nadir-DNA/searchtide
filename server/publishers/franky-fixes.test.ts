@@ -78,3 +78,18 @@ test("MED-D1 + B2-D4 + médias : origine contrôlée, verrou des programmées, d
     assert.equal((await close({ save: true, account_id: acc.id, project_id: b.id })).status, 400, "compte de A sous le projet B");
   } finally { s.stop(); t.done(); }
 });
+
+test("Idempotence : l'intention est écrite avant l'envoi ; une intention sans adresse = « À vérifier », jamais rejouée", async () => {
+  const { publishToNetwork } = await import("./queue.ts");
+  const acc = { id: "a", status: "connected" };
+  // Plantage après l'intention : l'exception remonte, la trace « url vide » reste.
+  await assert.rejects(publishToNetwork({ id: "p1", network: "x", text: "[crash]", idempotency_key: "k-crash" }, acc), /plantage simulé/);
+  assert.equal((db.prepare("SELECT url FROM pub_idempotency WHERE key = 'k-crash'").get() as any).url, "");
+  // Rejeu avec la même clé : pas d'envoi, « à vérifier ».
+  const again = await publishToNetwork({ id: "p1", network: "x", text: "ok", idempotency_key: "k-crash" }, acc);
+  assert.deepEqual([again.ok, (again as any).kind], [false, "to_verify"]);
+  // Envoi nominal : adresse enregistrée puis rejeu = même adresse.
+  const first = await publishToNetwork({ id: "p2", network: "x", text: "ok", idempotency_key: "k-ok" }, acc) as any;
+  const second = await publishToNetwork({ id: "p2", network: "x", text: "ok", idempotency_key: "k-ok" }, acc) as any;
+  assert.equal(first.url, second.url);
+});

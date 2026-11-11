@@ -4,7 +4,7 @@ import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { createServer } from "node:net";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 export const SECRET_40 = "h".repeat(40);
 export const freePort = () => new Promise<number>((res) => { const s = createServer().listen(0, "127.0.0.1", () => { const p = (s.address() as any).port; s.close(() => res(p)); }); });
@@ -26,7 +26,7 @@ export async function startServer(dbPath: string, env: Record<string, string> = 
   const child = spawn(process.execPath, ["server/index.ts"], {
     env: { ...process.env, PORT: "0", HOST: "127.0.0.1", DATABASE_PATH: dbPath, SECRET: SECRET_40, ADMIN_PASSWORD: "motdepasse-de-test", // TRUST_PROXY=1 par défaut pour isoler les tests par X-Forwarded-For ; un test du comportement
     // « sans proxy » doit passer TRUST_PROXY: "" explicitement (sinon il ne prouve rien).
-    API_KEY: "cle-api-de-test-0001", DEMO: "", NODE_ENV: "test", TRUST_PROXY: "1", ...env },
+    API_KEY: "cle-api-de-test-0001", DEMO: "", BACKUP_DIR: join(dirname(dbPath), "backups"), NODE_ENV: "test", TRUST_PROXY: "1", ...env },
     stdio: "pipe",
   });
   // Le serveur annonce son port réel : plus de course freePort() entre fichiers parallèles.

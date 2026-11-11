@@ -116,7 +116,7 @@ export function validatePublication(p: Row, account: Row | undefined): string[] 
   return issues;
 }
 
-export type PublishResult = { ok: true; url: string } | { ok: false; kind: "auth" | "format" | "quota" | "rate" | "network" | "refused" | "unknown"; message: string };
+export type PublishResult = { ok: true; url: string } | { ok: false; kind: "auth" | "format" | "quota" | "rate" | "network" | "refused" | "unknown" | "to_verify"; message: string };
 
 /** Fournisseur factice : aucun réseau joint, résultat déterministe pour les tests. */
 export async function publishToNetwork(p: Row, account: Row): Promise<PublishResult> {
@@ -125,13 +125,18 @@ export async function publishToNetwork(p: Row, account: Row): Promise<PublishRes
   if (text.includes("[quota]")) return { ok: false, kind: "quota", message: "Quota du réseau atteint" };
   if (text.includes("[rate]")) return { ok: false, kind: "rate", message: "Limite de débit atteinte" };
   if (text.includes("[fail]")) return { ok: false, kind: "refused", message: "Publication refusée par le réseau" };
-  // Clé d'idempotence : un plantage après l'envoi ne crée jamais de doublon.
-  if (p.idempotency_key) {
-    const seen = db.prepare("SELECT url FROM pub_idempotency WHERE key = ?").get(String(p.idempotency_key)) as { url: string } | undefined;
-    if (seen) return { ok: true, url: seen.url };
+  // Clé d'idempotence, intention AVANT l'envoi (url vide = « envoi commencé, adresse inconnue ») puis adresse APRÈS.
+  // Une intention sans adresse n'est jamais rejouée : « À vérifier » (un vrai réseau a pu publier avant le plantage).
+  const key = p.idempotency_key ? String(p.idempotency_key) : null;
+  if (key) {
+    const seen = db.prepare("SELECT url FROM pub_idempotency WHERE key = ?").get(key) as { url: string } | undefined;
+    if (seen?.url) return { ok: true, url: seen.url };
+    if (seen) return { ok: false, kind: "to_verify", message: "Un envoi précédent a commencé sans adresse de preuve : vérifiez sur le réseau" };
+    db.prepare("INSERT INTO pub_idempotency (key, url, at) VALUES (?, '', ?)").run(key, Date.now());
   }
+  if (text.includes("[crash]")) throw new Error("plantage simulé après l'intention");
   const url = `https://sim.test/${encodeURIComponent(String(p.network))}/${p.id}`;
-  if (p.idempotency_key) db.prepare("INSERT OR IGNORE INTO pub_idempotency (key, url, at) VALUES (?, ?, ?)").run(String(p.idempotency_key), url, Date.now());
+  if (key) db.prepare("UPDATE pub_idempotency SET url = ?, at = ? WHERE key = ?").run(url, Date.now(), key);
   return { ok: true, url };
 }
 
@@ -204,6 +209,9 @@ async function runOne(p: Row, now: number): Promise<void> {
     if (r.ok) {
       setState(p.id, "published", { status: "published", url: r.url, evidence_url: r.url, published_at: Date.now() });
       attempt(p.id, "published", "publié (factice)", r.url);
+    } else if (r.kind === "to_verify") {
+      setState(p.id, "to_verify", { status: "idea" });
+      attempt(p.id, "to_verify", r.message);
     } else if (r.kind === "auth") {
       setState(p.id, "needs_action", { status: "idea" });
       attempt(p.id, "needs_action", `authentification : ${r.message}`);
