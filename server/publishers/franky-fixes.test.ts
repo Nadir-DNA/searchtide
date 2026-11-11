@@ -104,3 +104,18 @@ test("L2-D4 : « À vérifier » se résout à la main — marquée publiée (pr
   assert.equal(resolveToVerify(b, "draft")!.state, "draft");
   assert.throws(() => resolveToVerify(a, "draft"), /À vérifier/, "déjà publiée : plus résoluble");
 });
+
+test("Mode recette : /api/browser/fixtures désactivé par défaut, listé avec BROWSER_FIXTURES=1, réservé à l'administrateur", async () => {
+  const off = tempDb(), on = tempDb();
+  const a = await startServer(off.path), b = await startServer(on.path, { BROWSER_FIXTURES: "1" });
+  try {
+    const get = async (base: string) => ({ cookie: await login(base), anon: (await fetch(`${base}/api/browser/fixtures`)).status });
+    const ca = await get(a.base), cb = await get(b.base);
+    assert.equal(ca.anon === 403 || ca.anon === 401, true);
+    assert.deepEqual(await (await fetch(`${a.base}/api/browser/fixtures`, { headers: { Cookie: ca.cookie } })).json(), { enabled: false });
+    const body = await (await fetch(`${b.base}/api/browser/fixtures`, { headers: { Cookie: cb.cookie } })).json() as any;
+    assert.equal(body.enabled, true);
+    assert.ok(body.pages.some((p: any) => p.path === "/composer" && p.url.startsWith("http://127.0.0.1:")));
+    assert.ok(body.port > 0);
+  } finally { a.stop(); b.stop(); off.done(); on.done(); }
+});

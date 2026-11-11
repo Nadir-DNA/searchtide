@@ -19,6 +19,7 @@ import { handleMcp, mcpAccess } from "./mcp.ts";
 import { registerBusiness } from "./business.ts";
 import { accountBelongsToProject, registerPublishers } from "./publishers/queue.ts";
 import { fixturesEnabled } from "./browser/pool.ts";
+import { FIXTURE_PATHS, startFixtures } from "./browser/fixtures.ts";
 import { registerMedia } from "./publishers/media.ts";
 import { registerReport } from "./report.ts";
 import { registerProjects } from "./projects.ts";
@@ -287,6 +288,14 @@ app.all("/mcp", async (c) => {
 const browserAdmin = (c: Context) => isAdmin(c)
   ? null
   : c.json({ error: "Réservé à l'administrateur (session navigateur)" }, 403);
+// Mode recette (BROWSER_FIXTURES=1) : pages de test locales servies par l'instance, visibles dans l'écran. Désactivé par défaut.
+let fixtureServer: Awaited<ReturnType<typeof startFixtures>> | null = null;
+app.get("/api/browser/fixtures", async (c) => {
+  const denied = browserAdmin(c); if (denied) return denied;
+  if (process.env.BROWSER_FIXTURES !== "1") return c.json({ enabled: false });
+  fixtureServer ??= await startFixtures();
+  return c.json({ enabled: true, port: fixtureServer.port, pages: FIXTURE_PATHS.map((path) => ({ path, url: `${fixtureServer!.url}${path}` })) });
+});
 app.get("/api/browser/status", (c) => browserAdmin(c) ?? c.json(liveStatus()));
 app.post("/api/browser/live", async (c) => {
   const denied = browserAdmin(c); if (denied) return denied;

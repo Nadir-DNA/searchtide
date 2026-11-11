@@ -6,9 +6,11 @@ import { Header, useData } from "./App";
 import { Button, Card, inputCls } from "./ui";
 
 type Status = { open: boolean; viewers: number };
+type Fixtures = { enabled: boolean; port?: number; pages?: { path: string; url: string }[] };
 
 export function BrowserView({ q }: { q: Record<string, string> }) {
   const { data: status, reload } = useData<Status>("/api/browser/status");
+  const { data: fixtures } = useData<Fixtures>("/api/browser/fixtures");
   const [ticket, setTicket] = useState(q.ticket ?? "");
   const [url, setUrl] = useState("");
   const [error, setError] = useState("");
@@ -31,14 +33,14 @@ export function BrowserView({ q }: { q: Record<string, string> }) {
     // Ne pas dépendre de `reload` (nouvelle fonction à chaque rendu) : le ticket est à usage unique.
   }, [ticket]);
 
-  async function start(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
+  async function open(target: string, fixturePort?: number) {
     setBusy(true); setError("");
     try {
-      const r = await api<{ ticket: string }>("/api/browser/live", { method: "POST", json: { url } });
+      const r = await api<{ ticket: string }>("/api/browser/live", { method: "POST", json: { url: target, ...(fixturePort ? { fixture_port: fixturePort } : {}) } });
       setTicket(r.ticket); reload();
     } catch (err) { setError((err as Error).message); } finally { setBusy(false); }
   }
+  const start = (e: FormEvent<HTMLFormElement>) => { e.preventDefault(); void open(url); };
   async function close() {
     try { await api("/api/browser/live/close", { method: "POST", json: {} }); } catch { /* déjà fermée */ }
     setTicket(""); setFrame(""); reload();
@@ -81,6 +83,14 @@ export function BrowserView({ q }: { q: Record<string, string> }) {
             </form>
             {status?.open && !ticket && <p className="mt-3 text-sm text-muted">Une vue est déjà ouverte dans une autre fenêtre. Fermez-la depuis cette fenêtre, ou attendez 10 minutes d'inactivité.</p>}
             {error && <p role="alert" className="mt-2 text-sm text-negative">{error}</p>}
+          </Card>
+        )}
+        {!ticket && fixtures?.enabled && (
+          <Card title="Mode recette" action={<span className="text-xs text-negative">Pages de test locales — aucun réseau réel</span>}>
+            <p className="text-sm text-muted">Mode recette actif sur cette instance (BROWSER_FIXTURES=1) : ces pages sont servies par Searchtide pour éprouver la connexion et la publication sans compte réel.</p>
+            <ul className="mt-3 flex flex-wrap gap-2">
+              {fixtures.pages?.map((p) => <li key={p.path}><Button type="button" variant="secondary" disabled={busy || !!status?.open} onClick={() => void open(p.url, fixtures.port)}>{p.path}</Button></li>)}
+            </ul>
           </Card>
         )}
         {ticket && (
