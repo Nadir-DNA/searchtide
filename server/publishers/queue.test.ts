@@ -10,7 +10,8 @@ const uniq = () => `p-${Date.now().toString(36)}-${Math.random().toString(36).sl
 function pub(project: string, o: Record<string, unknown> = {}) {
   return savePublication(null, { day: TODAY, title: "Annonce de test", project, network: "x", status: "scheduled", ...o }) as Record<string, any>;
 }
-const account = (project: string, o: Record<string, unknown> = {}) => createAccount({ project, network: "x", label: "Compte test", ...o }) as Record<string, any>;
+/** Un compte exige un projet existant (clé du projet) : le test en crée un au besoin. */
+const account = (project: string, o: Record<string, unknown> = {}) => (db.prepare("INSERT OR IGNORE INTO projects (id, name, crm_key, created_at) VALUES (?, ?, ?, 0)").run(`id-${project}`, project, project), createAccount)({ project, network: "x", label: "Compte test", ...o }) as Record<string, any>;
 
 test("L2 : validation — texte trop long, compte manquant, réseau inconnu refusés avant la file", async () => {
   const project = uniq();

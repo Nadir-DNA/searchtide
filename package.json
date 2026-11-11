@@ -14,7 +14,7 @@
     "dev:web": "vite",
     "build": "vite build",
     "start": "node --env-file-if-exists=.env server/index.ts",
-    "test": "DATABASE_PATH=:memory: node --test server/*.test.ts server/browser/*.test.ts server/publishers/*.test.ts server/connectors/*.test.ts relay/*.test.ts scripts/*.test.ts",
+    "test": "DATABASE_PATH=:memory: node --test server/*.test.ts server/publishers/*.test.ts server/connectors/*.test.ts relay/*.test.ts scripts/*.test.ts && DATABASE_PATH=:memory: node --test --test-concurrency=1 server/browser/*.test.ts",
     "typecheck": "tsc --noEmit",
     "2fa": "node scripts/activer-2fa.mjs",
     "e2e": "npm run build && playwright test",

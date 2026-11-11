@@ -17,7 +17,8 @@ import { lastDays, overview, searchStats, strikingDistance, trafficStats, type R
 import { convertGoogleEnv, gscConfigured, listProperties, setSiteGscProperty, syncAll, syncSite } from "./gsc.ts";
 import { handleMcp, mcpAccess } from "./mcp.ts";
 import { registerBusiness } from "./business.ts";
-import { registerPublishers } from "./publishers/queue.ts";
+import { accountBelongsToProject, registerPublishers } from "./publishers/queue.ts";
+import { fixturesEnabled } from "./browser/pool.ts";
 import { registerMedia } from "./publishers/media.ts";
 import { registerReport } from "./report.ts";
 import { registerProjects } from "./projects.ts";
@@ -106,8 +107,10 @@ try {
 app.use("/api/*", async (c, next) => {
   const method = c.req.method;
   if (!["POST", "PUT", "PATCH", "DELETE"].includes(method)) return next();
-  // Médias : corps binaire (image/vidéo), même contrôle d'origine, type vérifié par signature.
-  if (c.req.path === "/api/collect" || /^\/api\/publications\/[^/]+\/media$/.test(c.req.path)) return next();
+  if (c.req.path === "/api/collect") return next();
+  // Médias : corps binaire (image/vidéo) vérifié par signature. Seul le contrôle du Content-Type JSON est levé ;
+  // le contrôle d'origine (Sec-Fetch-Site, Origin) s'applique comme aux autres écritures (MED-D1).
+  const binaryBody = /^\/api\/publications\/[^/]+\/media$/.test(c.req.path);
   if (c.req.header("authorization")) return next();
   if (c.req.header("sec-fetch-site") === "cross-site") return c.json({ error: "Origine non autorisée" }, 403);
   const origin = c.req.header("origin");
@@ -120,7 +123,7 @@ app.use("/api/*", async (c, next) => {
   }
   const length = Number(c.req.header("content-length") ?? "0");
   const hasBody = (Number.isFinite(length) && length > 0) || !!c.req.header("transfer-encoding");
-  if (hasBody) {
+  if (hasBody && !binaryBody) {
     const type = (c.req.header("content-type") ?? "").toLowerCase();
     if (!type.startsWith("application/json")) return c.json({ error: "Content-Type application/json requis" }, 415);
   }
@@ -291,7 +294,7 @@ app.post("/api/browser/live", async (c) => {
   const url = typeof b.url === "string" ? b.url : "";
   if (!url) return c.json({ error: "Adresse de la page requise" }, 400);
   const fixturePort = Number(b.fixture_port) || 0;
-  if (fixturePort && process.env.NODE_ENV !== "test" && process.env.BROWSER_FIXTURES !== "1") return c.json({ error: "Pages de test désactivées sur cette instance" }, 400);
+  if (fixturePort && !fixturesEnabled()) return c.json({ error: "Pages de test désactivées sur cette instance" }, 400);
   try { return c.json(await startLive({ url, fixturePort }), 201); }
   catch (e) { return c.json({ error: (e as Error).message }, 400); }
 });
@@ -323,6 +326,7 @@ app.post("/api/browser/live/close", async (c) => {
     const accountId = typeof b.account_id === "string" ? b.account_id : "";
     const projectId = typeof b.project_id === "string" ? b.project_id : "";
     if (!accountId || !projectId) return c.json({ error: "account_id et project_id requis pour enregistrer la session" }, 400);
+    if (!accountBelongsToProject(accountId, projectId)) return c.json({ error: "Compte navigateur ou projet introuvable ou incohérent" }, 400);
     try { return c.json(await closeLive({ accountId, projectId })); }
     catch (e) { return c.json({ error: (e as Error).message }, 400); }
   }

@@ -32,7 +32,7 @@ test("B2 HTTP : clé et anonyme refusés, ticket à usage unique, image reçue, 
     const stream = await within(fetch(`${s.base}/api/browser/live/stream?ticket=${encodeURIComponent(ticket)}`, { headers: { Cookie: headers.Cookie } }), 5_000);
     assert.equal(stream.status, 200);
     const reader = stream.body!.getReader();
-    const first = await within(reader.read(), 30_000);   // suite complète : plusieurs Chromium en parallèle
+    const first = await within(reader.read(), 20_000);   // attente de l'événement « image » ; les tests Chromium sont sérialisés (npm test)
     const text = new TextDecoder().decode(first.value);
     assert.match(text, /event: frame/, "une image JPEG arrive");
 

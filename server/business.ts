@@ -185,13 +185,19 @@ export function savePublication(id: string | null, input: unknown) {
   const cur = id ? db.prepare("SELECT * FROM publications WHERE id = ?").get(id) as Row | undefined : undefined;
   if (id && !cur) return null;
   const v = pubFields.parse({ ...cur, ...(input as Row) });
+  // L2-D1 : une publication déjà en file ne change pas de contenu, de date ni de statut en silence (la file enverrait autre chose
+  // que ce qui a été approuvé, ou ne l'enverrait jamais). Il faut l'annuler (« Annuler ») puis la reprogrammer.
+  if (cur && cur.state === "scheduled") {
+    const changed = (["day", "title", "text", "project", "network", "account_id", "visible", "status"] as const).filter((k) => (v[k] ?? null) !== (cur[k] ?? null));
+    if (changed.length) throw new Error(`Publication programmée : annulez-la avant de modifier ${changed.join(", ")}, puis reprogrammez-la`);
+  }
   const pid = id ?? randomUUID();
   const campaign = v.campaign ?? cur?.campaign ?? `${slug(v.title)}-${v.day.slice(5).replace("-", "")}`;
   db.prepare(`INSERT INTO publications (id, day, title, project, network, status, url, notes, campaign, text, account_id, visible, state, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET day = excluded.day, title = excluded.title, project = excluded.project, network = excluded.network,
     status = excluded.status, url = excluded.url, notes = excluded.notes, campaign = excluded.campaign,
     text = excluded.text, account_id = excluded.account_id, visible = excluded.visible,
-    state = CASE WHEN publications.state IN ('published', 'running') THEN publications.state ELSE excluded.state END`)
+    state = CASE WHEN publications.state IN ('published', 'running', 'scheduled') THEN publications.state ELSE excluded.state END`)
     .run(pid, v.day, v.title, v.project, v.network, v.status, v.url, v.notes, campaign, v.text ?? null, v.account_id ?? null, v.visible ?? null,
       v.status === "published" ? "published" : "draft", cur?.created_at ?? Date.now(), Date.now());
   return db.prepare("SELECT * FROM publications WHERE id = ?").get(pid);

@@ -88,3 +88,22 @@ test("B2 : hôte non autorisé refusé avant lancement", async () => {
     assert.equal(liveStatus().open, false);
   } finally { await f.close(); }
 });
+
+test("B2-D1/D2 : reconnexion avec le même ticket après désabonnement ; ticket jamais utilisé expiré après 60 s", async () => {
+  const f = await startFixtures();
+  try {
+    const live = await startLive({ url: `${f.url}/composer`, fixturePort: f.port, sandbox: false });
+    // D2 : ticket non utilisé à 65 s = refusé ; la vue reste ouverte (fermeture à l'inactivité).
+    assert.throws(() => subscribe(live.ticket, () => { /* refusé */ }, Date.now() + 65_000), /expiré/);
+    assert.equal(liveStatus().open, true);
+    // D1 : première connexion, désabonnement, reconnexion avec le MÊME ticket.
+    const frames: string[] = [];
+    const off = subscribe(live.ticket, (j) => frames.push(j), Date.now() + 30_000);
+    assert.throws(() => subscribe(live.ticket, () => { /* refusé */ }), /déjà connectée/);
+    off();
+    const frames2: string[] = [];
+    const off2 = subscribe(live.ticket, (j) => frames2.push(j), Date.now() + 120_000);   // déjà utilisé : l'expiration ne s'applique plus
+    await waitUntil(() => frames2.length > 0);
+    off2();
+  } finally { await closeLive().catch(() => { /* déjà fermée */ }); await f.close(); }
+});

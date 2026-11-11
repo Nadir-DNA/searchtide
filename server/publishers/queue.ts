@@ -9,6 +9,8 @@ import { isAdmin } from "../admin.ts";
 import { securityEvent } from "../security-events.ts";
 import { mediaOf } from "./media.ts";
 import { publicationBinding, publishWithBrowser } from "../browser/runner.ts";
+import { revokeBrowserSession } from "../browser/live.ts";
+import { fixturesEnabled } from "../browser/pool.ts";
 import { createApproval, decideApproval } from "../approvals.ts";
 
 type Row = Record<string, any>;
@@ -55,13 +57,16 @@ export function createAccount(input: { project?: string; network?: string; label
   const network = String(input.network ?? "").trim();
   const label = String(input.label ?? "").trim().slice(0, 80);
   if (!project) throw new Error("Projet requis");
+  if (!db.prepare("SELECT 1 FROM projects WHERE id = ? OR crm_key = ?").get(project, project)) throw new Error("Projet introuvable");
   if (!NETWORK_LIMITS[network]) throw new Error(`Réseau non pris en charge : ${network || "(vide)"}`);
   if (!label) throw new Error("Nom du compte requis");
   const cap = Math.min(Math.max(Number(input.daily_cap) || 3, 1), 100);
   const mode = input.mode === "web" ? "web" : "api";
   let webUrl: string | null = null, fixturePort: number | null = null;
   if (mode === "web") {
-    try { const u = new URL(String(input.web_url ?? "")); if (u.protocol !== "http:" && u.protocol !== "https:") throw new Error(); webUrl = u.toString(); fixturePort = Number(u.port) || null; }
+    try { const u = new URL(String(input.web_url ?? "")); if (u.protocol !== "http:" && u.protocol !== "https:") throw new Error(); webUrl = u.toString();
+      // Port de test : uniquement en mode recette et sur la boucle locale, jamais déduit d'une adresse quelconque (sinon contournement du filtre).
+      if (fixturesEnabled() && ["127.0.0.1", "localhost"].includes(u.hostname)) fixturePort = Number(u.port) || null; }
     catch { throw new Error("Adresse de connexion (http ou https) requise pour un compte navigateur"); }
   }
   const id = randomUUID();
@@ -74,7 +79,8 @@ export function deleteAccount(id: string) {
   // Révocation : les publications encore programmées de ce compte sont annulées, jamais envoyées.
   db.prepare("UPDATE publications SET state = 'cancelled', updated_at = ? WHERE account_id = ? AND state IN ('scheduled', 'draft')").run(Date.now(), id);
   db.prepare("DELETE FROM pub_accounts WHERE id = ?").run(id);
-  securityEvent("approval_refused", `compte de publication supprimé : ${a.network}`);
+  revokeBrowserSession(id);   // B2-D3 : la session scellée du compte disparaît avec lui
+  securityEvent("pub_account_deleted", `compte de publication supprimé : ${a.network}`);
   return true;
 }
 
@@ -143,7 +149,7 @@ const setState = (id: string, state: PubState, extra: Row = {}) => {
 /** Au redémarrage, une publication « en cours » n'est jamais relancée : elle passe en « À vérifier ». */
 export function recoverInterrupted() {
   const n = db.prepare("UPDATE publications SET state = 'to_verify', updated_at = ? WHERE state = 'running'").run(Date.now()).changes;
-  if (n) securityEvent("approval_refused", `${n} publication(s) interrompue(s) → à vérifier`);
+  if (n) securityEvent("pub_interrupted", `${n} publication(s) interrompue(s) → à vérifier`);
 }
 
 async function runOne(p: Row, now: number): Promise<void> {
@@ -169,7 +175,7 @@ async function runOne(p: Row, now: number): Promise<void> {
     const r = await publishWithBrowser({
       publication: { ...p, scheduled_at: p.scheduled_at },
       account, approvalId, agentId: "administrateur",
-      baseUrl: String(account.web_url ?? ""), fixturePort: Number(account.fixture_port) || 0,
+      baseUrl: String(account.web_url ?? ""), fixturePort: fixturesEnabled() ? Number(account.fixture_port) || 0 : 0,
     });
     if (r.state === "published") {
       setState(p.id, "published", { status: "published", url: r.proof ?? null, evidence_url: r.proof ?? null, published_at: Date.now() });
@@ -321,3 +327,11 @@ export function registerPublishers(app: Hono) {
 /** Utilisé par les tests pour vérifier l'état d'une publication sans passer par HTTP. */
 export const publicationStates = () => db.prepare("SELECT id, state, scheduled_at, status FROM publications").all();
 export const nowString = nowIso;
+
+/** B2-D4 : le compte existe, est un compte navigateur, et appartient bien au projet indiqué (id ou clé du projet). */
+export function accountBelongsToProject(accountId: string, projectId: string): boolean {
+  const a = db.prepare("SELECT project, mode FROM pub_accounts WHERE id = ?").get(accountId) as { project: string; mode: string } | undefined;
+  if (!a || a.mode !== "web") return false;
+  const p = db.prepare("SELECT id, crm_key FROM projects WHERE id = ? OR crm_key = ?").get(projectId, projectId) as { id: string; crm_key: string | null } | undefined;
+  return !!p && (a.project === p.id || (!!p.crm_key && a.project === p.crm_key));
+}

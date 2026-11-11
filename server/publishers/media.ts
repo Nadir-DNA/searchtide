@@ -2,8 +2,8 @@
 // plafond de taille, suppression avec la publication. Aucun accès public : lecture par l'administrateur seul.
 import type { Hono } from "hono";
 import { randomUUID } from "node:crypto";
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { mkdirSync, readdirSync, readFileSync, rmdirSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { db } from "../db.ts";
 import { isAdmin } from "../admin.ts";
 
@@ -37,7 +37,31 @@ export function removeMedia(publicationId: string, mediaId: string) {
   if (!m) return false;
   try { rmSync(m.path, { force: true }); } catch { /* fichier déjà absent */ }
   db.prepare("DELETE FROM pub_media WHERE id = ?").run(mediaId);
+  try { if (!readdirSync(dirname(m.path)).length) rmdirSync(dirname(m.path)); } catch { /* dossier absent ou non vide */ }   // plus de dossier vide
   return true;
+}
+
+/** Une publication en file, en cours ou publiée garde ses médias : ce qui a été approuvé est ce qui part. */
+const mediaLocked = (publicationId: string) => {
+  const r = db.prepare("SELECT state FROM publications WHERE id = ?").get(publicationId) as { state: string } | undefined;
+  return !!r && ["scheduled", "running", "published"].includes(r.state);
+};
+
+/** Lit le corps en flux avec un plafond, sans dépendre de Content-Length : null si le plafond est dépassé. */
+async function readCapped(body: ReadableStream<Uint8Array> | null, max: number): Promise<Buffer | null> {
+  if (!body) return Buffer.alloc(0);
+  const chunks: Buffer[] = []; let total = 0;
+  const reader = body.getReader();
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.length;
+      if (total > max) { await reader.cancel().catch(() => {}); return null; }
+      chunks.push(Buffer.from(value));
+    }
+  } catch { return Buffer.alloc(0); }
+  return Buffer.concat(chunks);
 }
 
 export function removeAllMedia(publicationId: string) {
@@ -57,9 +81,11 @@ export function registerMedia(app: Hono) {
     const id = c.req.param("id");
     const pub = db.prepare("SELECT id FROM publications WHERE id = ?").get(id);
     if (!pub) return c.json({ error: "Publication introuvable" }, 404);
+    if (mediaLocked(id)) return c.json({ error: "Publication programmée ou publiée : annulez-la avant de modifier ses médias" }, 409);
     const declared = Number(c.req.header("content-length") ?? "0");
     if (Number.isFinite(declared) && declared > MAX_MEDIA_BYTES) return c.json({ error: `Fichier trop lourd (${Math.round(MAX_MEDIA_BYTES / 1024 / 1024)} Mo maximum)` }, 413);
-    const buf = Buffer.from(await c.req.arrayBuffer().catch(() => new ArrayBuffer(0)));
+    const buf = await readCapped(c.req.raw.body, MAX_MEDIA_BYTES);
+    if (!buf) return c.json({ error: `Fichier trop lourd (${Math.round(MAX_MEDIA_BYTES / 1024 / 1024)} Mo maximum)` }, 413);
     if (!buf.length) return c.json({ error: "Fichier vide" }, 400);
     if (buf.length > MAX_MEDIA_BYTES) return c.json({ error: `Fichier trop lourd (${Math.round(MAX_MEDIA_BYTES / 1024 / 1024)} Mo maximum)` }, 413);
     const sniffed = sniffMedia(buf);
@@ -78,6 +104,7 @@ export function registerMedia(app: Hono) {
 
   app.delete("/api/publications/:id/media/:mediaId", (c) => {
     const denied = admin(c); if (denied) return denied;
+    if (mediaLocked(c.req.param("id"))) return c.json({ error: "Publication programmée ou publiée : annulez-la avant de modifier ses médias" }, 409);
     return removeMedia(c.req.param("id"), c.req.param("mediaId")) ? c.json({ ok: true }) : c.json({ error: "Média introuvable" }, 404);
   });
 

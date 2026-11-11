@@ -22,6 +22,9 @@ export function chromiumExecutable(env: NodeJS.ProcessEnv = process.env): string
 /** Bac à sable actif par défaut ; `BROWSER_SANDBOX=0` n'est admis que pour les pages de test locales. */
 export const sandboxEnabled = (env: NodeJS.ProcessEnv = process.env) => env.BROWSER_SANDBOX !== "0";
 
+/** Mode recette : les pages de test locales ne sont admises que si l'instance l'a demandé (BROWSER_FIXTURES=1) ou en test. */
+export const fixturesEnabled = (env: NodeJS.ProcessEnv = process.env) => env.BROWSER_FIXTURES === "1" || env.NODE_ENV === "test";
+
 /** Arguments fixes. Aucun `--remote-debugging-port`, aucun masquage d'empreinte. */
 export const LAUNCH_ARGS = ["--disable-extensions"] as const;
 const MAX_RUN_MS = Number(process.env.BROWSER_RUN_MS) || 5 * 60_000;

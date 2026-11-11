@@ -6,6 +6,7 @@ import { randomBytes } from "node:crypto";
 import { chromium, type Browser, type BrowserContext, type CDPSession, type Page } from "playwright-core";
 import { db } from "../db.ts";
 import { assertAllowedUrl, chromiumExecutable, LAUNCH_ARGS, sandboxEnabled } from "./pool.ts";
+import { startFilterProxy, type FilterProxy } from "./netguard.ts";
 import { open as openVault, seal } from "../vault.ts";
 
 db.exec(`CREATE TABLE IF NOT EXISTS browser_sessions (
@@ -35,6 +36,9 @@ type Live = {
   events: number[];
   connected: boolean;
   closed: boolean;
+  issuedAt: number;
+  used: boolean;
+  proxy: FilterProxy;
 };
 
 let current: Live | null = null;
@@ -71,11 +75,14 @@ export function validateInput(raw: unknown): InputEvent {
 }
 
 /** Ouvre une vue : le ticket renvoyé ne sert qu'une fois, pour le flux SSE. */
-export async function startLive(o: { url: string; fixturePort: number; sandbox?: boolean }): Promise<{ ticket: string; expiresAt: number }> {
+export async function startLive(o: { url: string; fixturePort: number; sandbox?: boolean; chromiumSandbox?: boolean; lookup?: (host: string) => Promise<string[]> }): Promise<{ ticket: string; expiresAt: number }> {
   if (current || closing) throw new Error("Une vue est déjà ouverte : fermez-la d'abord");
   const sandbox = o.sandbox ?? sandboxEnabled();
   assertAllowedUrl(o.url, { sandbox, fixturePort: o.fixturePort });
-  const browser = await chromium.launch({ headless: true, chromiumSandbox: sandbox, executablePath: chromiumExecutable(), args: [...LAUNCH_ARGS] });
+  // Tout le trafic passe par le proxy filtrant (redirections, DNS, sous-ressources) : voir netguard.ts.
+  const proxy = await startFilterProxy({ sandbox, fixture: { port: o.fixturePort }, lookup: o.lookup });
+  const browser = await chromium.launch({ headless: true, chromiumSandbox: o.chromiumSandbox ?? sandbox, executablePath: chromiumExecutable(), args: [...LAUNCH_ARGS],
+    proxy: { server: `http://127.0.0.1:${proxy.port}`, bypass: "<-loopback>", username: proxy.auth.username, password: proxy.auth.password } }).catch(async (e) => { await proxy.close(); throw e; });
   try {
     const context = await browser.newContext({ acceptDownloads: false, serviceWorkers: "block", permissions: [] });
     await context.route("**/*", async (route) => {
@@ -86,7 +93,7 @@ export async function startLive(o: { url: string; fixturePort: number; sandbox?:
     page.on("download", (d) => d.cancel().catch(() => { /* refusé */ }));
     await page.goto(o.url, { waitUntil: "domcontentloaded", timeout: 30_000 });
     const cdp = await context.newCDPSession(page);
-    const live: Live = { token: token(), browser, context, page, cdp, subscribers: new Set(), lastActivity: Date.now(), events: [], connected: false, closed: false };
+    const live: Live = { token: token(), browser, context, page, cdp, subscribers: new Set(), lastActivity: Date.now(), events: [], connected: false, closed: false, issuedAt: Date.now(), used: false, proxy };
     cdp.on("Page.screencastFrame", async (f: { data: string; sessionId: number }) => {
       await cdp.send("Page.screencastFrameAck", { sessionId: f.sessionId }).catch(() => { /* vue fermée */ });
       for (const send of live.subscribers) send(f.data);
@@ -98,23 +105,27 @@ export async function startLive(o: { url: string; fixturePort: number; sandbox?:
     }, 30_000);
     idleTimer.unref();
     return { ticket: live.token, expiresAt: Date.now() + TICKET_TTL };
-  } catch (e) { await browser.close().catch(() => { /* déjà fermé */ }); throw e; }
+  } catch (e) { await browser.close().catch(() => { /* déjà fermé */ }); await proxy.close(); throw e; }
 }
 
 /** Flux : le ticket est à usage unique, une seule vue à la fois. */
-export function subscribe(ticket: string, send: (jpeg: string) => void): () => void {
+export function subscribe(ticket: string, send: (jpeg: string) => void, now = Date.now()): () => void {
   const live = current;
   if (!live || live.closed) throw new Error("Vue absente ou fermée");
   if (live.token !== ticket) throw new Error("Ticket invalide");
   if (live.connected) throw new Error("Une vue est déjà connectée");
+  // B2-D2 : un ticket jamais utilisé expire après 60 s ; la vue reste ouverte et se ferme à l'inactivité.
+  if (!live.used && now - live.issuedAt > TICKET_TTL) throw new Error("Ticket expiré : ouvrez une nouvelle vue");
   live.connected = true;
+  live.used = true;
   live.lastActivity = Date.now();
   live.subscribers.add(send);
   // Première image immédiate : le screencast ne renvoie ensuite que sur changement.
   void live.cdp.send("Page.captureScreenshot", { format: "jpeg", quality: 60 })
     .then((r: { data?: string }) => { if (r.data) send(r.data); })
     .catch(() => { /* vue fermée */ });
-  return () => { live.subscribers.delete(send); };
+  // B2-D1 : le désabonnement libère la place : le même ticket peut se reconnecter (réseau coupé, onglet rechargé).
+  return () => { live.subscribers.delete(send); live.connected = false; };
 }
 
 /** Relaie une entrée validée ; les frappes ne sont ni journalisées ni conservées. */
@@ -159,6 +170,7 @@ export async function closeLive(save?: { accountId: string; projectId: string })
     // Fermer même si le scellement échoue : jamais de navigateur orphelin.
     await live.cdp.send("Page.stopScreencast").catch(() => { /* déjà arrêté */ });
     await live.browser.close().catch(() => { /* déjà fermé */ });
+    await live.proxy.close();
     closing = false;
   }
   return { saved };
