@@ -95,15 +95,32 @@ export function editWidgets(id: string, by: string, op:
 
 const err = (e: unknown) => e instanceof z.ZodError ? e.issues.map((i) => `${i.path.join(".")} : ${i.message}`).join(", ") : (e as Error).message;
 
+/**
+ * L1-D1 : un bloc est hors portée si UNE de ses options désigne (valeur exacte) un projet, une clé CRM, un domaine ou
+ * un indicateur connu mais hors de la portée. Les valeurs inconnues (texte libre) ne sont pas des références.
+ */
+export function widgetsInScope<W extends { options?: Record<string, unknown> }>(widgets: W[] | undefined, visible: Set<string>): W[] {
+  const allowed = new Set<string>(), known = new Set<string>();
+  for (const r of db.prepare("SELECT id, crm_key, sites FROM projects").all() as { id: string; crm_key: string | null; sites: string }[]) {
+    const mine = visible.has(r.id);
+    const refs = [r.id, ...(r.crm_key ? [r.crm_key] : [])];
+    try { refs.push(...(JSON.parse(r.sites || "[]") as string[])); } catch { /* sites illisibles */ }
+    for (const x of refs) { known.add(x); if (mine) allowed.add(x); }
+  }
+  for (const r of db.prepare("SELECT id, project_id FROM indicators").all() as { id: string; project_id: string }[]) { known.add(r.id); if (visible.has(r.project_id)) allowed.add(r.id); }
+  for (const r of db.prepare("SELECT id, domain FROM sites").all() as { id: string; domain: string }[]) { for (const x of [r.id, r.domain]) if (!allowed.has(x)) known.add(x); }
+  const values = (o: Record<string, unknown> = {}) => Object.values(o).flatMap((v) => typeof v === "string" ? [v] : Array.isArray(v) ? v.map(String) : []);
+  return (widgets ?? []).filter((w) => values(w.options).every((v) => !known.has(v) || allowed.has(v)));
+}
+
 export function registerDashboards(app: Hono) {
   app.get("/api/dashboards", (c) => {
     const agent = (c as any).get("agent");
     if (!agent) return c.json({ dashboards: listDashboards(), catalog: widgetCatalog(), sizes: SIZES });
     const ids = visibleProjectIds(agent);
     if (!ids) return c.json({ dashboards: listDashboards(), catalog: widgetCatalog(), sizes: SIZES });
-    // Une clé limitée ne voit que les blocs qui ne ciblent pas un autre projet.
-    const refs = (o: Record<string, unknown>) => ["project", "project_id", "projects", "crm_key"].flatMap((k) => typeof o[k] === "string" ? [String(o[k])] : Array.isArray(o[k]) ? (o[k] as unknown[]).map(String) : []);
-    const scoped = listDashboards().map((d) => ({ ...d, widgets: d.widgets.filter((w) => refs(w.options).every((v) => ids.has(v))) }));
+    // Une clé limitée ne voit que les blocs qui ne ciblent ni projet, ni domaine, ni indicateur hors portée.
+    const scoped = listDashboards().map((d) => ({ ...d, widgets: widgetsInScope(d.widgets, ids) }));
     return c.json({ dashboards: scoped, catalog: widgetCatalog(), sizes: SIZES });
   });
   app.post("/api/dashboards", async (c) => {

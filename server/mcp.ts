@@ -6,7 +6,7 @@ import { gscConfigured, syncSite } from "./gsc.ts";
 import { registerBusinessTools } from "./business.ts";
 import { registerProjectTools } from "./projects.ts";
 import { instrument } from "./agents.ts";
-import { registerDashboardTools } from "./dashboards.ts";
+import { registerDashboardTools, widgetsInScope } from "./dashboards.ts";
 import { portfolio, registerPortfolioTools } from "./portfolio.ts";
 import { registerConnectionTools } from "./connectors/api.ts";
 import { activeModules } from "./modules/state.ts";
@@ -144,11 +144,8 @@ function scopeServer(server: McpServer, s: McpScope) {
     });
 }
 
-/** Un bloc de page qui cible un projet hors portée est retiré (pas seulement masqué). */
-function filterWidgets(widgets: any[] | undefined, s: McpScope) {
-  const refs = (o: Record<string, unknown> = {}) => ["project", "project_id", "projects", "crm_key"].flatMap((k) => typeof o[k] === "string" ? [String(o[k])] : Array.isArray(o[k]) ? (o[k] as unknown[]).map(String) : []);
-  return (widgets ?? []).filter((w) => refs(w.options).every((v) => s.ids.has(v)));
-}
+/** Un bloc de page qui cible un projet, domaine ou indicateur hors portée est retiré (pas seulement masqué). */
+function filterWidgets(widgets: any[] | undefined, s: McpScope) { return widgetsInScope(widgets, s.ids); }
 
 function analyticsTools(server: McpServer) {
   server.registerTool("list_sites", { description: "Liste les sites suivis et leur liaison Search Console." },
