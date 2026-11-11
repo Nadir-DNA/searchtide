@@ -192,7 +192,7 @@ const BUILTIN_TOOLS: Record<string, (server: McpServer, readOnly: boolean, agent
 };
 
 function build(readOnly = false, agent = "Clé principale", scope: McpScopeIds | null = null) {
-  const server = new McpServer({ name: "searchtide", version: "0.2.0" }, { instructions: INSTRUCTIONS });
+  const server = new McpServer({ name: "searchtide", version: "0.4.0" }, { instructions: INSTRUCTIONS });
   if (scope) scopeServer(server, scopeDetails(scope));
   instrument(server, agent);
 

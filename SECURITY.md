@@ -24,13 +24,21 @@ Vous recevrez un accusé de réception et une évaluation. Ce projet est mainten
 - Les événements (`login_lockout`, `login_fail_burst`, activation/désactivation 2FA, purge, création/révocation de clé) sont conservés sans IP ni secret ; les 50 derniers apparaissent dans Diagnostic.
 - **Risque résiduel de la collecte publique :** le seau par site autorise environ 120 + 20/s, soit jusqu'à ~1,7 million d'événements par jour et par site ; prévoir la purge ou un seuil plus bas si l'instance est exposée.
 
+## Agents, approbations et navigateur intégré (0.4)
+
+- **Portée** : une clé d'agent limitée à des projets ne lit ni n'écrit hors de sa portée, en REST comme en MCP. Une clé en portée lecture sur un projet n'y écrit par aucun outil. Pour une clé limitée, les outils MCP sont sur liste blanche.
+- **Approbations** : supprimer un projet ou un indicateur avec une clé demande l'approbation de l'administrateur, à usage unique, liée à la clé et à la cible. Un instantané de la base est pris avant toute suppression de projet.
+- **Navigateur intégré** (option) : administrateur seul. Chromium ne sort que par un proxy local qui résout lui-même les noms, refuse les adresses internes et de métadonnées (y compris par redirection ou IPv4 mappée) et joint l'adresse validée. Le proxy ne déchiffre pas le HTTPS ; en conteneur, ajoutez une règle réseau qui interdit la sortie vers les réseaux privés. Le bac à sable de Chromium reste actif et n'a pas de repli. Ni furtivité ni contournement de CAPTCHA ou de double authentification.
+- **Publications** : simulées dans cette version (aucun réseau réel). Un envoi sans preuve passe en « À vérifier » et n'est jamais rejoué.
+
 ## Périmètre
 
 Sont dans le périmètre :
 
 - l'authentification et ses contournements (session administrateur, clés d'API et d'agents, TOTP) ;
 - le coffre et la manipulation des secrets (fuite par une API, un journal, un message d'erreur ou une réponse MCP) ;
-- le serveur MCP et les outils exposés à un agent, en particulier la frontière lecture / écriture ;
+- le serveur MCP et les outils exposés à un agent, en particulier la frontière lecture / écriture et la portée par projet ;
+- le navigateur intégré : accès à une adresse interne ou aux métadonnées d'un nuage, évasion du proxy filtrant ;
 - l'injection SQL dans le connecteur Postgres en lecture seule et l'évasion de ce mode ;
 - l'exposition d'une instance mal configurée par défaut (ce qui écoute, sur quelle interface) ;
 - les dépendances livrées dans l'image.
@@ -44,7 +52,7 @@ Ne sont **pas** dans le périmètre, par conception :
 
 ## Versions prises en charge
 
-La dernière version publiée (aujourd'hui `0.2.x`) reçoit les correctifs de sécurité. Les versions antérieures ne sont pas maintenues.
+La dernière version publiée (aujourd'hui `0.2.x` ; `0.4.0` est préparée mais non publiée) reçoit les correctifs de sécurité. Les versions antérieures ne sont pas maintenues.
 
 ## Bonnes pratiques pour les utilisateurs
 

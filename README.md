@@ -128,6 +128,13 @@ GET  /api/sites/{id}/search?days=28
 POST /api/sites/{id}/sync
 ```
 
+## Portée par projet, approbations, navigateur, publications (0.4, non publiée)
+
+- **Portée par projet** : chaque clé d'agent a, projet par projet, un mode lecture ou écriture ; REST et MCP appliquent la même règle, une cible hors portée répond « Introuvable ».
+- **Approbations** : une clé ne supprime pas un projet ou un indicateur sans l'approbation de l'administrateur (usage unique, liée à la cible). Un instantané de la base précède toute suppression de projet.
+- **Navigateur intégré** (option, administrateur seul) : connexion manuelle dans Searchtide, tout le trafic de Chromium passe par un proxy filtrant (adresses privées, redirections, DNS). Docker : [docs/exploitation.md](docs/exploitation.md).
+- **Publications — simulées dans cette version** : le fournisseur est factice (adresse de preuve fictive `sim.test`), aucun réseau social réel n'est joint ; le navigateur n'a été éprouvé que sur des pages de test.
+
 ## Sécurité
 
 - **Coffre chiffré** : secrets AES-256-GCM, clé dérivée de `SECRET` par HKDF ; aucune API ne renvoie un secret en entier ; seul un court indice (préfixe et 4 derniers caractères) est affiché. Une rotation de `SECRET` passe les connexions en « à reconnecter » sans perdre l'historique.
@@ -153,6 +160,7 @@ Ne joignez jamais ce volume à un ticket ou à une archive de support. Mot de pa
 ## Limites connues
 
 - La recette avec de vrais comptes couvre Stripe, SMTP, Google Search Console et ntfy. Postgres est testé contre un vrai serveur **en local seulement : ces tests réels sont ignorés en CI**. **PageSpeed, API JSON et Google Play n'ont pas été repassés sur un compte réel** depuis cette version.
+- **Publications simulées** (fournisseur factice) ; navigateur intégré éprouvé sur des pages de test seulement, jamais sur un réseau social réel. Le bac à sable de Chromium demande le profil seccomp fourni en Docker.
 - Les tests de bout en bout tournent sur Chromium uniquement (pas Firefox ni WebKit).
 - La **Connexion avec Stripe** est en **bêta** (service Searchtide Connect, optionnel), désormais ouverte aux comptes réels : la clé restreinte `rk_` reste la voie recommandée pour un compte de production.
 - L'interface et l'essentiel de la documentation sont en français.
@@ -160,7 +168,8 @@ Ne joignez jamais ce volume à un ticket ou à une archive de support. Mot de pa
 ## Feuille de route
 
 - **0.3** : modules activables par projet, catalogue de KPI et KPI calculés, jalons, fil « Aujourd'hui », modules privés (voir [docs/release-v0.3.0.md](docs/release-v0.3.0.md)).
-- **0.4** : Connexion avec Stripe hors bêta, une fois le relais stabilisé en production.
+- **0.4** : portée par projet, approbations, navigateur intégré, publications simulées (voir [docs/release-v0.4.0.md](docs/release-v0.4.0.md)).
+- **Ensuite** : publication réelle sur les réseaux, Connexion avec Stripe hors bêta une fois le relais stabilisé en production.
 - **Ensuite, sans date** : connecteurs reportés (Cloudflare, Gmail en lecture, CRM tiers, sauvegarde distante S3).
 
 ## Contribuer

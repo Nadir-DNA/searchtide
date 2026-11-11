@@ -2,6 +2,29 @@
 
 Toutes les versions notables sont consignées ici. Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/).
 
+## [0.4.0] — non publiée
+
+Clés d'agent bornées par projet, actions sensibles soumises à approbation, navigateur intégré et publications. **Les publications sont SIMULÉES** (fournisseur factice) : aucun réseau social réel n'est joint dans cette version, et le navigateur n'a été éprouvé que sur des pages de test. Notes complètes : [docs/release-v0.4.0.md](docs/release-v0.4.0.md).
+
+### Ajouté
+
+- **Portée par projet** des clés d'agent (lecture ou écriture, projet par projet), appliquée de la même façon en REST et en MCP : une cible hors portée répond « Introuvable ». Les outils MCP sont sur liste blanche pour une clé limitée.
+- **Approbations** : une clé d'agent ne supprime pas un projet ni un indicateur sans approbation de l'administrateur, à usage unique et liée à la cible. Un instantané de la base est pris avant toute suppression de projet.
+- **Navigateur intégré** (option, administrateur seul) : écran « Connexions navigateur » pour se connecter à la main, session scellée dans le coffre. Tout le trafic de Chromium passe par un **proxy sortant filtrant** (adresses privées, métadonnées, redirections, DNS épinglé). Mode recette `BROWSER_FIXTURES=1` : pages de test locales listées dans l'écran.
+- **Publications** : comptes, brouillons, programmation, file d'une minute, médias (25 Mo), preuve, états et tentatives lisibles, « À vérifier » résoluble à la main ; transport factice ou navigateur (recette sur pages de test).
+- Image Docker avec Chromium en option (`WITH_BROWSER=1`, `docker-compose.browser.yml`), runbook [docs/exploitation.md](docs/exploitation.md).
+
+### Modifié
+
+- **L'image Docker s'exécute en non root** (utilisateur `node`, uid 1000) : un volume `/data` créé par 0.2.x et appartenant à root doit passer par `chown -R 1000:1000` (voir le runbook).
+- Éditer le contenu d'une publication programmée est refusé (annulez puis reprogrammez) ; ajouter ou retirer un média d'une publication programmée ou publiée aussi.
+- Un compte de publication exige un projet existant. Le port des pages de test n'est admis qu'en mode recette.
+
+### Sécurité
+
+- Corrigés après revue : lecture pouvant écrire par le MCP, filtre d'adresses du navigateur contournable (IPv4 mappée, DNS, redirections), fuite d'un domaine hors portée par un bloc de page, reconnexion et expiration du ticket de vue, session non révoquée à la suppression d'un compte, contrôle d'origine absent à l'envoi de média.
+- L'idempotence écrit l'intention avant l'envoi : une intention sans adresse de preuve passe en « À vérifier », jamais rejouée.
+
 ## [0.3.0] — non publiée
 
 Les intégrations deviennent des **modules** activables par projet ; le projet devient l'objet central. Notes complètes : [docs/release-v0.3.0.md](docs/release-v0.3.0.md).

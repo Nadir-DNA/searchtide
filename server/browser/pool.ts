@@ -13,7 +13,7 @@ type Row = Record<string, unknown>;
 export function chromiumExecutable(env: NodeJS.ProcessEnv = process.env): string | undefined {
   if (env.CHROMIUM_PATH) return env.CHROMIUM_PATH;
   const root = join(homedir(), ".cache", "ms-playwright");
-  if (!existsSync(root)) return undefined;
+  if (!existsSync(root)) return existsSync("/usr/bin/chromium") ? "/usr/bin/chromium" : undefined;   // image Docker avec WITH_BROWSER=1
   return readdirSync(root).filter((d) => /^chromium-\d+$/.test(d)).sort((a, b) => Number(b.split("-")[1]) - Number(a.split("-")[1]))
     .map((d) => [join(root, d, "chrome-linux64", "chrome"), join(root, d, "chrome-linux", "chrome")].find(existsSync))
     .find(Boolean);
