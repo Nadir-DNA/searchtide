@@ -3,14 +3,16 @@
 import { useEffect, useRef, useState } from "react";
 import { api, type Site } from "./api";
 import { Drawer, useCatalog } from "./connections";
-import { Button, Card, inputCls, restoreFocus } from "./ui";
+import { Button, Card, copyText, inputCls, restoreFocus } from "./ui";
 
-export const SKIP_KEY = "searchtide-demarrage-passe";
+import { SKIP_KEY } from "./onboarding-key";
+import { useDrawerKeys } from "./useDrawerKeys";
 type Go = (n: Record<string, string | undefined>) => void;
 type AgentKey = { id: string; name: string };
 
 function Copiable({ text }: { text: string }) {
   const [done, setDone] = useState(false);
+  const [err, setErr] = useState(false);
   return (
     <div className="flex items-start gap-2">
       <pre className="min-w-0 flex-1 overflow-x-auto rounded-xl border border-border bg-raised px-3 py-2.5 font-mono text-xs leading-5">
@@ -18,11 +20,12 @@ function Copiable({ text }: { text: string }) {
       </pre>
       <button
         type="button"
-        onClick={() => navigator.clipboard.writeText(text).then(() => { setDone(true); setTimeout(() => setDone(false), 1500); })}
+        onClick={async () => { const ok = await copyText(text); setDone(ok); setErr(!ok); setTimeout(() => { setDone(false); setErr(false); }, 1500); }}
         className="shrink-0 rounded-xl border border-border px-3 py-2 text-xs text-muted hover:text-ink"
       >
         {done ? "Copié" : "Copier"}
       </button>
+      {err && <span role="status" className="text-xs text-negative">Copie impossible : sélectionnez le texte.</span>}
     </div>
   );
 }
@@ -75,7 +78,7 @@ export function Onboarding({ go }: { go: Go }) {
   async function createAgent(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     try {
-      const k = await api<{ name: string; key: string }>("/api/agents", { method: "POST", json: { name: agentName.trim() || "Mon agent", read_only: true } });
+      const k = await api<{ name: string; key: string }>("/api/agents", { method: "POST", json: { name: agentName.trim() || "Mon agent", read_only: true, all_projects: true } });
       setAgentKey(k); setAgentName(""); setAgentError(""); load();
     } catch (err) { setAgentError((err as Error).message); }
   }

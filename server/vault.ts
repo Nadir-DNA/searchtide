@@ -36,12 +36,38 @@ const AAD = Buffer.from("searchtide/connection");
 const b64 = (b: Buffer) => b.toString("base64url");
 
 /** Chiffre un objet de secrets : `v1.nonce.chiffré.étiquette` (base64url). */
+const keysFor = (secret: string) => {
+  if (!secretValid(secret)) throw new VaultError("secret-invalid", SECRET_MESSAGE);
+  const derive = (info: string) => Buffer.from(hkdfSync("sha256", secret, "searchtide/vault", info, 32));
+  return { enc: derive("searchtide/secrets/v1"), mac: derive("searchtide/fingerprint/v1") };
+};
+
 export function seal(obj: Record<string, unknown>): string {
   const nonce = randomBytes(12);
   const c = createCipheriv("aes-256-gcm", keys().enc, nonce);
   c.setAAD(AAD);
   const ct = Buffer.concat([c.update(JSON.stringify(obj), "utf8"), c.final()]);
   return ["v1", b64(nonce), b64(ct), b64(c.getAuthTag())].join(".");
+}
+
+/** Chiffrement avec un SECRET explicite (rotation uniquement). */
+export function sealAs(obj: Record<string, unknown>, secret: string): string {
+  const nonce = randomBytes(12);
+  const c = createCipheriv("aes-256-gcm", keysFor(secret).enc, nonce);
+  c.setAAD(AAD);
+  const ct = Buffer.concat([c.update(JSON.stringify(obj), "utf8"), c.final()]);
+  return ["v1", b64(nonce), b64(ct), b64(c.getAuthTag())].join(".");
+}
+
+/** Déchiffrement avec un SECRET explicite (rotation uniquement). */
+export function openAs(blob: string, secret: string): Record<string, any> {
+  const [v, nonce, ct, tag] = blob.split(".");
+  if (v !== "v1" || !nonce || !ct || !tag) throw new VaultError("undecryptable", RECONNECT_MESSAGE);
+  try {
+    const d = createDecipheriv("aes-256-gcm", keysFor(secret).enc, Buffer.from(nonce, "base64url"));
+    d.setAAD(AAD); d.setAuthTag(Buffer.from(tag, "base64url"));
+    return JSON.parse(Buffer.concat([d.update(Buffer.from(ct, "base64url")), d.final()]).toString("utf8"));
+  } catch { throw new VaultError("undecryptable", RECONNECT_MESSAGE); }
 }
 
 /** Déchiffre. Échec (autre SECRET, donnée altérée) : `VaultError("undecryptable")`, jamais une exception brute. */

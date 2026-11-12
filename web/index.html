@@ -7,7 +7,11 @@
     <title>Searchtide</title>
     <script>
       // Thème choisi avant le premier rendu : pas de flash
-      try { document.documentElement.dataset.theme = localStorage.getItem("st-theme") || "dark"; } catch { document.documentElement.dataset.theme = "dark"; }
+      try {
+        var t = localStorage.getItem("st-theme") || "dark";
+        if (t === "auto") t = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        document.documentElement.dataset.theme = t;
+      } catch { document.documentElement.dataset.theme = "dark"; }
     </script>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><path d='M2 22c4-6 8-6 12 0s8 6 16-4' fill='none' stroke='%23c8f55a' stroke-width='4' stroke-linecap='round'/></svg>" />
   </head>

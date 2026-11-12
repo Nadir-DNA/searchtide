@@ -33,9 +33,9 @@ test("CA38 : Copier l'adresse du compte de service (0 propriété), au clavier, 
   const clip = await page.evaluate(() => navigator.clipboard.readText());
   expect(clip).toBe(ZERO_EMAIL);
 
-  // Repli sans API presse-papiers : message explicite au lieu d'un clic sans effet.
+  // Repli sans API presse-papiers : la copie passe par un champ temporaire, sans clic sans effet.
   await page.evaluate(() => Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true }));
   await copy.focus(); await page.keyboard.press("Enter");
-  await expect(dialog.getByText("Copie impossible ici, sélectionnez l'adresse")).toBeVisible();
+  await expect(dialog.getByRole("status").filter({ hasText: "Copié" }).first()).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });

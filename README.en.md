@@ -26,7 +26,9 @@ Open <http://localhost:3030>. Details and a second screenshot (multi-project por
 
 ## What it does
 
-- **Several projects, one view.** Each project gathers its sources, its indicators and a health score; the Portfolio view compares them side by side.
+- **Several projects, one view.** Each project gathers its domains, modules, KPIs (calculated ones included), goals and milestones; "All projects" compares them side by side.
+- **What to do today.** The "Today" feed gathers outages, deadlines, late goals and actions that grow your numbers (keywords to push, follow-ups).
+- **Modules you switch on.** Google, Stripe, Product, Contacts… are enabled for the instance, then project by project; an inactive module never shows a fake zero.
 - **Your keys stay with you.** Connection secrets are encrypted inside the instance (AES-256-GCM, key derived from `SECRET`) and are never returned by the API, including to agents.
 - **Your agents read the numbers, not the keys.** An MCP server exposes the dashboard; connections remain reserved for the admin session.
 
@@ -35,13 +37,13 @@ Open <http://localhost:3030>. Details and a second screenshot (multi-project por
 ### Docker, one command
 
 ```bash
-docker run -d --name searchtide -p 127.0.0.1:3030:3030 -v searchtide:/data ghcr.io/nadir-dna/searchtide:0.2.3
+docker run -d --name searchtide --restart unless-stopped -p 127.0.0.1:3030:3030 -v searchtide:/data ghcr.io/nadir-dna/searchtide:0.2.3
 docker logs searchtide    # admin password generated on first start
 ```
 
 No file to edit: `SECRET` and the password are generated on first start and kept in the `/data` volume. The password is shown only once — write it down.
 
-Images for `linux/amd64` and `linux/arm64`, tags `0.2.0`, `v0.2.0` and `latest`.
+Images for `linux/amd64` and `linux/arm64`, tags `0.2.3` and `v0.2.3`.
 
 ### Docker Compose
 
@@ -77,9 +79,13 @@ Custom events: `searchtide("signup")` in JavaScript, or the `data-searchtide="ct
 
 Connection error? See the [FAQ](docs/guides/faq.md) (in French): it covers the messages the app can display.
 
-## The nine sources
+## Modules and their sources
 
-Everything is configured in **Connections**: a short guide, the required fields, then "Test" — a connection is only saved if the test succeeds.
+Everything is enabled in **Modules** (the interface is in French): a module brings its KPIs, project tabs, dashboard blocks, agent tools and background jobs. A module that needs a service is connected in a drawer (short guide, required fields, "Test": nothing is saved if the test fails), from Modules or straight from a project page. Disabling a module hides what it adds and keeps its data.
+
+Optional modules without an external source: **Contacts** (pipeline, follow-ups), **Publications** (editorial calendar), **Prospection** (email sequences, needs Contacts). Private modules: see [docs/guides/modules-prives.md](docs/guides/modules-prives.md).
+
+The sources:
 
 | Source | What it brings | Authentication | Guide |
 |---|---|---|---|
@@ -155,7 +161,8 @@ Never attach this volume to a ticket or a support archive. Lost password: delete
 
 ## Roadmap
 
-- **0.3**: Stripe OAuth out of beta, once the relay is stable in production.
+- **0.3**: per-project modules, KPI catalog and calculated KPIs, milestones, "Today" feed, private modules (see [docs/release-v0.3.0.md](docs/release-v0.3.0.md)).
+- **0.4**: Stripe OAuth out of beta, once the relay is stable in production.
 - **Later, no date**: deferred connectors (Cloudflare, Gmail read-only, third-party CRM, remote S3 backup).
 
 ## Contributing

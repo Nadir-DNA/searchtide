@@ -1,0 +1,14 @@
+# Option : navigateur intégré (connexion manuelle, publication par navigateur). Désactivée par défaut.
+# Lancer : docker compose -f docker-compose.yml -f docker-compose.browser.yml up -d --build
+# Le bac à sable de Chromium reste ACTIF ; il demande le profil seccomp ci-dessous (espaces de noms utilisateur,
+# sans CAP_SYS_ADMIN) et un /dev/shm plus grand. Sans le bac à sable, la fonction échoue clairement : il n'y a pas de repli.
+services:
+  searchtide:
+    image: searchtide:0.4.0-browser
+    build:
+      context: .
+      args:
+        WITH_BROWSER: "1"
+    shm_size: 1gb
+    security_opt:
+      - seccomp=./docker/chromium-seccomp.json

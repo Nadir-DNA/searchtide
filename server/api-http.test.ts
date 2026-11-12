@@ -19,9 +19,8 @@ test("CA14 (serveur réel) : clé d'API → 403 en écriture, 200 en lecture san
     const key = { Authorization: "Bearer cle-api-de-test-0001", "content-type": "application/json" };
     const write = (m: string, p: string, h: Record<string, string>) => fetch(`${base}${p}`, { method: m, headers: h, body: m === "DELETE" ? undefined : JSON.stringify({ kind: "inexistant", values: {} }) });
     for (const [m, p] of [["POST", "/api/connections"], ["PATCH", "/api/connections/abc"], ["DELETE", "/api/connections/abc"], ["POST", "/api/connections/abc/test"]]) assert.equal((await write(m, p, key)).status, 403, `${m} ${p}`);
-    const list = await fetch(`${base}/api/connections`, { headers: key });
-    assert.equal(list.status, 200); assert.doesNotMatch(await list.text(), /secrets|fingerprint/);
-    assert.equal((await fetch(`${base}/api/connectors`, { headers: key })).status, 200);
+    assert.equal((await fetch(`${base}/api/connections`, { headers: key })).status, 403, "connexions réservées à l'administrateur");
+    assert.equal((await fetch(`${base}/api/connectors`, { headers: key })).status, 403, "catalogue réservé à l'administrateur");
     assert.equal((await fetch(`${base}/api/connections`)).status, 401, "sans identifiant : refusé");
     // Session administrateur : le cookie ouvre l'écriture (le connecteur inconnu donne 400, pas 403)
     const login = await fetch(`${base}/api/login`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ password: "motdepasse-de-test" }) });
@@ -41,15 +40,13 @@ test("E1 (serveur réel) : clé d'API et agent ne reçoivent ni réglage ni dét
   try {
     const key = { Authorization: "Bearer cle-api-de-test-0001" };
     const smtp = (j: any) => (j.connectors as any[]).find((c) => c.id === "smtp").connections[0];
-    const viaKey = await (await fetch(`${s.base}/api/connectors`, { headers: key })).json();
-    assert.equal(smtp(viaKey).settings, undefined); assert.equal(smtp(viaKey).hint, "moi@exemple.com · smtp.exemple.net");
-    const list = await (await fetch(`${s.base}/api/connections`, { headers: key })).text();
-    assert.doesNotMatch(list, /settings|smtp\.exemple\.net"\s*,\s*"port|"user"|PASSE-FACTICE/);
+    // SEC-06 : les connexions et leur catalogue ne sont plus lisibles par une clé.
+    assert.equal((await fetch(`${s.base}/api/connectors`, { headers: key })).status, 403);
+    assert.equal((await fetch(`${s.base}/api/connections`, { headers: key })).status, 403);
     // clé d'agent créée par l'administrateur
     const cookie = await login(s.base);
-    const agent = await (await fetch(`${s.base}/api/agents`, { method: "POST", headers: { Cookie: cookie, "content-type": "application/json" }, body: JSON.stringify({ name: "Test", read_only: true }) })).json();
-    const viaAgent = await (await fetch(`${s.base}/api/connectors`, { headers: { Authorization: `Bearer ${agent.key}` } })).json();
-    assert.equal(smtp(viaAgent).settings, undefined);
+    const agent = await (await fetch(`${s.base}/api/agents`, { method: "POST", headers: { Cookie: cookie, "content-type": "application/json" }, body: JSON.stringify({ name: "Test", read_only: true, all_projects: true }) })).json();
+    assert.equal((await fetch(`${s.base}/api/connectors`, { headers: { Authorization: `Bearer ${agent.key}` } })).status, 403);
     const viaAdmin = await (await fetch(`${s.base}/api/connectors`, { headers: { Cookie: cookie } })).json();
     assert.deepEqual(smtp(viaAdmin).settings, { user: "moi@exemple.com", host: "smtp.exemple.net", port: 465 });
     // outil MCP connections_list (appelé comme un agent, en JSON-RPC)
@@ -69,7 +66,7 @@ test("E1 (serveur réel, DEMO=1) : sans identifiant, ni connexion, ni indice, ni
   try {
     for (const path of ["/api/connectors", "/api/connections"]) {
       const r = await fetch(`${s.base}${path}`);
-      assert.equal(r.status, 200, "la démonstration est en lecture ouverte");
+      assert.ok([401, 403].includes(r.status), `${path} réservé en démonstration (${r.status})`);
       assert.doesNotMatch(await r.text(), /Compte privé|moi@exemple\.com|PASSE-FACTICE|"settings"|smtp\.exemple\.net/, path);
     }
     assert.equal((await fetch(`${s.base}/api/connections`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })).status, 401);

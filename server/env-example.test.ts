@@ -14,6 +14,8 @@ test("CA3 : .env.example contient exactement 3 variables non commentées (SECRET
   assert.match(example, /32 caractères/);
   for (const old of ["STRIPE_CLIENT_ID", "STRIPE_OAUTH_SECRET_KEY", "GOOGLE_SERVICE_ACCOUNT_JSON", "SMTP_URL", "NTFY_TOPIC", "PAGESPEED_KEY", "PLAY_BUCKET"])
     assert.doesNotMatch(example, new RegExp(`^[^#\\n]*${old}`, "m"), `${old} ne doit plus être une variable active`);
+  // A7 : le fuseau des journées est documenté, mais reste commenté (pas une variable active).
+  assert.match(example, /^# DAY_TZ=Europe\/Paris$/m, "DAY_TZ est documenté dans .env.example");
 });
 
 test("CA3 : une instance en production démarre avec un .env qui ne contient que SECRET et ADMIN_PASSWORD, l'administrateur se connecte et peut enregistrer une connexion", async () => {

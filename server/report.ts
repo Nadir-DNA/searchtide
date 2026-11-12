@@ -1,5 +1,6 @@
 // Rapport hebdomadaire : visites, Google, CRM et publications de la semaine écoulée, envoyé le lundi matin.
 import type { Hono } from "hono";
+import { registerJob } from "./jobs.ts";
 import { mailSetup } from "./connectors/channels.ts";
 import { db, localDay } from "./db.ts";
 import { previous, searchStats, strikingDistance, trafficStats, type Range } from "./stats.ts";
@@ -189,5 +190,5 @@ export function registerReport(app: Hono) {
     catch (e) { return c.json({ error: (e as Error).message }, 400); }
   });
   // Vérifie toutes les 30 min ; un envoi par semaine au plus
-  setInterval(() => { if (mailConfigured() && dueNow()) sendReport().catch((e) => console.error("[rapport]", e.message)); }, 30 * 60 * 1000).unref();
+  registerJob("notifications", { id: "weekly-report", every: "30m", run: async () => { if (mailConfigured() && dueNow()) await sendReport(); } });
 }

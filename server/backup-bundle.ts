@@ -7,11 +7,15 @@ import { gzipSync, gunzipSync } from "node:zlib";
 
 export type DecodedBundle = { day: string | null; db: Buffer; secret: string | null; adminPassword: string | null };
 
-/** Construit le bundle à partir de la base et des fichiers de démarrage (les absents restent null). */
-export function makeBundle(dbFile: string, secretFile: string, passwordFile: string, day: string): Buffer {
+/** Charge utile commune aux lots v1 et v2 (SECRET et mot de passe admin inclus). */
+export function bundlePayload(dbFile: string, secretFile: string, passwordFile: string, day: string) {
   const text = (f: string) => (existsSync(f) ? readFileSync(f).toString("base64") : null);
-  const payload = { version: 1, day, db: readFileSync(dbFile).toString("base64"), secret: text(secretFile), adminPassword: text(passwordFile) };
-  return gzipSync(Buffer.from(JSON.stringify(payload)));
+  return { version: 1, day, db: readFileSync(dbFile).toString("base64"), secret: text(secretFile), adminPassword: text(passwordFile) };
+}
+
+/** Construit le bundle v1 local à partir de la base et des fichiers de démarrage (les absents restent null). */
+export function makeBundle(dbFile: string, secretFile: string, passwordFile: string, day: string): Buffer {
+  return gzipSync(Buffer.from(JSON.stringify(bundlePayload(dbFile, secretFile, passwordFile, day))));
 }
 
 export function decodeBundle(buf: Buffer): DecodedBundle {

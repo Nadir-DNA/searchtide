@@ -12,8 +12,8 @@
   var endpoint = new URL("/api/collect", s.src).href;
   var last;
 
-  function send(name) {
-    var body = JSON.stringify({ site: site, url: location.href, referrer: document.referrer, lang: navigator.language, name: name });
+  function send(name, referrer) {
+    var body = JSON.stringify({ site: site, url: location.href, referrer: referrer === undefined ? document.referrer : referrer, lang: navigator.language, name: name });
     if (!(navigator.sendBeacon && navigator.sendBeacon(endpoint, body))) {
       fetch(endpoint, { method: "POST", body: body, keepalive: true });
     }
@@ -21,11 +21,14 @@
 
   function pageview() {
     if (last === location.pathname) return;
+    // Navigation interne : le référent est la page précédente, pas le site d'entrée.
+    var referrer = last ? location.origin + last : document.referrer;
     last = location.pathname;
-    send();
+    send(undefined, referrer);
   }
 
-  // Applications monopages : suivre les changements d'URL
+  // Applications monopages : suivre les changements d'URL.
+  // replaceState n'est PAS intercepté : un routeur qui réécrit l'URL ne doit pas créer une vue en double.
   var push = history.pushState;
   history.pushState = function () { push.apply(this, arguments); pageview(); };
   addEventListener("popstate", pageview);

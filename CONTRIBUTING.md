@@ -53,3 +53,7 @@ Si un secret a été poussé par erreur, ne vous contentez pas de le retirer : r
 ## Licence des contributions
 
 En proposant une PR, vous acceptez que votre contribution soit publiée sous la licence MIT du projet. Aucun CLA n'est demandé.
+
+## Ordre des vérifications
+
+Lancer `npm run build` **avant** `npm test` : le test T24 (démarrage en production) sert la page de connexion depuis `web/dist`, et échoue si le dossier n'existe pas encore. Ensuite seulement `npm run e2e`.

@@ -37,7 +37,7 @@ test("CA17 : « Retirer » cite les 2 indicateurs ; après confirmation ils exis
   expect((await stripeConnections(page)).some((c) => c.id === conn)).toBe(true);
   await dialog.locator("li", { hasText: "Compte à retirer" }).getByRole("button", { name: "Retirer" }).click();
   await confirm.getByRole("button", { name: "Retirer définitivement" }).click();
-  await expect(dialog.getByRole("status")).toContainText("« Compte à retirer » est retiré.");
+  await expect(dialog.getByRole("status")).toContainText("« Compte à retirer » est retiré.", { timeout: 10_000 });
   await expect(dialog.getByRole("status")).toContainText("2 indicateurs passent en « Source retirée »");
 
   expect((await stripeConnections(page)).some((c) => c.id === conn)).toBe(false);

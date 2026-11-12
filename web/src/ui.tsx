@@ -1,4 +1,5 @@
-import type { ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { csvText } from "./csv";
 
 export const fmt = (n: number | null | undefined, d = 0) =>
   n == null ? "—" : n.toLocaleString("fr-FR", { maximumFractionDigits: d, minimumFractionDigits: d });
@@ -39,7 +40,7 @@ export function Segmented<T extends string>({ options, value, onChange, label }:
     <div role="group" aria-label={label} className="inline-flex shrink-0 rounded-full border border-border bg-raised p-1">
       {options.map(([v, l]) => (
         <button key={v} onClick={() => onChange(v)} aria-pressed={value === v}
-          className={`h-7 rounded-full px-3 text-[13px] whitespace-nowrap transition-colors ${value === v ? "bg-active text-ink shadow-[inset_0_0_0_1px_var(--color-control)]" : "text-muted hover:text-ink"}`}>
+          className={`h-7 min-h-11 rounded-full px-3 text-[13px] whitespace-nowrap transition-colors md:min-h-7 ${value === v ? "bg-active text-ink shadow-[inset_0_0_0_1px_var(--color-control)]" : "text-muted hover:text-ink"}`}>
           {l}
         </button>
       ))}
@@ -75,17 +76,24 @@ export function EmptyBox({ children }: { children: ReactNode }) {
 }
 
 /** Liste classée : le fond arrondi de chaque ligne est la barre, dans la colonne du libellé uniquement. */
-export function ShareList({ rows, label, empty, map }: {
-  rows: { key: string; visitors: number }[]; label: string; empty: string; map?: (k: string) => ReactNode;
+export function ShareList({ rows, label, empty, map, exportName }: {
+  rows: { key: string; visitors: number }[]; label: string; empty: string; map?: (k: string) => ReactNode; exportName?: string;
 }) {
+  const [all, setAll] = useState(false);
   if (!rows.length) return <EmptyBox>{empty}</EmptyBox>;
   const max = Math.max(...rows.map((r) => r.visitors), 1);
   const total = rows.reduce((n, r) => n + r.visitors, 0);
+  const shown = all ? rows : rows.slice(0, 6);
   return (
     <>
-      <div className="mb-1.5 flex justify-between px-3 text-xs text-muted"><span>{label}</span><span>Visiteurs</span></div>
+      <div className="mb-1.5 flex justify-between px-3 text-xs text-muted">
+        <span>{label}</span>
+        <span className="flex items-center gap-2"><span>Visiteurs</span>{exportName && (
+          <button type="button" className="underline hover:text-ink" onClick={() => downloadCsv(`${exportName}.csv`, [[label, "Visiteurs"], ...rows.map((r) => [r.key, r.visitors])])}>CSV</button>
+        )}</span>
+      </div>
       <ul className="space-y-1">
-        {rows.slice(0, 6).map((r, i) => (
+        {shown.map((r, i) => (
           <li key={r.key} className="relative flex h-9 items-center justify-between gap-3 px-3">
             <span className="absolute inset-y-0 right-[104px] left-0" aria-hidden>
               <span className={`block h-full rounded-xl ${i === 0 ? "bg-active" : "bg-raised"}`} style={{ width: `${(r.visitors / max) * 100}%` }} />
@@ -98,32 +106,63 @@ export function ShareList({ rows, label, empty, map }: {
           </li>
         ))}
       </ul>
+      {rows.length > 6 && (
+        <button type="button" aria-expanded={all} onClick={() => setAll(!all)} className="mt-2 h-9 w-full rounded-lg text-xs text-muted hover:text-ink">
+          {all ? "Voir moins" : `Voir les ${rows.length - 6} autres`}
+        </button>
+      )}
     </>
   );
 }
 
-type Col<T> = { label: string; render: (r: T) => ReactNode; num?: boolean; className?: string };
+type Col<T> = { label: string; render: (r: T) => ReactNode; num?: boolean; className?: string; sortValue?: (r: T) => string | number };
 
-export function Table<T>({ rows, cols, empty, onRow }: { rows: T[]; cols: Col<T>[]; empty: string; onRow?: (r: T) => void }) {
+export function Table<T>({ rows, cols, empty, onRow, max }: { rows: T[]; cols: Col<T>[]; empty: string; onRow?: (r: T) => void; max?: number }) {
+  const [sort, setSort] = useState<{ i: number; dir: 1 | -1 } | null>(null);
+  const [all, setAll] = useState(false);
   if (!rows.length) return <EmptyBox>{empty}</EmptyBox>;
+  const sorted = sort
+    ? [...rows].sort((a, b) => {
+      const f = cols[sort.i].sortValue!;
+      const va = f(a), vb = f(b);
+      const c = typeof va === "number" && typeof vb === "number" ? va - vb : String(va).localeCompare(String(vb), "fr");
+      return c * sort.dir;
+    })
+    : rows;
+  const shown = max && !all ? sorted.slice(0, max) : sorted;
   return (
     <div className="-mx-2 overflow-x-auto">
-      <table className="w-full text-sm">
+      <table className="st-table w-full text-sm">
         <thead>
           <tr className="text-xs text-muted">
-            {cols.map((c, i) => <th key={i} className={`h-9 px-2 font-normal ${c.num ? "text-right whitespace-nowrap" : "text-left"} ${c.className ?? ""}`}>{c.label}</th>)}
+            {cols.map((c, i) => (
+              <th key={i} aria-sort={sort?.i === i ? (sort.dir === 1 ? "ascending" : "descending") : undefined}
+                className={`h-9 px-2 font-normal ${c.num ? "text-right whitespace-nowrap" : "text-left"} ${c.className ?? ""}`}>
+                {c.sortValue ? (
+                  <button type="button" onClick={() => setSort((s) => s?.i === i ? { i, dir: s.dir === 1 ? -1 : 1 } : { i, dir: 1 })}
+                    className="rounded text-xs text-muted hover:text-ink">
+                    {c.label}{sort?.i === i ? (sort.dir === 1 ? " ↑" : " ↓") : ""}
+                  </button>
+                ) : c.label}
+              </th>
+            ))}
           </tr>
         </thead>
         <tbody>
-          {rows.map((r, i) => (
+          {shown.map((r, i) => (
             <tr key={i} onClick={onRow && (() => onRow(r))} className={`border-t border-rule ${onRow ? "cursor-pointer transition-colors hover:bg-raised" : ""}`}>
               {cols.map((c, j) => (
-                <td key={j} className={`h-12 px-2 ${c.num ? "num text-right whitespace-nowrap" : "max-w-0 truncate"} ${c.className ?? ""}`}>{c.render(r)}</td>
+                <td key={j} data-label={c.label} className={`h-12 px-2 ${c.num ? "num text-right whitespace-nowrap" : "max-w-0 truncate"} ${c.className ?? ""}`}>{c.render(r)}</td>
               ))}
             </tr>
           ))}
         </tbody>
       </table>
+      {max && rows.length > max && (
+        <button type="button" aria-expanded={all} onClick={() => setAll(!all)} className="mt-2 h-9 w-full rounded-lg text-xs text-muted hover:text-ink">
+          {all ? "Voir moins" : `Voir les ${rows.length - max} autres`}
+        </button>
+      )}
     </div>
   );
 }
@@ -134,7 +173,7 @@ export function Button({ children, variant = "primary", ...p }: React.ButtonHTML
     : variant === "accent"
       ? "bg-accent text-on-accent hover:opacity-90"
       : "border border-control bg-raised text-ink hover:bg-active";
-  return <button {...p} className={`inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-full px-4 text-sm font-medium transition active:scale-[.98] disabled:opacity-50 ${look} ${p.className ?? ""}`}>{children}</button>;
+  return <button {...p} className={`inline-flex h-9 min-h-11 shrink-0 items-center justify-center gap-1.5 rounded-full px-4 text-sm font-medium transition active:scale-[.98] disabled:opacity-50 md:min-h-9 ${look} ${p.className ?? ""}`}>{children}</button>;
 }
 
 /**
@@ -147,7 +186,116 @@ export function restoreFocus(el: HTMLElement | null | undefined) {
   return () => window.clearTimeout(id);
 }
 
-export const inputCls = "h-10 w-full rounded-lg border border-control bg-raised px-3 text-sm text-ink placeholder:text-muted";
+/** Copie fiable : presse-papiers si disponible, sinon sélection d'un champ temporaire (http:// hors localhost). */
+export async function copyText(text: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(text); return true; }
+  } catch { /* repli ci-dessous */ }
+  try {
+    const el = document.createElement("textarea");
+    el.value = text; el.setAttribute("readonly", ""); el.style.position = "fixed"; el.style.opacity = "0";
+    document.body.appendChild(el); el.select(); el.setSelectionRange(0, text.length);
+    const ok = document.execCommand("copy"); el.remove(); return ok;
+  } catch { return false; }
+}
+
+type AskOptions = {
+  title: string;
+  message?: ReactNode;
+  confirmLabel?: string;
+  /** Valeur à saisir exactement pour confirmer (suppression d'un site : son domaine). */
+  requireText?: string;
+  /** Mode saisie : le libellé du champ dont la valeur est retournée (nom d'une page). */
+  inputLabel?: string;
+  inputDefault?: string;
+  /** Validation de la valeur saisie : message d'erreur (bloque la confirmation) ou null. */
+  validate?: (value: string) => string | null;
+};
+
+/**
+ * Remplace les boîtes natives du navigateur : role="alertdialog" nommée, bouton « Annuler », focus rendu à l'ouverture.
+ * Résout la valeur saisie, "" pour une confirmation simple, ou null si l'utilisateur annule.
+ */
+export function useAsk() {
+  const [pending, setPending] = useState<{ opts: AskOptions; resolve: (v: string | null) => void } | null>(null);
+  const ask = (opts: AskOptions) => new Promise<string | null>((resolve) => setPending({ opts, resolve }));
+  const close = (value: string | null) => { const p = pending; setPending(null); p?.resolve(value); };
+  const dialog = pending ? <AskDialog opts={pending.opts} onCancel={() => close(null)} onConfirm={(v) => close(v)} /> : null;
+  return { ask, dialog };
+}
+
+function AskDialog({ opts, onCancel, onConfirm }: { opts: AskOptions; onCancel: () => void; onConfirm: (v: string) => void }) {
+  const id = useId();
+  const box = useRef<HTMLDivElement>(null);
+  const [value, setValue] = useState(opts.inputDefault ?? "");
+  const [check, setCheck] = useState("");
+  useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null;
+    const target = box.current?.querySelector<HTMLElement>("input") ?? box.current?.querySelector<HTMLElement>("button");
+    target?.focus();
+    return () => previous?.focus?.();
+  }, []);
+  const problem = opts.validate ? opts.validate(value) : null;
+  const valid = !problem && (!opts.requireText || check === opts.requireText) && (!opts.inputLabel || value.trim().length > 0);
+  const onKey = (e: React.KeyboardEvent) => {
+    if (e.key === "Escape") { e.preventDefault(); onCancel(); return; }
+    if (e.key !== "Tab") return;
+    const items = [...(box.current?.querySelectorAll<HTMLElement>("button,input") ?? [])].filter((el) => !el.hasAttribute("disabled"));
+    if (!items.length) return;
+    const first = items[0], last = items[items.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  };
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4" onKeyDown={onKey}>
+      <div ref={box} role="alertdialog" aria-modal="true" aria-labelledby={id} className="w-full max-w-md rounded-2xl border border-border bg-surface p-5 shadow-xl">
+        <h2 id={id} className="text-lg font-medium">{opts.title}</h2>
+        {opts.message && <div className="mt-2 text-sm text-muted">{opts.message}</div>}
+        {opts.inputLabel && (
+          <label className="mt-4 block text-sm">{opts.inputLabel}
+            <input value={value} onChange={(e) => setValue(e.target.value)} className={`${inputCls} mt-2`} />
+          </label>
+        )}
+        {problem && <p role="alert" className="mt-2 text-xs text-negative">{problem}</p>}
+        {opts.requireText && (
+          <label className="mt-4 block text-sm">Saisissez « {opts.requireText} » pour confirmer
+            <input value={check} onChange={(e) => setCheck(e.target.value)} autoComplete="off" className={`${inputCls} mt-2`} />
+          </label>
+        )}
+        <div className="mt-5 flex justify-end gap-2">
+          <Button variant="secondary" onClick={onCancel}>Annuler</Button>
+          <button type="button" disabled={!valid} onClick={() => onConfirm(value.trim())}
+            className="h-9 shrink-0 rounded-full bg-negative px-4 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50">{opts.confirmLabel ?? "Supprimer"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Export CSV : UTF-8 avec BOM, séparateur virgule, protection contre les formules (voir csv.ts). */
+export function downloadCsv(name: string, rows: (string | number)[][]) {
+  const csv = csvText(rows);
+  const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" });
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+/** Message d'action annoncé aux lecteurs d'écran. */
+export function Status({ children }: { children: ReactNode }) {
+  return <span role="status" aria-live="polite" className="text-sm text-muted">{children}</span>;
+}
+
+/** B8 : suppression différée de 5 s, avec retour possible. */
+export function UndoBar({ text, onUndo }: { text: string; onUndo: () => void }) {
+  return (
+    <div role="status" className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-raised px-3 py-2 text-sm">
+      <span>{text}</span>
+      <button type="button" onClick={onUndo} className="rounded-full border border-control px-3 py-1 text-xs font-medium hover:bg-active">Annuler</button>
+    </div>
+  );
+}
+
+export const inputCls = "h-10 w-full min-w-0 rounded-lg border border-control bg-raised px-3 text-sm text-ink placeholder:text-muted";
 
 /** Barre grise à la taille réelle de la valeur attendue (chargement). */
 export const Skeleton = ({ className = "" }: { className?: string }) => <span className={`block rounded-xl bg-raised ${className}`} />;
@@ -175,6 +323,7 @@ export const Icon = {
   bot: <><rect x="3" y="5" width="10" height="8" rx="2.5" /><path d="M8 2.5V5M6 9h.01M10 9h.01M1.5 9v1.5M14.5 9v1.5" /></>,
   link: <><path d="M6.5 9.5a3 3 0 0 0 4.2 0l2.1-2.1a3 3 0 0 0-4.2-4.2L7.5 4.3" /><path d="M9.5 6.5a3 3 0 0 0-4.2 0L3.2 8.6a3 3 0 0 0 4.2 4.2l1.1-1.1" /></>,
   calendar: <><rect x="2.5" y="3.5" width="11" height="10" rx="2" /><path d="M2.5 6.5h11M5.5 2v3M10.5 2v3" /></>,
+  check: <><circle cx="8" cy="8" r="5.5" /><path d="M5.5 8.2l1.8 1.8 3.2-3.6" /></>,
 };
 export const Svg = ({ children }: { children: ReactNode }) => (
   <svg viewBox="0 0 16 16" className="size-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>{children}</svg>

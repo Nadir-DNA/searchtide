@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "./api";
 import { useData } from "./App";
-import { useCatalog, useDrawerKeys, type Catalog, type Manifest } from "./connections";
+import { useCatalog, type Catalog, type Manifest } from "./connections";
+import { useDrawerKeys } from "./useDrawerKeys";
 import { Button, Card, EmptyBox, inputCls, restoreFocus } from "./ui";
 
 type Go = (n: Record<string, string | undefined>) => void;
@@ -20,6 +21,7 @@ export function SourcesCard({ projectId, onChanged, go }: { projectId: string; o
   const { data: s, reload } = useData<Sources>(`/api/projects/${projectId}/sources`);
   const { catalog, reload: reloadCatalog } = useCatalog();
   const [attach, setAttach] = useState(false);
+  const [adding, setAdding] = useState(false);
   const [props, setProps] = useState<string[] | null>(null);
   const [msg, setMsg] = useState("");
   const opener = useRef<HTMLElement | null>(null);
@@ -36,12 +38,15 @@ export function SourcesCard({ projectId, onChanged, go }: { projectId: string; o
     setMsg(`${plural(created, "indicateur")} ajouté${created > 1 ? "s" : ""}${skipped.length ? ` · déjà présent${skipped.length > 1 ? "s" : ""} : ${skipped.join(", ")}` : ""}.`);
   };
   // Le focus revient au bouton qui a ouvert le panneau, après son démontage
-  useEffect(() => { if (!attach) return restoreFocus(opener.current); }, [attach]);
+  useEffect(() => { if (!attach && !adding) return restoreFocus(opener.current); }, [attach, adding]);
   if (!s) return null;
   const empty = !s.groups.length && !s.legacy.length;
 
   return (
-    <Card title="Sources" action={<Button variant="secondary" onClick={(e) => { opener.current = e.currentTarget; setAttach(true); }}>Rattacher</Button>}>
+    <Card title="Sources" action={<span className="flex flex-wrap gap-2">
+      <Button onClick={(e) => { opener.current = e.currentTarget; setAdding(true); }}>Ajouter des KPI</Button>
+      <Button variant="secondary" onClick={(e) => { opener.current = e.currentTarget; setAttach(true); }}>Rattacher</Button>
+    </span>}>
       {empty && <EmptyBox>Aucune source rattachée. « Rattacher » relie une connexion (Stripe, Postgres, PageSpeed…) et crée les indicateurs en quelques clics.</EmptyBox>}
       <ul className="divide-y divide-rule">
         {s.groups.map((g, i) => {
@@ -80,7 +85,7 @@ export function SourcesCard({ projectId, onChanged, go }: { projectId: string; o
                 <option value="">Non rattaché</option>
                 {[...new Set([...(site.gsc_property ? [site.gsc_property] : []), ...props])].map((p) => <option key={p} value={p}>{p}</option>)}
               </select>
-            ) : !site.gsc_property && <button type="button" onClick={() => go({ view: "connections", id: undefined, site: undefined })} className="text-xs text-accent underline">Connecter Google</button>}
+            ) : !site.gsc_property && <button type="button" onClick={() => go({ view: "connections", id: undefined, site: undefined })} className="text-xs text-ink underline">Connecter Google</button>}
           </li>
         ))}
       </ul>
@@ -88,10 +93,11 @@ export function SourcesCard({ projectId, onChanged, go }: { projectId: string; o
       {!s.productDb && (
         <p className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
           Aucune base produit : rattachez Postgres pour suivre inscriptions et rétention.
-          <button type="button" onClick={(e) => { opener.current = e.currentTarget; setAttach(true); }} className="text-accent underline">Rattacher</button>
+          <button type="button" onClick={(e) => { opener.current = e.currentTarget; setAttach(true); }} className="text-ink underline">Rattacher</button>
         </p>
       )}
       {msg && <p role="status" className="mt-3 text-sm">{msg}</p>}
+      {adding && <KpiCatalogPanel projectId={projectId} onClose={() => setAdding(false)} onAdded={(label) => { reload(); onChanged(); setMsg(`« ${label} » ajouté.`); }} />}
       {attach && catalog && <AttachPanel projectId={projectId} catalog={catalog} onClose={() => setAttach(false)} onDone={done} go={go} reloadCatalog={reloadCatalog} />}
     </Card>
   );
@@ -204,5 +210,122 @@ function AttachPanel({ projectId, catalog, onClose, onDone, go }: { projectId: s
         )}
       </div>
     </div>
+  );
+}
+
+type Offer = { module: string; connection_id: string | null; kpi: string; label: string; unit?: string; already?: boolean; values?: Record<string, string>;
+  params?: { key: string; label: string; type: string; required?: boolean; placeholder?: string; default?: string }[] };
+type KpiGroup = { module: string; name: string; offers: Offer[] };
+
+/** Catalogue de KPI du projet (spec §5.3) : tout ce que ses modules actifs savent mesurer, ajoutable en un clic. */
+export function KpiCatalogPanel({ projectId, onClose, onAdded }: { projectId: string; onClose: () => void; onAdded: (label: string) => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  useDrawerKeys(ref, onClose);
+  useEffect(() => { closeRef.current?.focus(); }, []);
+  const { data: groups, reload } = useData<KpiGroup[]>(`/api/projects/${projectId}/kpi-catalog`);
+  const [open, setOpen] = useState<string | null>(null);
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [error, setError] = useState("");
+  const keyOf = (o: Offer) => `${o.module}:${o.connection_id ?? ""}:${o.kpi}:${JSON.stringify(o.values ?? {})}`;
+  const needsInput = (o: Offer) => o.kpi === "manual" || o.kpi === "formula" || (o.params ?? []).some((f) => f.required);
+
+  async function add(o: Offer, extra: Record<string, string> = {}) {
+    setError("");
+    try {
+      const params = { ...o.values, ...values, ...extra };
+      const ind = await api<{ label: string }>(`/api/projects/${projectId}/kpis`, { method: "POST", json: { module: o.module, connection_id: o.connection_id, kpi: o.kpi, params, label: o.kpi === "manual" || o.kpi === "formula" ? params.label : undefined } });
+      setOpen(null); setValues({}); reload(); onAdded(ind.label);
+    } catch (e) { setError((e as Error).message); }
+  }
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} aria-hidden />
+      <div ref={ref} role="dialog" aria-modal="true" aria-labelledby="kpi-title" className="relative flex h-full w-full max-w-full flex-col overflow-y-auto overflow-x-hidden bg-surface p-5 shadow-2xl sm:max-w-[30rem] sm:border-l sm:border-border sm:p-6">
+        <div className="flex items-start justify-between gap-3">
+          <h2 id="kpi-title" className="text-xl font-light">Ajouter des KPI</h2>
+          <button ref={closeRef} type="button" onClick={onClose} aria-label="Fermer" className="grid size-10 shrink-0 place-items-center rounded-full border border-control text-muted hover:text-ink">✕</button>
+        </div>
+        <p className="mt-2 text-sm text-muted">Ce que les modules actifs de ce projet savent mesurer. Activez d'autres modules pour en voir davantage.</p>
+        {error && <p role="alert" className="mt-4 rounded-xl bg-negative-bg px-3 py-2 text-sm text-negative">{error}</p>}
+        <div className="mt-5 space-y-6">
+          {(groups ?? []).map((g) => (
+            <section key={g.module}>
+              <h3 className="text-sm font-medium">{g.name}</h3>
+              <ul className="mt-2 divide-y divide-rule">
+                {g.offers.map((o) => {
+                  const k = keyOf(o);
+                  return (
+                    <li key={k} className="py-2.5 text-sm">
+                      <div className="flex items-center gap-3">
+                        <span className="min-w-0 flex-1 break-words">{o.label}</span>
+                        {o.already ? <span className="text-xs text-muted">Déjà suivi</span>
+                          : <Button variant="secondary" onClick={() => needsInput(o) ? (setOpen(open === k ? null : k), setValues({})) : add(o)}>Ajouter</Button>}
+                      </div>
+                      {open === k && o.kpi === "formula" && <FormulaForm projectId={projectId} onSubmit={(p) => add(o, p)} />}
+                      {open === k && o.kpi !== "formula" && (
+                        <form onSubmit={(e) => { e.preventDefault(); add(o); }} className="mt-2 space-y-2">
+                          {(o.kpi === "manual" ? [{ key: "label", label: "Nom", type: "text", required: true, placeholder: "Abonnés Instagram" }] : (o.params ?? []).filter((f) => f.required)).map((f) => (
+                            <label key={f.key} className="block text-xs text-muted">{f.label} *
+                              {f.type === "textarea"
+                                ? <textarea required value={values[f.key] ?? ""} onChange={(e) => setValues({ ...values, [f.key]: e.target.value })} rows={3} spellCheck={false} className={`${inputCls} mt-1 h-auto py-2 font-mono text-xs`} />
+                                : <input required value={values[f.key] ?? ""} onChange={(e) => setValues({ ...values, [f.key]: e.target.value })} placeholder={f.placeholder} className={`${inputCls} mt-1`} />}
+                            </label>
+                          ))}
+                          <Button type="submit" variant="accent">Ajouter</Button>
+                        </form>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const OPS = [["+", "plus"], ["-", "moins"], ["*", "fois"], ["/", "divisé par"]] as const;
+
+/** KPI calculé : deux à six indicateurs du projet combinés (ex. inscriptions divisé par visites, en %). */
+function FormulaForm({ projectId, onSubmit }: { projectId: string; onSubmit: (params: Record<string, string>) => void }) {
+  const { data: project } = useData<{ indicators: { id: string; label: string; source: string; value?: number | null }[] }>(`/api/projects/${projectId}`);
+  const inds = (project?.indicators ?? []).filter((i) => i.source !== "formula");
+  const [label, setLabel] = useState("");
+  const [terms, setTerms] = useState<{ indicator: string; op: string }[]>([{ indicator: "", op: "+" }, { indicator: "", op: "/" }]);
+  const [pct, setPct] = useState(true);
+  const set = (i: number, patch: Partial<{ indicator: string; op: string }>) => setTerms(terms.map((t, k) => k === i ? { ...t, ...patch } : t));
+  if (inds.length < 2) return <p className="mt-2 text-xs text-muted">Il faut au moins deux indicateurs sur ce projet pour en calculer un troisième.</p>;
+  // C6 : aperçu seulement si chaque indicateur a une valeur courante ; sinon rien (jamais un chiffre faux).
+  const values = new Map(inds.map((i) => [i.id, i.value]));
+  let preview: number | null = null;
+  if (terms.every((t) => t.indicator && typeof values.get(t.indicator) === "number")) {
+    let acc = values.get(terms[0].indicator) as number;
+    for (let k = 1; k < terms.length; k++) {
+      const v = values.get(terms[k].indicator) as number;
+      acc = terms[k].op === "+" ? acc + v : terms[k].op === "-" ? acc - v : terms[k].op === "*" ? acc * v : v === 0 ? NaN : acc / v;
+    }
+    if (Number.isFinite(acc)) preview = pct ? acc * 100 : acc;
+  }
+  return (
+    <form onSubmit={(e) => { e.preventDefault(); onSubmit({ label, terms: JSON.stringify(terms), ...(pct ? { scale: "100", unit: "%" } : {}) }); }} className="mt-2 space-y-2">
+      <label className="block text-xs text-muted">Nom *<input required value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Taux de conversion" className={`${inputCls} mt-1`} /></label>
+      {terms.map((t, i) => (
+        <div key={i} className="flex gap-2">
+          {i > 0 && <select aria-label={`Opération ${i}`} value={t.op} onChange={(e) => set(i, { op: e.target.value })} className={`${inputCls} w-32 shrink-0`}>{OPS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>}
+          <select required aria-label={`Indicateur ${i + 1}`} value={t.indicator} onChange={(e) => set(i, { indicator: e.target.value })} className={`${inputCls} min-w-0 flex-1`}>
+            <option value="">Choisir un indicateur</option>{inds.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
+          </select>
+        </div>
+      ))}
+      <div className="flex flex-wrap items-center gap-3 text-xs">
+        {terms.length < 6 && <button type="button" onClick={() => setTerms([...terms, { indicator: "", op: "+" }])} className="text-ink hover:underline">Ajouter un terme</button>}
+        <label className="flex items-center gap-2 text-muted"><input type="checkbox" checked={pct} onChange={(e) => setPct(e.target.checked)} className="size-4" />Afficher en %</label>
+      </div>
+      {preview !== null && <p className="text-xs text-muted" role="status">Aperçu sur la période en cours : <b className="num text-ink">{preview.toLocaleString("fr-FR", { maximumFractionDigits: 2 })}{pct ? " %" : ""}</b></p>}
+      <Button type="submit" variant="accent">Ajouter</Button>
+    </form>
   );
 }

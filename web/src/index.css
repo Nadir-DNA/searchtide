@@ -60,4 +60,13 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 .num { font-variant-numeric: tabular-nums; }
-:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; border-radius: 6px; }
+:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+
+/* B5 : sous 640 px, chaque ligne devient une fiche étiquette / valeur (CSS seul, aucun JS). */
+@media (max-width: 639px) {
+  .st-table thead { display: none; }
+  .st-table, .st-table tbody { display: block; width: 100%; }
+  .st-table tr { display: block; padding: .35rem 0; border-top: 1px solid var(--color-rule); }
+  .st-table td { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; height: auto; padding: .2rem .5rem; text-align: right; white-space: normal; max-width: none; }
+  .st-table td::before { content: attr(data-label); color: var(--color-muted); text-align: left; }
+}
