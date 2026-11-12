@@ -228,8 +228,7 @@ function Shell({ me, onLogout }: { me: Me; onLogout: () => void }) {
       <div className="mt-auto space-y-1 pt-6">
         <a href="https://github.com/Nadir-DNA/searchtide" target="_blank" rel="noreferrer" className="flex h-10 items-center gap-3 rounded-xl px-3 text-sm text-muted hover:text-ink"><Svg>{Icon.book}</Svg>Documentation</a>
         {!me.demo && <button onClick={() => api("/api/logout", { method: "POST" }).then(onLogout)} className="flex h-10 w-full items-center gap-3 rounded-xl px-3 text-sm text-muted hover:text-ink"><Svg>{Icon.out}</Svg>Déconnexion</button>}
-        <div className="flex items-center justify-between rounded-2xl border border-border bg-surface px-3 py-2 text-sm">
-          <span className="text-muted">Thème</span>
+        <div className="flex items-center justify-center rounded-2xl border border-border bg-surface px-2 py-2 text-sm">
           <Segmented label="Thème" value={theme} onChange={setTheme} options={[["dark", "Sombre"], ["light", "Clair"], ["auto", "Auto"]] as const} />
         </div>
       </div>
