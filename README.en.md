@@ -17,7 +17,7 @@ One instance, one SQLite file, your keys encrypted on your machine. No hosted se
 Fictional data, no keys, read-only:
 
 ```bash
-docker run -d -p 127.0.0.1:3030:3030 -e DEMO=1 -v searchtide_demo:/data ghcr.io/nadir-dna/searchtide:0.2.3
+docker run -d -p 127.0.0.1:3030:3030 -e DEMO=1 -v searchtide_demo:/data ghcr.io/nadir-dna/searchtide:0.4.0
 ```
 
 Open <http://localhost:3030>. Details and a second screenshot (multi-project portfolio): [docs/demo.md](docs/demo.md).
@@ -37,13 +37,13 @@ Open <http://localhost:3030>. Details and a second screenshot (multi-project por
 ### Docker, one command
 
 ```bash
-docker run -d --name searchtide --restart unless-stopped -p 127.0.0.1:3030:3030 -v searchtide:/data ghcr.io/nadir-dna/searchtide:0.2.3
+docker run -d --name searchtide --restart unless-stopped -p 127.0.0.1:3030:3030 -v searchtide:/data ghcr.io/nadir-dna/searchtide:0.4.0
 docker logs searchtide    # admin password generated on first start
 ```
 
 No file to edit: `SECRET` and the password are generated on first start and kept in the `/data` volume. The password is shown only once — write it down.
 
-Images for `linux/amd64` and `linux/arm64`, tags `0.2.3` and `v0.2.3`.
+Images for `linux/amd64` and `linux/arm64`, tags `0.4.0` and `v0.4.0`.
 
 ### Docker Compose
 

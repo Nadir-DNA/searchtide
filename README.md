@@ -17,7 +17,7 @@ Une instance, un fichier SQLite, vos clés chiffrées chez vous. Pas de service 
 Données fictives, aucune clé, lecture seule :
 
 ```bash
-docker run -d -p 127.0.0.1:3030:3030 -e DEMO=1 -v searchtide_demo:/data ghcr.io/nadir-dna/searchtide:0.2.3
+docker run -d -p 127.0.0.1:3030:3030 -e DEMO=1 -v searchtide_demo:/data ghcr.io/nadir-dna/searchtide:0.4.0
 ```
 
 Ouvrez <http://localhost:3030>. Détails et deuxième capture (portefeuille multi-projets) : [docs/demo.md](docs/demo.md).
@@ -37,13 +37,13 @@ Ouvrez <http://localhost:3030>. Détails et deuxième capture (portefeuille mult
 ### Docker, une commande
 
 ```bash
-docker run -d --name searchtide --restart unless-stopped -p 127.0.0.1:3030:3030 -v searchtide:/data ghcr.io/nadir-dna/searchtide:0.2.3
+docker run -d --name searchtide --restart unless-stopped -p 127.0.0.1:3030:3030 -v searchtide:/data ghcr.io/nadir-dna/searchtide:0.4.0
 docker logs searchtide    # mot de passe administrateur généré au premier lancement
 ```
 
 Aucun fichier à éditer : `SECRET` et le mot de passe sont générés au premier démarrage et conservés dans le volume `/data`. Le mot de passe n'est affiché qu'une fois — notez-le.
 
-Images `linux/amd64` et `linux/arm64`, tags `0.2.3` et `v0.2.3`.
+Images `linux/amd64` et `linux/arm64`, tags `0.4.0` et `v0.4.0`.
 
 ### Docker Compose
 
