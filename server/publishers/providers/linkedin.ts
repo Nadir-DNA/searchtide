@@ -37,15 +37,17 @@ async function token(body: Record<string, string>): Promise<Tokens> {
 
 export const linkedin: Provider = {
   id: "linkedin",
+  label: "LinkedIn",
+  env: ["LINKEDIN_CLIENT_ID", "LINKEDIN_CLIENT_SECRET"],
   limits: { text: 3000, media: 0 },
   configured: () => !!env().id && !!env().secret,
   authUrl: (redirectUri, state) => `https://www.linkedin.com/oauth/v2/authorization?${new URLSearchParams({
     response_type: "code", client_id: env().id, redirect_uri: redirectUri, state, scope: SCOPES.join(" "),
   })}`,
-  exchange: (code, redirectUri) => token({ grant_type: "authorization_code", code, redirect_uri: redirectUri }),
+  exchange: async (code, redirectUri) => [await token({ grant_type: "authorization_code", code, redirect_uri: redirectUri })],
   refresh: (refreshToken) => token({ grant_type: "refresh_token", refresh_token: refreshToken }),
 
-  async publish(text, accessToken, accountId): Promise<PublishResult> {
+  async publish({ text }, accessToken, accountId): Promise<PublishResult> {
     let r: Response;
     try {
       r = await f(`${API}/rest/posts`, {

@@ -7,7 +7,7 @@ import { db } from "../db.ts";
 import { isAdmin } from "../admin.ts";
 import { createConnection, findByFingerprint, setSecrets, markStatus } from "../connections.ts";
 import { createConnectedAccount } from "./queue.ts";
-import { providerFor } from "./provider.ts";
+import { providerFor, providers } from "./provider.ts";
 
 const origin = (c: any) => (process.env.PUBLIC_URL ?? new URL(c.req.url).origin).replace(/\/$/, "");
 const fail = (msg: string) => `/?view=connections&oauth=${encodeURIComponent(msg)}`;
@@ -16,7 +16,7 @@ const TTL = 10 * 60_000;
 const MAX_PENDING = 30;
 const STARTS_PER_WINDOW = 10;
 const START_WINDOW = 60_000;
-type Pending = { project: string; network: string; exp: number; sid: string };
+type Pending = { project: string; network: string; exp: number; sid: string; verifier: string };
 const states = new Map<string, Pending>();
 const starts = new Map<string, { n: number; reset: number }>();
 
@@ -44,12 +44,17 @@ function countStart(sid: string, now: number): boolean {
 export function registerPublisherOAuth(app: Hono) {
   const redirect = (c: any, network: string) => `${origin(c)}/api/pub-oauth/${network}/callback`;
 
+  // Réseaux disponibles et configurés (noms des variables seulement, jamais leur valeur).
+  app.get("/api/pub-oauth/networks", (c) => isAdmin(c)
+    ? c.json(providers().map((p) => ({ id: p.id, label: p.label, configured: p.configured(), env: p.env })))
+    : c.json({ error: "Réservé à l'administrateur" }, 403));
+
   app.post("/api/pub-oauth/:network/start", async (c) => {
     if (!isAdmin(c)) return c.json({ error: "Réservé à l'administrateur" }, 403);
     if (process.env.DEMO === "1") return c.json({ error: "Désactivé en démonstration." }, 403);
     const network = c.req.param("network"), provider = providerFor(network);
     if (!provider) return c.json({ error: "Réseau non pris en charge" }, 400);
-    if (!provider.configured()) return c.json({ error: `Définissez ${network.toUpperCase()}_CLIENT_ID et ${network.toUpperCase()}_CLIENT_SECRET (application développeur du réseau), puis redémarrez.` }, 400);
+    if (!provider.configured()) return c.json({ error: `Définissez ${provider.env.join(" et ")} (application développeur ${provider.label}), puis redémarrez.` }, 400);
     const now = Date.now(), sid = sessionId(c);
     if (!countStart(sid, now)) return c.json({ error: "Trop de tentatives de connexion. Réessayez dans une minute." }, 429);
     for (const [k, v] of states) if (v.exp <= now) states.delete(k);
@@ -57,8 +62,9 @@ export function registerPublisherOAuth(app: Hono) {
     const project = String((await c.req.json().catch(() => ({}))).project ?? "").trim();
     if (!db.prepare("SELECT 1 FROM projects WHERE id = ? OR crm_key = ?").get(project, project)) return c.json({ error: "Projet introuvable" }, 400);
     const state = randomBytes(16).toString("hex");
-    states.set(state, { project, network, exp: now + TTL, sid });
-    return c.json({ url: provider.authUrl(redirect(c, network), state) });
+    const verifier = randomBytes(32).toString("base64url");   // PKCE : utilisé par les réseaux qui l'acceptent
+    states.set(state, { project, network, exp: now + TTL, sid, verifier });
+    return c.json({ url: provider.authUrl(redirect(c, network), state, verifier) });
   });
 
   app.get("/api/pub-oauth/:network/callback", async (c) => {
@@ -69,16 +75,18 @@ export function registerPublisherOAuth(app: Hono) {
     if (c.req.query("error")) return c.redirect(fail("Autorisation refusée. Recommencez la connexion."));
     if (!provider || !st || st.network !== network || !code) return c.redirect(fail("La demande a expiré. Recommencez la connexion."));
     try {
-      const t = await provider.exchange(code, redirect(c, network));
-      const secrets = { access_token: t.accessToken, refresh_token: t.refreshToken ?? null, expires_at: t.expiresAt ?? null };
-      const fp = `${network}:${t.accountId}`;
-      const existing = findByFingerprint(network, fp);
-      const conn = existing ?? createConnection({ kind: network, label: t.name, account: t.accountId, secrets, fingerprintOf: fp });
-      if (existing) { setSecrets(existing.id, secrets); markStatus(existing.id, "connected", null); }
-      const known = db.prepare("SELECT id FROM pub_accounts WHERE connection_id = ? AND project = ?").get(conn.id, st.project) as { id: string } | undefined;
-      if (known) db.prepare("UPDATE pub_accounts SET status = 'connected' WHERE id = ?").run(known.id);
-      else createConnectedAccount({ project: st.project, network, label: t.name, connection_id: conn.id });
-      return c.redirect("/?view=connections&oauth=ok");
+      // Un accès peut ouvrir plusieurs comptes (Pages, comptes Instagram, chaînes) : un compte de publication chacun.
+      for (const t of await provider.exchange(code, redirect(c, network), st.verifier)) {
+        const secrets = { access_token: t.accessToken, refresh_token: t.refreshToken ?? null, expires_at: t.expiresAt ?? null };
+        const fp = `${network}:${t.accountId}`;
+        const existing = findByFingerprint(network, fp);
+        const conn = existing ?? createConnection({ kind: network, label: t.name, account: t.accountId, secrets, fingerprintOf: fp });
+        if (existing) { setSecrets(existing.id, secrets); markStatus(existing.id, "connected", null); }
+        const known = db.prepare("SELECT id FROM pub_accounts WHERE connection_id = ? AND project = ?").get(conn.id, st.project) as { id: string } | undefined;
+        if (known) db.prepare("UPDATE pub_accounts SET status = 'connected' WHERE id = ?").run(known.id);
+        else createConnectedAccount({ project: st.project, network, label: t.name, connection_id: conn.id });
+      }
+      return c.redirect(`/?view=connections&oauth=ok&network=${encodeURIComponent(network)}`);
     } catch (e) { return c.redirect(fail((e as Error).message)); }
   });
 }

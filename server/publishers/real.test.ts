@@ -1,6 +1,8 @@
 // Publication réelle : jeton du coffre, renouvellement, expiration, idempotence — LinkedIn simulé, aucun appel réel.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+// Jamais la vraie base, même lancé à la main sans DATABASE_PATH.
+process.env.DATABASE_PATH ??= ":memory:";
 process.env.SECRET = "r".repeat(40);
 process.env.LINKEDIN_CLIENT_ID = "cid"; process.env.LINKEDIN_CLIENT_SECRET = "csec";
 const { db } = await import("../db.ts");

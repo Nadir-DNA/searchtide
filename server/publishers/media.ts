@@ -1,7 +1,8 @@
 // J4 : médias des publications — stockage hors de web/dist, nom aléatoire, type vérifié par signature,
 // plafond de taille, suppression avec la publication. Aucun accès public : lecture par l'administrateur seul.
 import type { Hono } from "hono";
-import { randomUUID } from "node:crypto";
+import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
+import type { Media } from "./provider.ts";
 import { mkdirSync, readdirSync, readFileSync, rmdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { db } from "../db.ts";
@@ -31,6 +32,22 @@ export function sniffMedia(b: Buffer): { mime: string; kind: "image" | "video" }
 
 export const mediaOf = (publicationId: string) =>
   db.prepare("SELECT id, name, mime, size, created_at FROM pub_media WHERE publication_id = ? ORDER BY created_at").all(publicationId);
+
+// Lien public signé, pour les réseaux qui téléchargent eux-mêmes le média (Instagram). Valable 24 h,
+// et servi seulement pendant l'envoi (publication « en cours » ou « en traitement »).
+const MEDIA_LINK_TTL = 24 * 3600_000;
+const sign = (id: string, exp: number) => createHmac("sha256", process.env.SECRET ?? "").update(`pub-media.${id}.${exp}`).digest("base64url").slice(0, 32);
+export function signedMediaUrl(id: string, now = Date.now()) {
+  const exp = now + MEDIA_LINK_TTL;
+  return `${(process.env.PUBLIC_URL ?? "").replace(/\/$/, "")}/m/${id}/${exp}/${sign(id, exp)}`;
+}
+export const publicMediaReady = () => /^https:\/\//.test(process.env.PUBLIC_URL ?? "");
+
+/** Médias d'une publication pour un fournisseur réel : octets lus à la demande, lien public signé. */
+export function mediaFiles(publicationId: string): Media[] {
+  const rows = db.prepare("SELECT id, mime, size, path FROM pub_media WHERE publication_id = ? ORDER BY created_at").all(publicationId) as { id: string; mime: string; size: number; path: string }[];
+  return rows.map((m) => ({ id: m.id, mime: m.mime, size: m.size, kind: m.mime.startsWith("video/") ? "video" : "image", bytes: () => readFileSync(m.path), publicUrl: () => signedMediaUrl(m.id) }));
+}
 
 export function removeMedia(publicationId: string, mediaId: string) {
   const m = db.prepare("SELECT path FROM pub_media WHERE id = ? AND publication_id = ?").get(mediaId, publicationId) as { path: string } | undefined;
@@ -106,6 +123,18 @@ export function registerMedia(app: Hono) {
     const denied = admin(c); if (denied) return denied;
     if (mediaLocked(c.req.param("id"))) return c.json({ error: "Publication programmée ou publiée : annulez-la avant de modifier ses médias" }, 409);
     return removeMedia(c.req.param("id"), c.req.param("mediaId")) ? c.json({ ok: true }) : c.json({ error: "Média introuvable" }, 404);
+  });
+
+  // Sans session : la signature, l'échéance et l'état de la publication font foi. Même réponse 404 dans tous les refus.
+  app.get("/m/:id/:exp/:sig", (c) => {
+    const { id, sig } = c.req.param(), exp = Number(c.req.param("exp"));
+    const ok = Number.isFinite(exp) && exp > Date.now() && sig.length === 32 && timingSafeEqual(Buffer.from(sig), Buffer.from(sign(id, exp)));
+    const m = ok ? db.prepare("SELECT m.path, m.mime FROM pub_media m JOIN publications p ON p.id = m.publication_id WHERE m.id = ? AND p.state IN ('running', 'processing')").get(id) as { path: string; mime: string } | undefined : undefined;
+    if (!m) return c.text("Introuvable", 404);
+    try {
+      c.header("content-type", m.mime); c.header("x-content-type-options", "nosniff"); c.header("cache-control", "private, no-store");
+      return c.body(readFileSync(m.path));
+    } catch { return c.text("Introuvable", 404); }
   });
 
   app.get("/api/media/:id", (c) => {
