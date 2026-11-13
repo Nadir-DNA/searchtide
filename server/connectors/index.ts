@@ -4,6 +4,8 @@ import "./builtin.ts";
 import "./stripe.ts";
 import "./smtp.ts";
 import "./ntfy.ts";
+import "./caldav.ts";
+import "./gcal.ts";
 import "./google.ts";
 import "./postgres.ts";
 import "./supabase.ts";

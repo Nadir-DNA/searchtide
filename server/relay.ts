@@ -38,30 +38,30 @@ export function rememberState(state: string, verifier: string) {
 }
 export function takeState(state: string) { const v = pending.get(state); pending.delete(state); return v && Date.now() - v.at <= 15 * 60_000 ? v.verifier : null; }
 
-async function relayFetch(path: string, init: RequestInit = {}) {
+export async function relayFetch(path: string, init: RequestInit = {}) {
   const res = await fetch(`${relayUrl()}${path}`, { ...init, signal: AbortSignal.timeout(5000) });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(body?.error ?? `Relais ${res.status}`);
   return body;
 }
 
-let health: { at: number; ok: boolean; mode: "test" | "live" | null } | null = null;
+let health: { at: number; ok: boolean; mode: "test" | "live" | null; google: boolean } | null = null;
 export async function relayStatus(force = false) {
-  if (process.env.RELAY_MOCK === "1") return { enabled: true, ok: true, mode: "test" as const, error: null };
-  if (!relayConfigured()) return { enabled: false, ok: false, mode: null as "test" | "live" | null, error: "relay_url" };
-  if (!force && health && Date.now() - health.at < 30_000) return { enabled: true, ok: health.ok, mode: health.mode, error: health.ok ? null : "unreachable" };
+  if (process.env.RELAY_MOCK === "1") return { enabled: true, ok: true, mode: "test" as const, google: true, error: null };
+  if (!relayConfigured()) return { enabled: false, ok: false, mode: null as "test" | "live" | null, google: false, error: "relay_url" };
+  if (!force && health && Date.now() - health.at < 30_000) return { enabled: true, ok: health.ok, mode: health.mode, google: health.google, error: health.ok ? null : "unreachable" };
   try {
-    const h = await relayFetch("/v1/health") as { ok?: boolean; mode?: "test" | "live" };
-    health = { at: Date.now(), ok: !!h.ok, mode: h.mode ?? null };
-  } catch { health = { at: Date.now(), ok: false, mode: null }; }
-  return { enabled: true, ok: health.ok, mode: health.mode, error: health.ok ? null : "unreachable" };
+    const h = await relayFetch("/v1/health") as { ok?: boolean; mode?: "test" | "live"; google?: boolean };
+    health = { at: Date.now(), ok: !!h.ok, mode: h.mode ?? null, google: !!h.google };
+  } catch { health = { at: Date.now(), ok: false, mode: null, google: false }; }
+  return { enabled: true, ok: health.ok, mode: health.mode, google: health.google, error: health.ok ? null : "unreachable" };
 }
 
-export async function relayStart(returnUrl: string) {
+export async function relayStart(returnUrl: string, provider: "stripe" | "google" = "stripe") {
   if (process.env.RELAY_MOCK === "1") { const { verifier, challenge } = newPkce(); void challenge; const state = "mock-state"; rememberState(state, verifier); return `https://connect.test/authorize?state=${state}`; }
   const inst = instanceId();
   const { verifier, challenge } = newPkce();
-  const r = await relayFetch("/v1/start", {
+  const r = await relayFetch(provider === "google" ? "/v1/google/start" : "/v1/start", {
     method: "POST", headers: { "content-type": "application/json" },
     body: JSON.stringify({ instance_id: inst, instance_host: new URL(returnUrl).host, return_url: returnUrl, code_challenge: challenge }),
   }) as { authorize_url?: string };
@@ -81,4 +81,12 @@ export async function relayExchange(code: string, verifier: string) {
 
 export async function relayRevoke(token: string) {
   return await relayFetch("/v1/revoke", { method: "POST", headers: { authorization: `Bearer ${token}` } });
+}
+
+/** Échange le code d'autorisation Google contre le jeton de renouvellement (remis une seule fois par le relais). */
+export async function relayGoogleToken(code: string, verifier: string) {
+  return await relayFetch("/v1/google/token", {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ code, code_verifier: verifier, instance_id: instanceId() }),
+  }) as { refresh_token: string };
 }

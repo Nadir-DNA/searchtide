@@ -26,6 +26,32 @@ Webhook Connect : `https://connect.nadirdaoudi.com/v1/webhook`, événement `acc
 
 Limitation de débit : le Worker plafonne `/v1/start` à 20 requêtes/heure/IP et `/authorize`, `/oauth/authorize`, `/oauth/callback` à 60/heure/IP. Sur le plan gratuit, Cloudflare n'autorise **qu'une seule** règle de limitation (période 10 s, blocage 10 s, champs Path et IP) : la poser sur `/v1/start`, **10 requêtes / 10 s par IP**, action « Block » 10 s. Les routes `/oauth/*` restent couvertes par la limite D1 du Worker.
 
+## Google Agenda (module Rendez-vous)
+
+Le relais détient le secret de l'application Google ; les instances n'ont rien à créer chez Google. Il ne lit jamais l'agenda : il échange le code d'autorisation, remet le jeton de renouvellement à l'instance (chiffré AES-GCM, 2 minutes au plus, effacé dès la remise), puis ne fait que transformer ce jeton en jeton d'accès de courte durée. Routes : `/v1/google/start`, `/google/authorize`, `/google/go`, `/google/callback`, `/v1/google/token`, `/v1/google/refresh`, `/v1/google/revoke`.
+
+### Ce qu'il faut faire chez Google (une seule fois, par l'exploitant du relais)
+
+1. Console Google Cloud : créer un projet, activer **Google Calendar API**.
+2. **Écran de consentement** : type *Externe*, nom « Searchtide Connect », e-mail d'assistance, logo, page d'accueil du projet, **politique de confidentialité** `https://connect.nadirdaoudi.com/privacy`, domaine autorisé `nadirdaoudi.com` (à valider dans Search Console).
+3. **Champs d'application** : exactement `…/auth/calendar.events` et `…/auth/calendar.freebusy` (sensibles, pas restreints : pas d'audit de sécurité CASA, mais une validation Google).
+4. **Identifiants** : ID client OAuth de type *Application Web*, URI de redirection autorisée `https://connect.nadirdaoudi.com/google/callback`.
+5. Chez Cloudflare :
+   ```bash
+   cd relay
+   # GOOGLE_CLIENT_ID (public) : décommenter et renseigner dans wrangler.toml
+   wrangler secret put GOOGLE_CLIENT_SECRET
+   wrangler d1 execute searchtide-connect --remote --file=schema.sql   # crée la table gcodes
+   npm run deploy:relay
+   ```
+6. **Valider l'application** : passer l'écran de consentement en *Production* puis demander la validation (vidéo de démonstration du parcours, justification des deux permissions, politique de confidentialité avec la mention « utilisation limitée » déjà présente).
+
+Tant que la validation n'est pas obtenue : en mode *Test*, seuls les comptes ajoutés comme testeurs peuvent se connecter et **les jetons expirent au bout de 7 jours** ; en *Production non validée*, la connexion marche (100 utilisateurs au plus) mais Google affiche « application non vérifiée ».
+
+### Côté instance
+
+Définir `RELAY_URL` (ex. `https://connect.nadirdaoudi.com`). Le bouton « Connecter Google Agenda » apparaît alors dans Rendez-vous. Sans `RELAY_URL`, rien ne contacte le relais.
+
 ## Déploiement sûr (CA60)
 
 Ne lancez **jamais** `wrangler deploy` directement : `npm run deploy:relay` lit le mode courant (`/v1/health`), le compare à `MODE` dans `wrangler.toml`, refuse un écart sans `--changer-de-mode`, déploie, puis vérifie que le mode n'a pas changé. C'est ce qui évite de rétrograder le relais en test par accident.

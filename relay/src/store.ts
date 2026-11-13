@@ -3,6 +3,7 @@
 
 export type StateRow = { instanceId: string; host: string; challenge: string; returnUrl: string; expiresAt: number };
 export type CodeRow = StateRow & { stripeUserId: string; livemode: boolean };
+export type GCodeRow = { instanceId: string; challenge: string; blob: string; expiresAt: number };
 export type TokenRow = {
   instanceId: string; host: string; stripeUserId: string; livemode: boolean;
   createdAt: number; lastUsed: number; day: string; dayCount: number; minute: string; minuteCount: number;
@@ -16,6 +17,9 @@ export interface Store {
   getCode(hash: string, now: number): Promise<CodeRow | null>;
   takeCode(hash: string, now: number): Promise<CodeRow | null>;
   useCode(hash: string, now: number): Promise<boolean>;
+  createGCode(hash: string, row: GCodeRow): Promise<void>;
+  /** Consomme le code Google à usage unique si `accept` le valide (instance, PKCE) ; sinon il reste intact jusqu'à expiration. */
+  takeGCode(hash: string, now: number, accept: (row: GCodeRow) => Promise<boolean>): Promise<GCodeRow | null>;
   createToken(hash: string, row: TokenRow): Promise<void>;
   findToken(hash: string): Promise<TokenRow | null>;
   findByStripeUser(stripeUserId: string): Promise<TokenRow | null>;
@@ -79,6 +83,17 @@ export class D1Store implements Store {
     const r = await this.db.prepare("UPDATE codes SET used = 1 WHERE hash = ? AND used = 0 AND expires_at > ? RETURNING hash").bind(hash, now).first();
     return !!r;
   }
+  async createGCode(hash: string, g: GCodeRow) {
+    await this.db.prepare("INSERT INTO gcodes (hash, instance_id, challenge, blob, expires_at, used) VALUES (?, ?, ?, ?, ?, 0)").bind(hash, g.instanceId, g.challenge, g.blob, g.expiresAt).run();
+  }
+  async takeGCode(hash: string, now: number, accept: (row: GCodeRow) => Promise<boolean>) {
+    const r = await this.db.prepare("SELECT * FROM gcodes WHERE hash = ? AND used = 0 AND expires_at > ?").bind(hash, now).first<any>();
+    const row = r ? { instanceId: r.instance_id, challenge: r.challenge, blob: r.blob, expiresAt: Number(r.expires_at) } : null;
+    if (!row || !await accept(row)) return null;
+    // Consommation atomique : un second appel simultané ne reçoit rien. Le jeton chiffré est effacé dans la foulée.
+    const won = await this.db.prepare("UPDATE gcodes SET used = 1, blob = '' WHERE hash = ? AND used = 0 RETURNING hash").bind(hash).first();
+    return won ? row : null;
+  }
   async createToken(hash: string, t: TokenRow) {
     await this.db.prepare("INSERT INTO tokens (hash, instance_id, host, stripe_user_id, livemode, created_at, last_used, day, day_count, minute, minute_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
       .bind(hash, t.instanceId, t.host, t.stripeUserId, t.livemode ? 1 : 0, t.createdAt, t.lastUsed, t.day, t.dayCount, t.minute, t.minuteCount).run();
@@ -107,6 +122,7 @@ export class D1Store implements Store {
   async purge(now: number) {
     await this.db.prepare("DELETE FROM states WHERE expires_at < ? OR used = 1").bind(now).run();
     await this.db.prepare("DELETE FROM codes WHERE expires_at < ? OR used = 1").bind(now).run();
+    await this.db.prepare("DELETE FROM gcodes WHERE expires_at < ? OR used = 1").bind(now).run();
     await this.db.prepare("DELETE FROM logs WHERE at < ?").bind(now - 7 * 86400_000).run();
     await this.db.prepare("DELETE FROM tokens WHERE last_used < ?").bind(now - 180 * 86400_000).run();
     await this.db.prepare("DELETE FROM limits WHERE window < ?").bind(new Date(now - 3600_000).toISOString().slice(0, 13)).run();
@@ -125,6 +141,7 @@ export class D1Store implements Store {
 export class MemoryStore implements Store {
   states = new Map<string, StateRow & { used: boolean }>();
   codes = new Map<string, CodeRow & { used: boolean }>();
+  gcodes = new Map<string, GCodeRow & { used: boolean }>();
   tokens = new Map<string, TokenRow>();
   logs: { route: string; status: number; instanceId: string | null; at: number }[] = [];
   async createState(hash: string, s: StateRow) { this.states.set(hash, { ...s, used: false }); }
@@ -134,6 +151,12 @@ export class MemoryStore implements Store {
   async getCode(hash: string, now: number) { const c = this.codes.get(hash); return c && !c.used && c.expiresAt > now ? c : null; }
   async takeCode(hash: string, now: number) { const c = this.codes.get(hash); if (!c || c.used || c.expiresAt <= now) return null; c.used = true; return c; }
   async useCode(hash: string, now: number) { const c = this.codes.get(hash); if (!c || c.used || c.expiresAt <= now) return false; c.used = true; return true; }
+  async createGCode(hash: string, g: GCodeRow) { this.gcodes.set(hash, { ...g, used: false }); }
+  async takeGCode(hash: string, now: number, accept: (row: GCodeRow) => Promise<boolean>) {
+    const g = this.gcodes.get(hash);
+    if (!g || g.used || g.expiresAt <= now || !await accept(g)) return null;
+    g.used = true; const row = { ...g }; g.blob = ""; return row;
+  }
   async createToken(hash: string, t: TokenRow) { this.tokens.set(hash, t); }
   async findToken(hash: string) { return this.tokens.get(hash) ?? null; }
   async findByStripeUser(id: string) { for (const t of this.tokens.values()) if (t.stripeUserId === id) return t; return null; }
@@ -150,6 +173,7 @@ export class MemoryStore implements Store {
   async purge(now: number) {
     for (const [h, s] of this.states) if (s.used || s.expiresAt < now) this.states.delete(h);
     for (const [h, c] of this.codes) if (c.used || c.expiresAt < now) this.codes.delete(h);
+    for (const [h, g] of this.gcodes) if (g.used || g.expiresAt < now) this.gcodes.delete(h);
     this.logs = this.logs.filter((l) => l.at >= now - 7 * 86400_000);
     for (const [h, t] of this.tokens) if (t.lastUsed < now - 180 * 86400_000) this.tokens.delete(h);
     const cutoff = new Date(now - 3600_000).toISOString().slice(0, 13);

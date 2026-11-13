@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { allModules, checkModule, getModule, registerModule } from "./modules/index.ts";
 import { widgetDefs } from "./dashboards.ts";
 
-test("modules : les 12 modules sont déclarés, dont 4 cœur", () => {
-  assert.equal(allModules().length, 12);
+test("modules : les 13 modules sont déclarés, dont 4 cœur", () => {
+  assert.equal(allModules().length, 13);
   assert.deepEqual(allModules().filter((m) => m.core).map((m) => m.id).sort(), ["agents", "analytics", "pages", "projets"]);
 });
 

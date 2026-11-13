@@ -13,6 +13,7 @@ import { activeModules } from "./modules/state.ts";
 import { registerModuleTools } from "./modules/api.ts";
 import { jobsStatus } from "./jobs.ts";
 import { registerKpiTools } from "./sources.ts";
+import { rdvTools } from "./rdv.ts";
 import { registerTodayTools, todayAsync } from "./today.ts";
 
 const INSTRUCTIONS = `Searchtide : tous ses projets (sites, Search Console, Stripe, indicateurs métier, CRM, publications) dans un tableau de bord.
@@ -181,6 +182,7 @@ function googleTools(server: McpServer, readOnly: boolean) {
 const BUILTIN_TOOLS: Record<string, (server: McpServer, readOnly: boolean, agent: string) => void> = {
   analytics: (s) => analyticsTools(s),
   google: googleTools,
+  rdv: (s, ro) => rdvTools(s, ro),
   crm: (s, ro) => registerBusinessTools(only(s, (n) => n.startsWith("crm_")), ro),
   publications: (s, ro) => registerBusinessTools(only(s, (n) => n.startsWith("pubs_")), ro),
   projets: (s, ro) => { registerProjectTools(s, ro); registerPortfolioTools(s); registerKpiTools(s, ro); registerTodayTools(s, ro); },
