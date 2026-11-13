@@ -29,10 +29,13 @@ import { registerSources } from "./sources.ts";
 import { registerOps } from "./ops.ts";
 import { registerPortfolio } from "./portfolio.ts";
 import { registerStripeOAuth } from "./stripe-oauth.ts";
+import { registerPublisherOAuth } from "./publishers/oauth.ts";
 import { canAccess, findAgent, projectForPath, registerAgents, visibleDomains, visibleProjectIds, writableProjectIds } from "./agents.ts";
 import { registerApprovals } from "./approvals.ts";
 import { registerDashboards } from "./dashboards.ts";
 import { registerOutreach } from "./outreach.ts";
+import { registerRdv } from "./rdv.ts";
+import { registerGoogleOAuth } from "./google-oauth.ts";
 import { backup } from "./security.ts";
 import { markAdmin, markClient, isAdmin } from "./admin.ts";
 import { blocked, fail, resetIp } from "./security-limits.ts";
@@ -188,7 +191,7 @@ app.post("/api/logout", (c) => {
 
 // SEC-06 : les clés lisent en REST une liste blanche ; ces routes sont réservées à l'administrateur.
 const READ_PREFIXES = ["/api/freshness", "/api/me", "/api/overview", "/api/sites", "/api/projects", "/api/indicators", "/api/portfolio", "/api/today", "/api/milestones", "/api/annotations", "/api/dashboards", "/api/jobs"];
-const ADMIN_PREFIXES = ["/api/ops", "/api/agents", "/api/connections", "/api/contacts", "/api/business", "/api/outreach", "/api/publications", "/api/pub-accounts", "/api/media", "/api/modules", "/api/diagnostic", "/api/2fa", "/api/browser"];
+const ADMIN_PREFIXES = ["/api/ops", "/api/agents", "/api/connections", "/api/contacts", "/api/business", "/api/outreach", "/api/rdv", "/api/publications", "/api/pub-accounts", "/api/media", "/api/modules", "/api/diagnostic", "/api/2fa", "/api/browser"];
 const under = (path: string, prefix: string) => path === prefix || path.startsWith(prefix + "/");
 const isAdminOnlyPath = (path: string) => ADMIN_PREFIXES.some((p) => under(path, p)) || /^\/api\/sites\/[^/]+\/(purge|events\/count)$/.test(path);
 const isReadPath = (path: string) => READ_PREFIXES.some((p) => under(path, p));
@@ -504,6 +507,8 @@ registerReport(app);
 registerProjects(app)
 registerConnections(app);
 registerStripeOAuth(app);
+registerGoogleOAuth(app);
+registerPublisherOAuth(app);
 registerSources(app);
 startVault();
 await loadPlugins();
@@ -518,6 +523,7 @@ registerModules(app);
 registerToday(app);
 app.get("/api/jobs", (c) => c.json(jobsStatus()));
 registerOutreach(app);
+registerRdv(app);
 
 // Toute route /api inconnue répond 404 en JSON (jamais la page HTML de l'interface).
 app.all("/api/*", (c) => c.json({ error: "Route introuvable" }, 404));

@@ -15,6 +15,7 @@ import type { Dashboards } from "./dashboard";
 const Onboarding = lazy(() => import("./onboarding").then((m) => ({ default: m.Onboarding })));
 const ConnectionsView = lazy(() => import("./connections").then((m) => ({ default: m.ConnectionsView })));
 const CrmView = lazy(() => import("./modules/crm").then((m) => ({ default: m.CrmView })));
+const RdvView = lazy(() => import("./modules/rdv").then((m) => ({ default: m.RdvView })));
 const PubsView = lazy(() => import("./modules/publications").then((m) => ({ default: m.PubsView })));
 const ReportView = lazy(() => import("./modules/notifications/ReportView").then((m) => ({ default: m.ReportView })));
 const ProjectView = lazy(() => import("./projects").then((m) => ({ default: m.ProjectView })));
@@ -167,7 +168,7 @@ function Shell({ me, onLogout }: { me: Me; onLogout: () => void }) {
   const home = { site: undefined, tab: undefined, view: undefined, id: undefined, q: undefined, project: undefined, source: undefined, month: undefined };
 
   const mods = useModules();
-  const crmOn = mods.active("crm"), pubsOn = mods.active("publications");
+  const crmOn = mods.active("crm"), pubsOn = mods.active("publications"), rdvOn = mods.active("rdv");
   const { data: fresh, reload: reloadFresh } = useData<{ project_id: string; state: string }[]>("/api/freshness");
   useEffect(() => { const f = () => reloadFresh(); addEventListener("st-today-changed", f); return () => removeEventListener("st-today-changed", f); }, [reloadFresh]);
   // Voyant d'un projet : rouge si un relevé est en erreur, orange si une source est en retard, vert sinon, éteint sans source.
@@ -202,7 +203,9 @@ function Shell({ me, onLogout }: { me: Me; onLogout: () => void }) {
     { key: "today", label: "À traiter", icon: Icon.check, active: q.view === "today", badge: todayCount, onClick: to("today") },
     ...(!me.demo && crmOn ? [{ key: "crm", label: "Contacts", icon: Icon.users, active: q.view === "crm", onClick: to("crm") }] : []),
     ...(!me.demo && pubsOn ? [{ key: "pubs", label: "Publications", icon: Icon.calendar, active: q.view === "pubs", onClick: to("pubs") }] : []),
+    ...(!me.demo && rdvOn ? [{ key: "rdv", label: "Rendez-vous", icon: Icon.calendar, active: q.view === "rdv", onClick: to("rdv") }] : []),
   ];
+  const rdvItems: NavEntry[] = sections.filter((x) => x.key === "rdv").map((x) => ({ key: `r:${x.key}`, label: x.label, active: x.active, onClick: x.onClick }));
   const logout = () => api("/api/logout", { method: "POST" }).then(onLogout);
   const themeSwitch = <Segmented label="Thème" value={theme} onChange={setTheme} options={[["dark", "Sombre"], ["light", "Clair"], ["auto", "Auto"]] as const} />;
   const tabCls = (active: boolean) => `inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl px-3.5 text-sm whitespace-nowrap transition-colors ${active ? "border border-control bg-raised font-semibold text-ink" : "border border-transparent text-muted hover:text-ink"}`;
@@ -262,7 +265,7 @@ function Shell({ me, onLogout }: { me: Me; onLogout: () => void }) {
             <button onClick={() => setMenu(false)} className="h-11 px-2 text-sm">Fermer</button>
           </div>
           <div className="space-y-5 px-4 pb-24">
-            {([["Sites", siteItems], ["Pages", pageItems], ["Plus", moreItems]] as const).filter(([, list]) => list.length).map(([title, list]) => (
+            {([["Rubriques", rdvItems], ["Sites", siteItems], ["Pages", pageItems], ["Plus", moreItems]] as const).filter(([, list]) => list.length).map(([title, list]) => (
               <section key={title}><h2 className="label-caps mb-1">{title}</h2>
                 {list.map((it) => <button key={it.key} type="button" onClick={it.onClick} aria-current={it.active ? "page" : undefined} className={`flex min-h-12 w-full items-center justify-between gap-3 border-b border-rule text-left text-[15px] ${it.active ? "font-semibold text-ink" : "text-muted"}`}><span className="flex items-center gap-2">{it.icon && <Svg>{Icon.plus}</Svg>}{it.label}</span>{it.hint && <span className="num text-xs">{it.hint}</span>}</button>)}
               </section>
@@ -295,6 +298,7 @@ function Shell({ me, onLogout }: { me: Me; onLogout: () => void }) {
         ) : sites === null ? null
           : q.view === "crm" ? <CrmView tab={q.tab ?? ""} go={go} q={q} />
           : q.view === "pubs" ? <PubsView q={q} go={go} />
+          : q.view === "rdv" ? <RdvView q={q} go={go} />
           : q.view === "report" ? <ReportView />
           : q.view === "settings" ? <SettingsView go={go} />
           : q.view === "agents" ? <AgentsView />

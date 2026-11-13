@@ -2,7 +2,7 @@
 import type { Hono } from "hono";
 import { isAdmin } from "./admin.ts";
 import { createConnection, findByFingerprint, getSecrets, removeConnection, setSecrets } from "./connections.ts";
-import { instanceId, relayConfigured, relayExchange, relayRevoke, relayStart, relayStatus, relayUrl, takeState } from "./relay.ts";
+import { instanceId, relayConfigured, relayExchange, relayFetch, relayRevoke, relayStart, relayStatus, relayUrl, takeState } from "./relay.ts";
 
 const DEMO = () => process.env.DEMO === "1";
 const origin = (c: any) => (process.env.PUBLIC_URL ?? new URL(c.req.url).origin).replace(/\/$/, "");
@@ -57,6 +57,11 @@ export async function revokeRelayToken(id: string): Promise<boolean> {
   if (!row) return true;
   let cfg: any = {}; try { cfg = JSON.parse(row.config); } catch {}
   if (!cfg?.relay) return true;
-  try { const s = getSecrets(id); if (s.token) await relayRevoke(String(s.token)); return true; }
+  try {
+    const s = getSecrets(id);
+    if (s.refresh_token) await relayFetch("/v1/google/revoke", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ refresh_token: s.refresh_token }) });
+    else if (s.token) await relayRevoke(String(s.token));
+    return true;
+  }
   catch { return false; }
 }

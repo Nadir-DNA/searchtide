@@ -66,7 +66,7 @@ export async function checkContract(c: Connector, fx: Fixture): Promise<string[]
   if (new Set(ids).size !== ids.length) bad.push("KPI en double");
   if (c.kpis?.length && !c.collect) bad.push("KPI déclarés sans collect()");
   for (const p of c.presets ?? []) if (!ids.includes(p.kpi)) bad.push(`preset ${p.label} : KPI ${p.kpi} inconnu`);
-  for (const r of c.readPosts ?? []) if (!/^(POST|PUT) https:\/\//.test(r)) bad.push(`readPosts mal formé : ${r}`);
+  for (const r of c.readPosts ?? []) if (!/^(POST|PUT|PROPFIND|REPORT) https:\/\//.test(r)) bad.push(`readPosts mal formé : ${r}`);
   if (c.builtin || bad.length) return bad; // carte intégrée : rien à tester ; manifeste invalide : inutile de l'exécuter
 
   const secrets = secretValues(fx.cfg.secrets).filter((s) => s.length >= 4);

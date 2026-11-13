@@ -12,6 +12,9 @@ RELAY_URL = "https://connect.nadirdaoudi.com"
 # client_id public du compte plateforme réel « Searchtide ».
 STRIPE_CLIENT_ID = "ca_VbMixQ6g1nGi3pIsQ2VXjq0Fhjp4xdtK"
 
+# Google Agenda : identifiant client public de l'application Google « Searchtide Connect ».
+GOOGLE_CLIENT_ID = "115610665432-52uv4pesba84s3lip11f5517br9js4h3.apps.googleusercontent.com"
+
 [[d1_databases]]
 binding = "DB"
 database_name = "searchtide-connect"
@@ -22,6 +25,7 @@ database_id = "391d80fc-18dd-4d97-b77f-8bf5cb6adad0"
 crons = ["0 * * * *"]
 
 # Secrets (jamais dans ce fichier) :
+#   wrangler secret put GOOGLE_CLIENT_SECRET   (secret OAuth de l'application Google)
 #   wrangler secret put STRIPE_READ_KEY   (rk_live, lectures)
 #   wrangler secret put STRIPE_OAUTH_KEY  (sk_live, OAuth seulement)
 #   wrangler secret put WEBHOOK_SECRET

@@ -16,6 +16,10 @@ test("CA3 : .env.example contient exactement 3 variables non commentées (SECRET
     assert.doesNotMatch(example, new RegExp(`^[^#\\n]*${old}`, "m"), `${old} ne doit plus être une variable active`);
   // A7 : le fuseau des journées est documenté, mais reste commenté (pas une variable active).
   assert.match(example, /^# DAY_TZ=Europe\/Paris$/m, "DAY_TZ est documenté dans .env.example");
+  // LinkedIn : documenté et facultatif ; l'instance démarre sans (le bouton explique la marche à suivre).
+  for (const v of ["LINKEDIN_CLIENT_ID", "LINKEDIN_CLIENT_SECRET"])
+    assert.match(example, new RegExp(`^# ${v}=$`, "m"), `${v} documenté et commenté`);
+  assert.match(example, /api\/pub-oauth\/linkedin\/callback/, "le retour OAuth LinkedIn est documenté");
 });
 
 test("CA3 : une instance en production démarre avec un .env qui ne contient que SECRET et ADMIN_PASSWORD, l'administrateur se connecte et peut enregistrer une connexion", async () => {
@@ -34,7 +38,7 @@ test("CA3 : une instance en production démarre avec un .env qui ne contient que
     const cookie = (login.headers.getSetCookie?.() ?? []).map((c) => c.split(";")[0]).join("; ");
     const cat = await (await fetch(`${base}/api/connectors`, { headers: { Cookie: cookie } })).json();
     assert.equal(cat.vault.ok, true, "le SECRET du .env suffit à ouvrir le coffre");
-    assert.equal(cat.connectors.filter((c: any) => !c.builtin).length, 8);
+    assert.equal(cat.connectors.filter((c: any) => !c.builtin).length, 10);
     // Depuis T24, l'absence de SECRET n'est plus un refus : la valeur est générée. Un SECRET explicitement
     // trop court reste refusé (message clair, pas de coffre à moitié actif).
     const bad = spawn(process.execPath, ["server/index.ts"], { env: { PATH: process.env.PATH ?? "", PORT: String(await freePort()), HOST: "127.0.0.1", DATABASE_PATH: t.path, NODE_ENV: "production", SECRET: "court", ADMIN_PASSWORD: "x" }, stdio: "pipe" });

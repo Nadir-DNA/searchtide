@@ -334,6 +334,105 @@ export function useCatalog() {
 type RelayStatus = { enabled: boolean; ok: boolean; mode: "test" | "live" | null; error: string | null; url?: string };
 
 /** Carte « Connexion avec Stripe » : consentement explicite, relais optionnel, repli clé limitée (C5, CA32, CA51, CA52). */
+type PubAccount = { id: string; project: string; network: string; label: string; status: string; connection_id?: string | null };
+type Projet = { id: string; name: string };
+
+type Reseau = { id: string; label: string; configured: boolean; env: string[] };
+
+/** Publication sur les réseaux : chaque compte se branche par OAuth (jeton au coffre), puis l'écran le montre connecté. */
+function PublicationConnect() {
+  const [reseaux, setReseaux] = useState<Reseau[]>([]);
+  const [comptes, setComptes] = useState<PubAccount[]>([]);
+  const [projets, setProjets] = useState<Projet[]>([]);
+  const [projet, setProjet] = useState("");
+  const [busy, setBusy] = useState("");
+  const [erreur, setErreur] = useState("");
+  // le retour d'autorisation peut être un succès ou un refus : la couleur suit, pas la présence
+  const [message, setMessage] = useState<{ texte: string; ok: boolean } | null>(null);
+
+  useEffect(() => {
+    fetch("/api/pub-oauth/networks", { headers: { accept: "application/json" } })
+      .then((r) => (r.ok ? r.json() : [])).then(setReseaux).catch(() => {});
+    fetch("/api/pub-accounts", { headers: { accept: "application/json" } })
+      .then((r) => (r.ok ? r.json() : [])).then(setComptes).catch(() => {});
+    fetch("/api/projects", { headers: { accept: "application/json" } })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((ps: Projet[]) => { setProjets(ps); setProjet((v) => v || ps[0]?.id || ""); })
+      .catch(() => {});
+    // retour d'autorisation : le serveur redirige ici avec ?oauth=ok&network=… ou un message
+    const q = new URLSearchParams(location.search), o = q.get("oauth"), n = q.get("network");
+    if (o) {
+      setMessage(o === "ok"
+        ? { texte: `Compte ${n ?? ""} connecté.`.replace("  ", " "), ok: true }
+        : { texte: o === "admin" ? "Reconnectez-vous en administrateur, puis recommencez." : o, ok: false });
+      q.delete("oauth"); q.delete("network");
+      const reste = q.toString();
+      history.replaceState(null, "", location.pathname + (reste ? "?" + reste : "") + location.hash);
+    }
+  }, []);
+
+  async function connecter(id: string, label: string) {
+    setBusy(id); setErreur(""); setMessage(null);
+    try {
+      const r = await fetch(`/api/pub-oauth/${id}/start`, {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ project: projet }),
+      });
+      // route absente de cette version : le dire clairement plutôt qu'un « introuvable » brut
+      if (r.status === 404) throw new Error(`La connexion ${label} n'est pas disponible dans cette version de Searchtide.`);
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error ?? `La connexion ${label} n'a pas pu démarrer.`);
+      window.location.href = j.url;
+    } catch (e) { setErreur((e as Error).message); setBusy(""); }
+  }
+
+  const reels = comptes.filter((a) => a.connection_id);
+  return (
+    <Card className="mb-6 p-5">
+      <h2 className="text-sm font-medium">Publication sur les réseaux</h2>
+      <p className="mt-1 text-sm text-muted">
+        Autorisez Searchtide à publier sur vos comptes. Les jetons restent chiffrés sur votre instance et ne sont jamais réaffichés.
+      </p>
+      {reels.length > 0 && (
+        <ul className="mt-3 space-y-1 text-sm">
+          {reels.map((a) => (
+            <li key={a.id} className="flex flex-wrap items-center gap-2">
+              <span className="text-ink">{a.label}</span>
+              <span className="text-muted">· {a.network} · {a.project}</span>
+              <span className={a.status === "connected" ? "text-positive" : "text-negative"}>
+                {a.status === "connected" ? "Connecté" : "À reconnecter"}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {message && (
+        <p role={message.ok ? "status" : "alert"} className={`mt-3 text-sm ${message.ok ? "text-positive" : "text-negative"}`}>{message.texte}</p>
+      )}
+      {erreur && <p role="alert" className="mt-3 text-sm text-negative">{erreur}</p>}
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <label htmlFor="pub-projet" className="text-sm">Projet</label>
+        <select id="pub-projet" value={projet} onChange={(e) => setProjet(e.target.value)} className={`${inputCls} max-w-xs`}>
+          {projets.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {reseaux.map((n) => (
+          <Button key={n.id} onClick={() => connecter(n.id, n.label)} disabled={!!busy || !projet || !n.configured}
+            title={n.configured ? undefined : `Définissez ${n.env.join(" et ")} dans .env`}>
+            {busy === n.id ? "Redirection…" : `Connecter ${n.label}`}
+          </Button>
+        ))}
+      </div>
+      {reseaux.some((n) => !n.configured) && (
+        <p className="mt-3 text-sm text-muted">
+          Non configurés : {reseaux.filter((n) => !n.configured).map((n) => `${n.label} (${n.env.join(", ")})`).join(" · ")}.
+          Le retour d'autorisation à déclarer chez chaque réseau est <code>PUBLIC_URL/api/pub-oauth/&lt;réseau&gt;/callback</code>.
+        </p>
+      )}
+    </Card>
+  );
+}
+
 function StripeConnect({ onUseKey }: { onUseKey: () => void }) {
   const [st, setSt] = useState<RelayStatus | null>(null);
   const [consent, setConsent] = useState(false);
@@ -400,7 +499,12 @@ export function ConnectionsView() {
 
   return (
     <>
-      {catalog?.admin && !catalog.demo && <StripeConnect onUseKey={() => open("stripe")} />}
+      {catalog?.admin && !catalog.demo && (
+        <>
+          <StripeConnect onUseKey={() => open("stripe")} />
+          <PublicationConnect />
+        </>
+      )}
       <header className="pt-4 pb-6 md:min-h-20 md:pt-6">
         <h1 className="text-2xl leading-9 font-light md:text-[30px] md:leading-10">Connexions</h1>
         <p className="mt-1 max-w-2xl text-sm text-muted">Branchez vos services ici. Les clés sont chiffrées sur votre instance et ne sont jamais réaffichées.</p>

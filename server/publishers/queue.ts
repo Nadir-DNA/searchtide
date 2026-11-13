@@ -7,11 +7,14 @@ import { migrate } from "../migrations.ts";
 import { registerJob } from "../jobs.ts";
 import { isAdmin } from "../admin.ts";
 import { securityEvent } from "../security-events.ts";
-import { mediaOf } from "./media.ts";
+import { mediaFiles, mediaOf, publicMediaReady } from "./media.ts";
 import { publicationBinding, publishWithBrowser } from "../browser/runner.ts";
 import { revokeBrowserSession } from "../browser/live.ts";
 import { fixturesEnabled } from "../browser/pool.ts";
 import { createApproval, decideApproval } from "../approvals.ts";
+import { definitive, providerFor, type PublishResult } from "./provider.ts";
+import { credentialsFor } from "./tokens.ts";
+import "./providers/index.ts";
 
 type Row = Record<string, any>;
 
@@ -24,6 +27,9 @@ for (const sql of [
   "ALTER TABLE pub_accounts ADD COLUMN web_url TEXT",
   "ALTER TABLE pub_accounts ADD COLUMN fixture_port INTEGER",
   "ALTER TABLE publications ADD COLUMN approval_id TEXT",
+  "ALTER TABLE pub_accounts ADD COLUMN connection_id TEXT",
+  "ALTER TABLE publications ADD COLUMN pending_data TEXT",
+  "ALTER TABLE publications ADD COLUMN pending_since INTEGER",
 ]) { try { db.exec(sql); } catch { /* colonne déjà présente */ } }
 db.exec(`CREATE TABLE IF NOT EXISTS pub_idempotency (
   key TEXT PRIMARY KEY, url TEXT NOT NULL, at INTEGER NOT NULL
@@ -33,7 +39,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS pub_attempts (
   state TEXT NOT NULL, detail TEXT, evidence_url TEXT
 )`);
 
-export const PUB_STATES = ["draft", "scheduled", "running", "published", "failed", "needs_action", "to_verify", "missed", "cancelled"] as const;
+export const PUB_STATES = ["draft", "scheduled", "running", "processing", "published", "failed", "needs_action", "to_verify", "missed", "cancelled"] as const;
 export type PubState = typeof PUB_STATES[number];
 export const NETWORK_LIMITS: Record<string, { text: number; media: number; needsTitle?: boolean; needsVisibility?: boolean }> = {
   x: { text: 280, media: 4 },
@@ -44,6 +50,8 @@ export const NETWORK_LIMITS: Record<string, { text: number; media: number; needs
   linkedin: { text: 3000, media: 9 },
 };
 export const MAX_LATE_MS = 2 * 60 * 60_000;
+/** Au-delà, un traitement côté réseau (vidéo, conteneur) n'est plus suivi : « À vérifier ». */
+export const MAX_PROCESSING_MS = 2 * 60 * 60_000;
 
 const nowIso = () => new Date().toISOString();
 
@@ -97,13 +105,16 @@ export function validatePublication(p: Row, account: Row | undefined): string[] 
     if (account.status !== "connected") issues.push(`Compte ${account.status === "expired" ? "à reconnecter" : "indisponible"}`);
   }
   const text = String(p.text ?? "");
+  const real = account?.connection_id ? providerFor(network) : undefined;
   if (!text.trim()) issues.push("Texte requis");
-  if (limit && text.length > limit.text) issues.push(`Texte trop long pour ${network} : ${text.length} / ${limit.text} caractères`);
+  const textMax = real?.limits.text ?? limit?.text;
+  if (textMax && text.length > textMax) issues.push(`Texte trop long pour ${network} : ${text.length} / ${textMax} caractères`);
   if (limit?.needsTitle && !String(p.title ?? "").trim()) issues.push("Titre requis pour YouTube");
   if (limit?.needsVisibility && !String(p.visible ?? "").trim()) issues.push("Confidentialité à choisir pour TikTok");
   // Médias : nombre par réseau, formats et plafonds officiels les plus stricts (§16.2).
   const media = p.id ? mediaOf(String(p.id)) as { mime: string; size: number }[] : [];
-  if (limit && media.length > limit.media) issues.push(`Trop de médias pour ${network} : ${media.length} / ${limit.media}`);
+  const mediaMax = real?.limits.media ?? limit?.media;
+  if (mediaMax !== undefined && media.length > mediaMax) issues.push(real && !mediaMax ? `${network} : les médias ne sont pas encore pris en charge pour un compte réel` : `Trop de médias pour ${network} : ${media.length} / ${mediaMax}`);
   const video = (m: string) => m.startsWith("video/");
   if (network === "instagram") {
     if (media.some((m) => m.mime.startsWith("image/") && m.mime !== "image/jpeg")) issues.push("Instagram : images JPEG uniquement");
@@ -113,18 +124,33 @@ export function validatePublication(p: Row, account: Row | undefined): string[] 
   if (network === "youtube" && media.some((m) => !video(m.mime))) issues.push("YouTube : une vidéo est requise");
   if (network === "tiktok" && media.some((m) => !video(m.mime))) issues.push("TikTok : vidéo ou photos compatible requises");
   if (network === "youtube" && media.length === 0) issues.push("YouTube : une vidéo est requise");
+  if (real) {
+    issues.push(...(real.check?.({ text, title: p.title ? String(p.title) : undefined, visibility: p.visible ? String(p.visible) : undefined, media }) ?? []));
+    if (real.needsPublicMedia && media.length && !publicMediaReady()) issues.push(`${real.label} télécharge les médias depuis votre instance : définissez PUBLIC_URL en https`);
+  }
   return issues;
 }
 
-export type PublishResult = { ok: true; url: string } | { ok: false; kind: "auth" | "format" | "quota" | "rate" | "network" | "refused" | "unknown" | "to_verify"; message: string };
+export type { PublishResult } from "./provider.ts";
 
-/** Fournisseur factice : aucun réseau joint, résultat déterministe pour les tests. */
+/** Compte relié à un vrai réseau : la connexion OAuth est dans le coffre, jamais ici. */
+export function createConnectedAccount(o: { project: string; network: string; label: string; connection_id: string }) {
+  const id = randomUUID();
+  db.prepare("INSERT INTO pub_accounts (id, project, network, label, daily_cap, mode, connection_id, created_at) VALUES (?, ?, ?, ?, 3, 'api', ?, ?)")
+    .run(id, o.project, o.network, o.label.slice(0, 80), o.connection_id, Date.now());
+  return db.prepare("SELECT * FROM pub_accounts WHERE id = ?").get(id) as Row;
+}
+
+/** Fournisseur réel si le compte a une connexion et que le réseau en a un ; sinon fournisseur factice (tests, démonstration). */
 export async function publishToNetwork(p: Row, account: Row): Promise<PublishResult> {
   if (account.status === "expired") return { ok: false, kind: "auth", message: "Compte à reconnecter" };
   const text = String(p.text ?? "");
-  if (text.includes("[quota]")) return { ok: false, kind: "quota", message: "Quota du réseau atteint" };
-  if (text.includes("[rate]")) return { ok: false, kind: "rate", message: "Limite de débit atteinte" };
-  if (text.includes("[fail]")) return { ok: false, kind: "refused", message: "Publication refusée par le réseau" };
+  const real = account.connection_id ? providerFor(String(account.network)) : undefined;
+  if (!real) {
+    if (text.includes("[quota]")) return { ok: false, kind: "quota", message: "Quota du réseau atteint" };
+    if (text.includes("[rate]")) return { ok: false, kind: "rate", message: "Limite de débit atteinte" };
+    if (text.includes("[fail]")) return { ok: false, kind: "refused", message: "Publication refusée par le réseau" };
+  }
   // Clé d'idempotence, intention AVANT l'envoi (url vide = « envoi commencé, adresse inconnue ») puis adresse APRÈS.
   // Une intention sans adresse n'est jamais rejouée : « À vérifier » (un vrai réseau a pu publier avant le plantage).
   const key = p.idempotency_key ? String(p.idempotency_key) : null;
@@ -133,6 +159,15 @@ export async function publishToNetwork(p: Row, account: Row): Promise<PublishRes
     if (seen?.url) return { ok: true, url: seen.url };
     if (seen) return { ok: false, kind: "to_verify", message: "Un envoi précédent a commencé sans adresse de preuve : vérifiez sur le réseau" };
     db.prepare("INSERT INTO pub_idempotency (key, url, at) VALUES (?, '', ?)").run(key, Date.now());
+  }
+  if (real) {
+    const cred = await credentialsFor(account);
+    if (!cred.ok) { if (key) db.prepare("DELETE FROM pub_idempotency WHERE key = ?").run(key); return { ok: false, kind: "auth", message: cred.message }; }
+    const r = await real.publish({ text, title: p.title ? String(p.title) : undefined, visibility: p.visible ? String(p.visible) : undefined, media: mediaFiles(String(p.id)) }, cred.token, cred.accountId);
+    // Échec certain (rien n'est parti) : l'intention est levée pour qu'une nouvelle tentative soit possible. Un doute ou un traitement en cours la garde.
+    if (definitive(r) && key) db.prepare("DELETE FROM pub_idempotency WHERE key = ?").run(key);
+    if (r.ok && key) db.prepare("UPDATE pub_idempotency SET url = ?, at = ? WHERE key = ?").run(r.url, Date.now(), key);
+    return r;
   }
   if (text.includes("[crash]")) throw new Error("plantage simulé après l'intention");
   const url = `https://sim.test/${encodeURIComponent(String(p.network))}/${p.id}`;
@@ -206,24 +241,57 @@ async function runOne(p: Row, now: number): Promise<void> {
   }
   try {
     const r = await publishToNetwork(p, account);
-    if (r.ok) {
-      setState(p.id, "published", { status: "published", url: r.url, evidence_url: r.url, published_at: Date.now() });
-      attempt(p.id, "published", "publié (factice)", r.url);
-    } else if (r.kind === "to_verify") {
-      setState(p.id, "to_verify", { status: "idea" });
-      attempt(p.id, "to_verify", r.message);
-    } else if (r.kind === "auth") {
-      setState(p.id, "needs_action", { status: "idea" });
-      attempt(p.id, "needs_action", `authentification : ${r.message}`);
-    } else {
-      setState(p.id, "failed", { status: "idea" });
-      attempt(p.id, r.kind, `${r.kind} : ${r.message}`);
-    }
+    applyResult(p, r, account.connection_id ? providerFor(String(account.network))?.label ?? "réseau" : "factice");
   } catch (e) {
     // Après le geste final, ou en cas d'ambiguïté : jamais de nouvelle tentative aveugle.
     setState(p.id, "to_verify", { status: "idea" });
     attempt(p.id, "to_verify", `résultat incertain : ${(e as Error).message}`);
   }
+}
+
+/** Résultat d'un envoi ou d'une relecture → état de la publication. */
+function applyResult(p: Row, r: PublishResult, source: string) {
+  if (r.ok) {
+    setState(p.id, "published", { status: "published", url: r.url, evidence_url: r.url, published_at: Date.now(), pending_data: null });
+    attempt(p.id, "published", `publié (${source})`, r.url);
+  } else if (r.kind === "pending") {
+    const entering = p.state !== "processing";
+    setState(p.id, "processing", { status: "scheduled", pending_data: JSON.stringify(r.data), pending_since: entering ? Date.now() : Number(p.pending_since) });
+    if (entering) attempt(p.id, "processing", r.message);   // une seule ligne, pas une par relecture
+  } else if (r.kind === "to_verify") {
+    setState(p.id, "to_verify", { status: "idea", pending_data: null });
+    attempt(p.id, "to_verify", r.message);
+  } else if (r.kind === "auth") {
+    setState(p.id, "needs_action", { status: "idea", pending_data: null });
+    attempt(p.id, "needs_action", `authentification : ${r.message}`);
+  } else {
+    setState(p.id, "failed", { status: "idea", pending_data: null });
+    attempt(p.id, r.kind, `${r.kind} : ${r.message}`);
+  }
+}
+
+/** Relecture des publications que le réseau traite encore (vidéo, conteneur Instagram). Lire un état ne republie jamais. */
+export async function runPendingChecks(now = Date.now()): Promise<number> {
+  const rows = db.prepare("SELECT * FROM publications WHERE state = 'processing' ORDER BY pending_since LIMIT 20").all() as Row[];
+  for (const p of rows) {
+    const account = db.prepare("SELECT * FROM pub_accounts WHERE id = ?").get(p.account_id) as Row | undefined;
+    const provider = account?.connection_id ? providerFor(String(account.network)) : undefined;
+    let r: PublishResult;
+    if (!account || !provider?.poll) r = { ok: false, kind: "to_verify", message: "Compte ou fournisseur absent pendant le traitement : vérifiez sur le réseau" };
+    else if (now - Number(p.pending_since ?? now) > MAX_PROCESSING_MS) r = { ok: false, kind: "to_verify", message: "Traitement de plus de 2 h côté réseau : vérifiez sur le réseau" };
+    else {
+      try {
+        const cred = await credentialsFor(account);
+        r = cred.ok ? await provider.poll(JSON.parse(String(p.pending_data ?? "{}")), cred.token, cred.accountId)
+          : { ok: false, kind: "to_verify", message: `${cred.message} (envoi déjà commencé : vérifiez sur le réseau)` };
+      } catch (e) { r = { ok: false, kind: "to_verify", message: `résultat incertain : ${(e as Error).message}` }; }
+    }
+    const key = p.idempotency_key ? String(p.idempotency_key) : null;
+    if (key && r.ok) db.prepare("UPDATE pub_idempotency SET url = ?, at = ? WHERE key = ?").run(r.url, Date.now(), key);
+    if (key && definitive(r)) db.prepare("DELETE FROM pub_idempotency WHERE key = ?").run(key);
+    applyResult(p, r, provider?.label ?? "réseau");
+  }
+  return rows.length;
 }
 
 /** Une exécution de la file. Une seule publication traitée à la fois, jamais deux pour le même compte. */
@@ -351,7 +419,7 @@ export function registerPublishers(app: Hono) {
   });
 
   // Tâche d'une minute : la file part sans intervention, une publication à la fois.
-  registerJob("publications", { id: "publications-queue", every: "1m", run: async () => { await runPublicationQueue(); } });
+  registerJob("publications", { id: "publications-queue", every: "1m", run: async () => { await runPublicationQueue(); await runPendingChecks(); } });
   recoverInterrupted();
 }
 

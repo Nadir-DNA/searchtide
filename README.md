@@ -17,7 +17,7 @@ Une instance, un fichier SQLite, vos clés chiffrées chez vous. Pas de service 
 Données fictives, aucune clé, lecture seule :
 
 ```bash
-docker run -d -p 127.0.0.1:3030:3030 -e DEMO=1 -v searchtide_demo:/data ghcr.io/nadir-dna/searchtide:0.2.3
+docker run -d -p 127.0.0.1:3030:3030 -e DEMO=1 -v searchtide_demo:/data ghcr.io/nadir-dna/searchtide:0.4.0
 ```
 
 Ouvrez <http://localhost:3030>. Détails et deuxième capture (portefeuille multi-projets) : [docs/demo.md](docs/demo.md).
@@ -37,13 +37,13 @@ Ouvrez <http://localhost:3030>. Détails et deuxième capture (portefeuille mult
 ### Docker, une commande
 
 ```bash
-docker run -d --name searchtide --restart unless-stopped -p 127.0.0.1:3030:3030 -v searchtide:/data ghcr.io/nadir-dna/searchtide:0.2.3
+docker run -d --name searchtide --restart unless-stopped -p 127.0.0.1:3030:3030 -v searchtide:/data ghcr.io/nadir-dna/searchtide:0.4.0
 docker logs searchtide    # mot de passe administrateur généré au premier lancement
 ```
 
 Aucun fichier à éditer : `SECRET` et le mot de passe sont générés au premier démarrage et conservés dans le volume `/data`. Le mot de passe n'est affiché qu'une fois — notez-le.
 
-Images `linux/amd64` et `linux/arm64`, tags `0.2.3` et `v0.2.3`.
+Images `linux/amd64` et `linux/arm64`, tags `0.4.0` et `v0.4.0`.
 
 ### Docker Compose
 
@@ -133,7 +133,38 @@ POST /api/sites/{id}/sync
 - **Portée par projet** : chaque clé d'agent a, projet par projet, un mode lecture ou écriture ; REST et MCP appliquent la même règle, une cible hors portée répond « Introuvable ».
 - **Approbations** : une clé ne supprime pas un projet ou un indicateur sans l'approbation de l'administrateur (usage unique, liée à la cible). Un instantané de la base précède toute suppression de projet.
 - **Navigateur intégré** (option, administrateur seul) : connexion manuelle dans Searchtide, tout le trafic de Chromium passe par un proxy filtrant (adresses privées, redirections, DNS). Docker : [docs/exploitation.md](docs/exploitation.md).
-- **Publications — simulées dans cette version** : le fournisseur est factice (adresse de preuve fictive `sim.test`), aucun réseau social réel n'est joint ; le navigateur n'a été éprouvé que sur des pages de test.
+- **Publications réelles (non publiée)** : LinkedIn, X, Facebook, Instagram, TikTok et YouTube se connectent par OAuth (écran Connexions), avec une application développeur par réseau (variables dans `.env.example`). Vidéos et conteneurs Instagram passent « En traitement » puis sont relus chaque minute ; un résultat douteux passe « À vérifier », jamais renvoyé. Instagram télécharge les médias depuis l'instance : `PUBLIC_URL` en https requis. Le code des réseaux (`server/publishers/providers/`) est sous AGPL-3.0, dérivé en partie de Postiz. Éprouvé contre des réseaux simulés seulement.
+
+## Publication LinkedIn
+
+Searchtide peut publier un texte sur votre **profil LinkedIn**. Le compte se branche depuis l'écran **Connexions**, carte « Publication LinkedIn » : choisissez un projet, cliquez sur « Connecter LinkedIn », autorisez chez LinkedIn ; le jeton est chiffré sur votre instance et n'est jamais réaffiché.
+
+1. Créez une application sur [LinkedIn Developers](https://www.linkedin.com/developers/apps) avec le produit **Share on LinkedIn** (et **Sign In with LinkedIn using OpenID Connect**).
+2. Déclarez l'URL de retour `PUBLIC_URL/api/pub-oauth/linkedin/callback` — par exemple `https://stats.nadirdaoudi.com/api/pub-oauth/linkedin/callback`.
+3. Renseignez `LINKEDIN_CLIENT_ID` et `LINKEDIN_CLIENT_SECRET` dans `.env`, puis redémarrez. Sans ces valeurs, le bouton reste visible et explique la marche à suivre.
+
+### Installation locale (projet open source)
+
+Chaque installation crée **sa propre application LinkedIn** et ses propres identifiants : rien n'est partagé entre installations et aucun secret n'est versionné dans le dépôt. Les valeurs vont dans le `.env` de votre instance (ou dans les variables d'environnement du conteneur), jamais dans un fichier suivi par Git.
+
+1. Sur votre poste, lancez Searchtide et notez l'adresse réellement utilisée dans le navigateur :
+   - `npm run build && npm start` : `http://localhost:3030` (port `PORT`, 3030 par défaut) ;
+   - `npm run dev` : l'interface est servie par Vite sur `http://localhost:5173` et relaie `/api` vers `3030` ; dans ce cas, déclarez le retour sur **5173** et mettez `PUBLIC_URL=http://localhost:5173`.
+2. Dans votre application LinkedIn Developers, ajoutez le produit **Share on LinkedIn** (et **Sign In with LinkedIn using OpenID Connect**), puis déclarez l'URL de retour **exactement** :
+   `PUBLIC_URL/api/pub-oauth/linkedin/callback`, par exemple `http://localhost:3030/api/pub-oauth/linkedin/callback`.
+   LinkedIn compare cette adresse caractère par caractère : une différence de port, de schéma (http/https) ou une barre finale fait échouer l'autorisation.
+3. Renseignez `LINKEDIN_CLIENT_ID` et `LINKEDIN_CLIENT_SECRET` dans `.env`, puis redémarrez : la carte « Publication LinkedIn » de l'écran Connexions lance alors l'autorisation. Si la version installée n'expose pas encore la route de connexion, le bouton le dit (« La connexion LinkedIn n'est pas disponible dans cette version de Searchtide ») au lieu d'échouer sans explication.
+4. `PUBLIC_URL` doit désigner **cette** instance (localhost en local, votre domaine en production). Sans elle, Searchtide utilise l'adresse de la requête ; c'est acceptable en local, mais la déclarer évite les surprises derrière un proxy.
+
+En `http://localhost`, le cookie de session n'est pas marqué `Secure` (il ne l'est qu'en https ou derrière un proxy qui annonce `x-forwarded-proto: https`) et il est `SameSite=Lax` : le retour d'autorisation, qui revient sur la même origine, conserve donc la session. Derrière un tunnel ou un reverse proxy, servez l'instance en https et laissez `TRUST_PROXY` décrire le proxy (voir plus bas).
+
+Le formulaire LinkedIn Developers exige d'associer l'application à une **page LinkedIn** (entreprise, organisation ou école) : c'est un choix qui vous appartient, Searchtide n'en impose aucune.
+
+Sources : [exemples d'applications LinkedIn](https://learn.microsoft.com/en-us/linkedin/shared/authentication/sample-applications) et [flux du code d'autorisation](https://learn.microsoft.com/en-us/linkedin/shared/authentication/authorization-code-flow).
+
+Le jeton d'accès LinkedIn dure **60 jours**. Searchtide ne demande pas le jeton de rafraîchissement (accès réservé par LinkedIn) : à l'expiration, le compte passe **« À reconnecter »**, rien n'est publié, et il suffit de refaire la connexion. Une erreur d'autorisation (401/403) produit le même état.
+
+Aucune publication n'est faite sans approbation : le texte part après validation, une seule fois, et un doute sur la réponse de LinkedIn laisse le post « À vérifier » plutôt que de le renvoyer.
 
 ## Sécurité
 
@@ -160,7 +191,7 @@ Ne joignez jamais ce volume à un ticket ou à une archive de support. Mot de pa
 ## Limites connues
 
 - La recette avec de vrais comptes couvre Stripe, SMTP, Google Search Console et ntfy. Postgres est testé contre un vrai serveur **en local seulement : ces tests réels sont ignorés en CI**. **PageSpeed, API JSON et Google Play n'ont pas été repassés sur un compte réel** depuis cette version.
-- **Publications simulées** (fournisseur factice) ; navigateur intégré éprouvé sur des pages de test seulement, jamais sur un réseau social réel. Le bac à sable de Chromium demande le profil seccomp fourni en Docker.
+- **Publications réelles éprouvées contre des réseaux simulés seulement** ; LinkedIn et TikTok : texte et vidéo uniquement (pas de photos TikTok, pas de médias LinkedIn) ; une application TikTok non auditée ne publie qu'en privé. Navigateur intégré éprouvé sur des pages de test seulement, jamais sur un réseau social réel. Le bac à sable de Chromium demande le profil seccomp fourni en Docker.
 - Les tests de bout en bout tournent sur Chromium uniquement (pas Firefox ni WebKit).
 - La **Connexion avec Stripe** est en **bêta** (service Searchtide Connect, optionnel), désormais ouverte aux comptes réels : la clé restreinte `rk_` reste la voie recommandée pour un compte de production.
 - L'interface et l'essentiel de la documentation sont en français.
@@ -169,7 +200,7 @@ Ne joignez jamais ce volume à un ticket ou à une archive de support. Mot de pa
 
 - **0.3** : modules activables par projet, catalogue de KPI et KPI calculés, jalons, fil « Aujourd'hui », modules privés (voir [docs/release-v0.3.0.md](docs/release-v0.3.0.md)).
 - **0.4** : portée par projet, approbations, navigateur intégré, publications simulées (voir [docs/release-v0.4.0.md](docs/release-v0.4.0.md)).
-- **Ensuite** : publication réelle sur les réseaux, Connexion avec Stripe hors bêta une fois le relais stabilisé en production.
+- **Ensuite** : premiers posts réels par réseau, médias LinkedIn, photos TikTok, Connexion avec Stripe hors bêta une fois le relais stabilisé en production.
 - **Ensuite, sans date** : connecteurs reportés (Cloudflare, Gmail en lecture, CRM tiers, sauvegarde distante S3).
 
 ## Contribuer

@@ -191,6 +191,29 @@ test("CA50/CA52 : politique FR/EN datée, garde du placeholder ; mode test refus
   assert.match(await cb.text(), /comptes de test/);
 });
 
+test("Page d'accueil publique : présentation du service et liens vers politique et conditions", async () => {
+  const { env } = setup();
+  const h = await get("/", env);
+  assert.equal(h.status, 200);
+  const html = await h.text();
+  assert.match(html, /Searchtide Connect/);
+  assert.match(html, /href="\/privacy"/);
+  assert.match(html, /href="\/terms"/);
+});
+
+test("Conditions d'utilisation : page publique FR/EN datée, liée depuis la confidentialité", async () => {
+  const { env } = setup();
+  const p = await get("/terms", env);
+  assert.equal(p.status, 200);
+  const html = await p.text();
+  assert.match(html, /Searchtide Connect/);
+  assert.match(html, /France/);
+  assert.match(html, /licence MIT/);
+  assert.match(html, /13 novembre 2026/);
+  assert.equal((await get("/terms", { ...env, MODE: "live" })).status, 200, "date remplie : le mode live sert les conditions");
+  assert.match(await (await get("/privacy", env)).text(), /\/terms/, "la politique renvoie vers les conditions");
+});
+
 test("CA55 : la page intermédiaire affiche l'hôte de return_url, pas le nom annoncé par l'instance", async () => {
   const { env } = setup();
   const s = await (await post("/v1/start", { instance_id: "inst-1234", instance_host: "faux.test", return_url: "https://reel.test/cb", code_challenge: challenge }, env)).json() as any;
