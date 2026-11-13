@@ -143,6 +143,25 @@ Searchtide peut publier un texte sur votre **profil LinkedIn**. Le compte se bra
 2. Déclarez l'URL de retour `PUBLIC_URL/api/pub-oauth/linkedin/callback` — par exemple `https://stats.nadirdaoudi.com/api/pub-oauth/linkedin/callback`.
 3. Renseignez `LINKEDIN_CLIENT_ID` et `LINKEDIN_CLIENT_SECRET` dans `.env`, puis redémarrez. Sans ces valeurs, le bouton reste visible et explique la marche à suivre.
 
+### Installation locale (projet open source)
+
+Chaque installation crée **sa propre application LinkedIn** et ses propres identifiants : rien n'est partagé entre installations et aucun secret n'est versionné dans le dépôt. Les valeurs vont dans le `.env` de votre instance (ou dans les variables d'environnement du conteneur), jamais dans un fichier suivi par Git.
+
+1. Sur votre poste, lancez Searchtide et notez l'adresse réellement utilisée dans le navigateur :
+   - `npm run build && npm start` : `http://localhost:3030` (port `PORT`, 3030 par défaut) ;
+   - `npm run dev` : l'interface est servie par Vite sur `http://localhost:5173` et relaie `/api` vers `3030` ; dans ce cas, déclarez le retour sur **5173** et mettez `PUBLIC_URL=http://localhost:5173`.
+2. Dans votre application LinkedIn Developers, ajoutez le produit **Share on LinkedIn** (et **Sign In with LinkedIn using OpenID Connect**), puis déclarez l'URL de retour **exactement** :
+   `PUBLIC_URL/api/pub-oauth/linkedin/callback`, par exemple `http://localhost:3030/api/pub-oauth/linkedin/callback`.
+   LinkedIn compare cette adresse caractère par caractère : une différence de port, de schéma (http/https) ou une barre finale fait échouer l'autorisation.
+3. Renseignez `LINKEDIN_CLIENT_ID` et `LINKEDIN_CLIENT_SECRET` dans `.env`, puis redémarrez : la carte « Publication LinkedIn » de l'écran Connexions lance alors l'autorisation.
+4. `PUBLIC_URL` doit désigner **cette** instance (localhost en local, votre domaine en production). Sans elle, Searchtide utilise l'adresse de la requête ; c'est acceptable en local, mais la déclarer évite les surprises derrière un proxy.
+
+En `http://localhost`, le cookie de session n'est pas marqué `Secure` (il ne l'est qu'en https ou derrière un proxy qui annonce `x-forwarded-proto: https`) et il est `SameSite=Lax` : le retour d'autorisation, qui revient sur la même origine, conserve donc la session. Derrière un tunnel ou un reverse proxy, servez l'instance en https et laissez `TRUST_PROXY` décrire le proxy (voir plus bas).
+
+Le formulaire LinkedIn Developers exige d'associer l'application à une **page LinkedIn** (entreprise, organisation ou école) : c'est un choix qui vous appartient, Searchtide n'en impose aucune.
+
+Sources : [exemples d'applications LinkedIn](https://learn.microsoft.com/en-us/linkedin/shared/authentication/sample-applications) et [flux du code d'autorisation](https://learn.microsoft.com/en-us/linkedin/shared/authentication/authorization-code-flow).
+
 Le jeton d'accès LinkedIn dure **60 jours**. Searchtide ne demande pas le jeton de rafraîchissement (accès réservé par LinkedIn) : à l'expiration, le compte passe **« À reconnecter »**, rien n'est publié, et il suffit de refaire la connexion. Une erreur d'autorisation (401/403) produit le même état.
 
 Aucune publication n'est faite sans approbation : le texte part après validation, une seule fois, et un doute sur la réponse de LinkedIn laisse le post « À vérifier » plutôt que de le renvoyer.
