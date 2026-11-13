@@ -153,7 +153,7 @@ Chaque installation crée **sa propre application LinkedIn** et ses propres iden
 2. Dans votre application LinkedIn Developers, ajoutez le produit **Share on LinkedIn** (et **Sign In with LinkedIn using OpenID Connect**), puis déclarez l'URL de retour **exactement** :
    `PUBLIC_URL/api/pub-oauth/linkedin/callback`, par exemple `http://localhost:3030/api/pub-oauth/linkedin/callback`.
    LinkedIn compare cette adresse caractère par caractère : une différence de port, de schéma (http/https) ou une barre finale fait échouer l'autorisation.
-3. Renseignez `LINKEDIN_CLIENT_ID` et `LINKEDIN_CLIENT_SECRET` dans `.env`, puis redémarrez : la carte « Publication LinkedIn » de l'écran Connexions lance alors l'autorisation.
+3. Renseignez `LINKEDIN_CLIENT_ID` et `LINKEDIN_CLIENT_SECRET` dans `.env`, puis redémarrez : la carte « Publication LinkedIn » de l'écran Connexions lance alors l'autorisation. Si la version installée n'expose pas encore la route de connexion, le bouton le dit (« La connexion LinkedIn n'est pas disponible dans cette version de Searchtide ») au lieu d'échouer sans explication.
 4. `PUBLIC_URL` doit désigner **cette** instance (localhost en local, votre domaine en production). Sans elle, Searchtide utilise l'adresse de la requête ; c'est acceptable en local, mais la déclarer évite les surprises derrière un proxy.
 
 En `http://localhost`, le cookie de session n'est pas marqué `Secure` (il ne l'est qu'en https ou derrière un proxy qui annonce `x-forwarded-proto: https`) et il est `SameSite=Lax` : le retour d'autorisation, qui revient sur la même origine, conserve donc la session. Derrière un tunnel ou un reverse proxy, servez l'instance en https et laissez `TRUST_PROXY` décrire le proxy (voir plus bas).

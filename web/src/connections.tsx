@@ -344,7 +344,8 @@ function LinkedInConnect() {
   const [projet, setProjet] = useState("");
   const [busy, setBusy] = useState(false);
   const [erreur, setErreur] = useState("");
-  const [message, setMessage] = useState("");
+  // le retour d'autorisation peut être un succès ou un refus : la couleur suit, pas la présence
+  const [message, setMessage] = useState<{ texte: string; ok: boolean } | null>(null);
 
   useEffect(() => {
     fetch("/api/pub-accounts", { headers: { accept: "application/json" } })
@@ -356,7 +357,9 @@ function LinkedInConnect() {
     // retour d'autorisation : le serveur redirige ici avec ?oauth=ok ou un message
     const q = new URLSearchParams(location.search), o = q.get("oauth");
     if (o) {
-      setMessage(o === "ok" ? "Compte LinkedIn connecté." : o === "admin" ? "Reconnectez-vous en administrateur, puis recommencez." : o);
+      setMessage(o === "ok"
+        ? { texte: "Compte LinkedIn connecté.", ok: true }
+        : { texte: o === "admin" ? "Reconnectez-vous en administrateur, puis recommencez." : o, ok: false });
       q.delete("oauth");
       const reste = q.toString();
       history.replaceState(null, "", location.pathname + (reste ? "?" + reste : "") + location.hash);
@@ -365,11 +368,13 @@ function LinkedInConnect() {
 
   const comptesLi = comptes.filter((a) => a.network === "linkedin");
   async function connecter() {
-    setBusy(true); setErreur(""); setMessage("");
+    setBusy(true); setErreur(""); setMessage(null);
     try {
       const r = await fetch("/api/pub-oauth/linkedin/start", {
         method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ project: projet }),
       });
+      // route absente de cette version : le dire clairement plutôt qu'un « introuvable » brut
+      if (r.status === 404) throw new Error("La connexion LinkedIn n'est pas disponible dans cette version de Searchtide.");
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(j.error ?? "La connexion LinkedIn n'a pas pu démarrer.");
       window.location.href = j.url;
@@ -399,7 +404,9 @@ function LinkedInConnect() {
         Le jeton LinkedIn dure <strong>60 jours</strong>. Searchtide ne demande pas le jeton de rafraîchissement
         (accès réservé par LinkedIn) : au bout de 60 jours, le compte passe « À reconnecter » et il suffit de refaire cette connexion.
       </p>
-      {message && <p className="mt-3 text-sm text-positive">{message}</p>}
+      {message && (
+        <p role={message.ok ? "status" : "alert"} className={`mt-3 text-sm ${message.ok ? "text-positive" : "text-negative"}`}>{message.texte}</p>
+      )}
       {erreur && <p role="alert" className="mt-3 text-sm text-negative">{erreur}</p>}
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <label htmlFor="li-projet" className="text-sm">Projet</label>
