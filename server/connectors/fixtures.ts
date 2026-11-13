@@ -28,6 +28,14 @@ export const FIXTURES: Record<string, Fixture> = {
   smtp: {
     cfg: { config: { preset: "gmail", user: "demo@exemple.com", from: "Démo <demo@exemple.com>", to: "demo@exemple.com" }, secrets: { pass: "abcdefghijklmnop" } },
   },
+  caldav: {
+    cfg: { config: { url: "https://dav.exemple.test/calendars/demo/perso/", user: "demo@exemple.test" }, secrets: { pass: "abcd-efgh-ijkl-mnop" } },
+    respond: () => new Response('<?xml version="1.0"?><d:multistatus xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav"><d:response><d:href>/calendars/demo/perso/</d:href><d:propstat><d:prop><d:resourcetype><d:collection/><c:calendar/></d:resourcetype><d:displayname>Perso</d:displayname></d:prop></d:propstat></d:response></d:multistatus>', { status: 207 }),
+  },
+  gcal: {
+    cfg: { config: { relay_url: "https://connect.exemple.test", email: "demo@exemple.test" }, secrets: { refresh_token: "1//0g-fixture-refresh-token-0123456789" } },
+    respond: (url) => url.includes("/v1/google/refresh") ? json({ access_token: "ya29.FIXTUREaccess", expires_in: 3599 }) : json({ summary: "demo@exemple.test", timeZone: "Europe/Paris" }),
+  },
   ntfy: {
     cfg: { config: { server: "https://ntfy.exemple.test" }, secrets: { topic: "searchtide-0123456789abcdef", token: "tk_FIXTUREtoken0123456789" } },
     respond: () => json({ id: "msg1", event: "message" }),

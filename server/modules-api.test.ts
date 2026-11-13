@@ -21,7 +21,7 @@ test("api modules : liste des modules avec leur état", async () => {
     assert.equal((await fetch(`${s.base}/api/modules`, { headers: { authorization: `Bearer ${KEY}` } })).status, 403, "SEC-06 : clé refusée");
     const r = await fetch(`${s.base}/api/modules`, { headers: { Cookie: await login(s.base) } });
     const list = await r.json() as any[];
-    assert.equal(list.length, 12);
+    assert.equal(list.length, 13);
     const crm = list.find((m) => m.id === "crm");
     assert.equal(crm.enabled, false); assert.equal(crm.status, "inactif");
     assert.equal(list.find((m) => m.id === "analytics").enabled, true);

@@ -8,6 +8,8 @@ Clés d'agent bornées par projet, actions sensibles soumises à approbation, na
 
 ### Ajouté
 
+- **Rendez-vous** (module) : un lien de réservation public par type de RDV (`/rdv/<identifiant>`), créneaux calculés d'après vos horaires, jours bloqués, préavis et tampon, sans double réservation. Invitation `.ics` au client et à vous, flux iCal d'abonnement, annulation et report par lien personnel, RDV classés par projet, outils MCP.
+- **Agenda relié** au module Rendez-vous : **Google Agenda** par le relais Searchtide Connect (occupations lues, RDV écrits, lien Meet créé automatiquement ; le relais ne lit jamais l'agenda et ne garde aucun jeton Google) ou **CalDAV** (iCloud, Nextcloud, Fastmail, Synology) avec un mot de passe d'application. **Google n'est activable qu'une fois l'application Google du relais validée** : voir `relay/README.md`.
 - **Portée par projet** des clés d'agent (lecture ou écriture, projet par projet), appliquée de la même façon en REST et en MCP : une cible hors portée répond « Introuvable ». Les outils MCP sont sur liste blanche pour une clé limitée.
 - **Approbations** : une clé d'agent ne supprime pas un projet ni un indicateur sans approbation de l'administrateur, à usage unique et liée à la cible. Un instantané de la base est pris avant toute suppression de projet.
 - **Navigateur intégré** (option, administrateur seul) : écran « Connexions navigateur » pour se connecter à la main, session scellée dans le coffre. Tout le trafic de Chromium passe par un **proxy sortant filtrant** (adresses privées, métadonnées, redirections, DNS épinglé). Mode recette `BROWSER_FIXTURES=1` : pages de test locales listées dans l'écran.
