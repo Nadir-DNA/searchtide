@@ -10,16 +10,16 @@ import { columnTotal } from "./portefeuille-total";
 type Go = (n: Record<string, string | undefined>) => void;
 type Measure = { value: number | null; previous: number | null; unit: string | null; manual?: boolean };
 type Health = { score: number | null; coverage: number; tone: "positive" | "warn" | "negative" | "none"; partial: boolean; missing: string[] };
-type Column = { key: string; label: string; kind: "count" | "money" | "score" | "rating" | "position" | "seconds" | "ratio"; lowerIsBetter?: boolean };
+type Column = { key: string; label: string; kind: "count" | "money" | "score" | "rating" | "position" | "seconds" | "ratio" | "percent"; lowerIsBetter?: boolean };
 type Row = { id: string; name: string; color: string | null; measures: Record<string, Measure>; health: Health | null };
 type Data = { columns: Column[]; projects: Row[] };
 
 const DEFAULTS = ["visitors", "clicks", "revenue", "mrr"];
 const TONE = { positive: "text-positive", warn: "text-ink", negative: "text-negative", none: "text-muted" } as const;
 
-const num = (v: number, kind: Column["kind"]) => kind === "rating" ? fmt(v, 1) : kind === "ratio" ? fmt(v, 3) : kind === "seconds" ? fmt(v, 2) : fmt(v, Math.abs(v) < 100 && v % 1 ? 1 : 0);
+const num = (v: number, kind: Column["kind"]) => kind === "rating" ? fmt(v, 1) : kind === "ratio" ? fmt(v, 3) : kind === "percent" ? fmt(v, 1) : kind === "seconds" ? fmt(v, 2) : fmt(v, Math.abs(v) < 100 && v % 1 ? 1 : 0);
 const money = (v: number, unit: string | null) => { const u = unit ?? "€"; return `${fmt(v, Math.abs(v) < 100 && v % 1 ? 2 : 0)} ${u}`; };
-const show = (m: Measure, c: Column) => (m.value == null ? "—" : c.kind === "money" ? money(m.value, m.unit) : c.kind === "score" ? `${fmt(m.value, 0)}` : `${num(m.value, c.kind)}${c.kind === "seconds" ? " s" : ""}`);
+const show = (m: Measure, c: Column) => (m.value == null ? "—" : c.kind === "money" ? money(m.value, m.unit) : c.kind === "score" ? `${fmt(m.value, 0)}` : `${num(m.value, c.kind)}${c.kind === "seconds" ? " s" : c.kind === "percent" ? " %" : ""}`);
 
 /** Variation en %, « — » quand la période précédente est absente ou vaut 0. Vert = bonne nouvelle (pour la position, une baisse). */
 function Variation({ m, c }: { m: Measure; c: Column }) {

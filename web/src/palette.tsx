@@ -18,7 +18,8 @@ export function CommandPalette({ demo = false, sites, projects, go, onClose }: {
   useEffect(() => () => previous.current?.focus?.(), []);
 
   const entries: Entry[] = [
-    { key: "today", label: "Aujourd'hui", hint: "Vue", run: () => go({ site: undefined, view: undefined, id: undefined, tab: undefined }) },
+    { key: "wall", label: "Mur de projets", hint: "Vue", run: () => go({ site: undefined, view: undefined, id: undefined, tab: undefined }) },
+    { key: "today", label: "À traiter (Aujourd'hui)", hint: "Vue", run: () => go({ site: undefined, view: "today", id: undefined, tab: undefined }) },
     { key: "pages", label: "Tableaux de bord", hint: "Vue", run: () => go({ site: undefined, view: "page", id: undefined }) },
     { key: "projects", label: "Projets", hint: "Vue", run: () => go({ site: undefined, view: "projects", id: undefined }) },
     ...(demo ? [] : [{ key: "connections", label: "Connexions", hint: "Vue", run: () => go({ site: undefined, view: "connections", id: undefined }) }]),

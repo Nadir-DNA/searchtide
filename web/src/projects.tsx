@@ -9,6 +9,7 @@ import { parseDayValues, type DayValue } from "./day-values";
 import { ProjectTabBar, ProjectTabBody } from "./projects/ProjectTabs";
 import { useCatalog } from "./connections";
 import { Button, Card, Delta, EmptyBox, KpiCard, Pill, Table, UndoBar, downloadCsv, fmt, inputCls, useAsk } from "./ui";
+import { formatMeasure, GRID, SOURCE_HINT, type Column, type Measure } from "./measures";
 
 type Point = { day: string; value: number | null };
 export type Indicator = {
@@ -65,6 +66,37 @@ export function ProjectCards({ days, go }: { days: number; go: Go }) {
   );
 }
 
+/** Tous les chiffres clés d'un projet d'un coup d'œil : les mêmes mesures que le mur, avec un emplacement « Connecter » pour celles qui manquent. */
+function ProjectKpis({ id, days, go }: { id: string; days: number; go: Go }) {
+  const { data } = useData<{ columns: Column[]; projects: { id: string; measures: Record<string, Measure> }[] }>(`/api/portfolio?days=${days}`);
+  const row = data?.projects.find((x) => x.id === id);
+  if (!data || !row) return null;
+  const cells = GRID.filter((k) => row.measures[k]?.value != null && data.columns.some((c) => c.key === k));
+  const missing = (["clicks", "revenue", "leads"] as const).filter((k) => row.measures[k]?.value == null);
+  if (!cells.length && !missing.length) return null;
+  return (
+    <section aria-label="Chiffres clés du projet" className="mb-4 overflow-hidden rounded-2xl border border-border"><div className="-mr-px -mb-px grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
+      {cells.map((k) => {
+        const c = data.columns.find((x) => x.key === k)!;
+        return (
+          <div key={k} className="min-w-0 border-r border-b border-border bg-surface px-5 py-4">
+            <div className="label-caps truncate">{c.label}</div>
+            <div className="kpi mt-2 text-[28px] font-medium">{formatMeasure(row.measures[k], c.kind)}</div>
+            <div className="mt-2 min-h-6"><Delta now={row.measures[k].value} before={row.measures[k].previous} lowerIsBetter={c.lowerIsBetter} /></div>
+          </div>
+        );
+      })}
+      {missing.map((k) => (
+        <div key={k} className="min-w-0 border-r border-b border-border bg-surface px-5 py-4">
+          <div className="label-caps truncate">{SOURCE_HINT[k].label}</div>
+          <div className="kpi mt-2 text-[28px] font-medium text-muted">—</div>
+          <button type="button" onClick={() => go({ ...SOURCE_HINT[k].to, project: id })} className="mt-2 text-xs font-semibold text-accent hover:underline">{SOURCE_HINT[k].action}</button>
+        </div>
+      ))}
+    </div></section>
+  );
+}
+
 // ── Page d'un projet ──
 export function ProjectView({ id, days, go, tab = "vue", me = { gsc: false, demo: false }, onPinned }: { id: string; days: number; go: Go; tab?: string; me?: { gsc: boolean; demo: boolean }; onPinned?: () => void }) {
   const { data: p, error, reload } = useData<Project>(`/api/projects/${id}?days=${days}`);
@@ -85,6 +117,7 @@ export function ProjectView({ id, days, go, tab = "vue", me = { gsc: false, demo
         <Button variant="secondary" onClick={() => setManage(true)}>Gérer le projet</Button>
       </Header>
       <ProjectTabBar project={p} tab={tab} go={go} />
+      {tab === "vue" && <ProjectKpis id={p.id} days={days} go={go} />}
       {tab !== "vue" ? <ProjectTabBody project={p} tab={tab} days={days} go={go} me={me} onChanged={reload} /> :
       <div className="space-y-4">
         {p.indicators.length ? (

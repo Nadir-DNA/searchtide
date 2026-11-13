@@ -9,6 +9,7 @@ import { type Project } from "./projects";
 import { SKIP_KEY } from "./onboarding-key";
 import { useModules } from "./modules";
 const TodayView = lazy(() => import("./today").then((m) => ({ default: m.TodayView })));
+const WallView = lazy(() => import("./wall").then((m) => ({ default: m.WallView })));
 import type { Dashboards } from "./dashboard";
 
 const Onboarding = lazy(() => import("./onboarding").then((m) => ({ default: m.Onboarding })));
@@ -167,100 +168,113 @@ function Shell({ me, onLogout }: { me: Me; onLogout: () => void }) {
 
   const mods = useModules();
   const crmOn = mods.active("crm"), pubsOn = mods.active("publications");
-  const pinned = projects.filter((p) => p.pinned);
-  const pin = async (p: Project) => { await api(`/api/projects/${p.id}`, { method: "PATCH", json: { pinned: !p.pinned } }); loadProjects(); };
-  const projectItem = (p: Project) => (
-    <NavItem key={p.id} icon={<circle cx="8" cy="8" r="3" fill={p.color ?? "currentColor"} stroke="none" />} active={q.view === "project" && q.id === p.id} onClick={() => nav({ ...home, view: "project", id: p.id })}>
-      <span className="truncate">{p.name}</span>
-    </NavItem>
-  );
-  const sidebar = (
-    <nav aria-label="Navigation" className="flex flex-1 flex-col gap-1 overflow-y-auto px-4 pb-5">
-      <ul aria-label="Rubriques" className="space-y-1">
-        <li><NavItem icon={Icon.check} active={!q.site && (!q.view || q.view === "today")} onClick={() => nav(home)}>Aujourd'hui
-          {todayItems && todayItems.length > 0 && <span className="num ml-auto rounded-full bg-raised px-1.5 text-xs text-muted" title="Actions à traiter">{todayItems.length}</span>}
-        </NavItem></li>
-        {!me.demo && <li><NavItem icon={Icon.book} active={q.view === "start"} onClick={() => nav({ ...home, view: "start" })}>Démarrage</NavItem></li>}
-        <li>
-          <NavGroup id="tableaux" label="Tableaux" icon={Icon.grid} active={q.view === "page"}>
-            {(dash?.dashboards ?? []).map((d) => (
-              <NavItem key={d.id} icon={Icon.grid} active={q.view === "page" && (q.id ? q.id === d.id : d === dash!.dashboards[0])} onClick={() => nav({ ...home, view: "page", id: d.id })}><span className="truncate">{d.name}</span></NavItem>
-            ))}
-            {!me.demo && <NavItem icon={Icon.plus} active={false} onClick={async () => {
-              const name = await ask({ title: "Nouvelle page", inputLabel: "Nom de la page" });
-              if (name) { const d = await api<{ id: string }>("/api/dashboards", { method: "POST", json: { name } }); loadDash(); nav({ ...home, view: "page", id: d.id }); }
-            }}>Nouvelle page</NavItem>}
-          </NavGroup>
-        </li>
-        <li>
-          <NavGroup id="projets" label="Projets" icon={Icon.users} active={["projects", "portfolio", "project", "newproject", "crm", "pubs"].includes(q.view ?? "")}
-            pinned={pinned.length > 0 && <ul aria-label="Projets épinglés" className="space-y-1">{pinned.map((p) => <li key={p.id}>{projectItem(p)}</li>)}</ul>}>
-            <NavItem icon={Icon.grid} active={q.view === "projects" || q.view === "portfolio"} onClick={() => nav({ ...home, view: "projects" })}>Tous les projets</NavItem>
-            {projects.map((p) => (
-              <div key={p.id} className="group flex items-center">
-                <div className="min-w-0 flex-1">{projectItem(p)}</div>
-                <button type="button" onClick={() => pin(p)} aria-label={`${p.pinned ? "Désépingler" : "Épingler"} ${p.name}`} aria-pressed={!!p.pinned}
-                  className={`grid size-8 shrink-0 place-items-center rounded-lg text-sm hover:text-ink ${p.pinned ? "text-accent" : "text-muted opacity-60 group-hover:opacity-100 focus-visible:opacity-100"}`}>{p.pinned ? "★" : "☆"}</button>
-              </div>
-            ))}
-            <NavItem icon={Icon.plus} active={q.view === "newproject"} onClick={() => nav({ ...home, view: "newproject" })}>Nouveau projet</NavItem>
-            {!me.demo && crmOn && <NavItem icon={Icon.users} active={q.view === "crm"} onClick={() => nav({ ...home, view: "crm" })}>Contacts</NavItem>}
-            {!me.demo && pubsOn && <NavItem icon={Icon.calendar} active={q.view === "pubs"} onClick={() => nav({ ...home, view: "pubs" })}>Publications</NavItem>}
-          </NavGroup>
-        </li>
-        <li>
-          <NavGroup id="sites" label="Suivi des sites" icon={Icon.globe} active={!!q.site || q.view === "add"}>
-            {sites?.map((s) => (
-              <NavItem key={s.id} icon={Icon.globe} active={s.domain === q.site} onClick={() => nav({ site: s.domain, view: undefined })}>
-                <span className="truncate">{s.domain}</span>
-                {s.today > 0 && <span className="num ml-auto text-xs text-muted" title="Visiteurs aujourd'hui">{fmt(s.today)}</span>}
-              </NavItem>
-            ))}
-            {!me.demo && <NavItem icon={Icon.plus} active={q.view === "add"} onClick={() => nav({ site: undefined, view: "add" })}>Ajouter un site</NavItem>}
-          </NavGroup>
-        </li>
-        {!me.demo && <li><NavItem icon={Icon.link} active={q.view === "modules" || q.view === "connections"} onClick={() => nav({ ...home, view: "modules" })}>Modules</NavItem></li>}
-        {!me.demo && <li><NavItem icon={Icon.bot} active={q.view === "agents"} onClick={() => nav({ ...home, view: "agents" })}>Agents</NavItem></li>}
-        {!me.demo && <li><NavItem icon={Icon.check} active={q.view === "approvals"} onClick={() => nav({ ...home, view: "approvals" })}>Approbations</NavItem></li>}
-        {!me.demo && <li><NavItem icon={Icon.globe} active={q.view === "browser"} onClick={() => nav({ ...home, view: "browser" })}>Navigateur</NavItem></li>}
-        <li><NavItem icon={Icon.gear} active={q.view === "settings" || q.view === "report"} onClick={() => nav({ ...home, view: "settings" })}>Réglages</NavItem></li>
-      </ul>
-      <div className="mt-auto space-y-1 pt-6">
-        <a href="https://github.com/Nadir-DNA/searchtide" target="_blank" rel="noreferrer" className="flex h-10 items-center gap-3 rounded-xl px-3 text-sm text-muted hover:text-ink"><Svg>{Icon.book}</Svg>Documentation</a>
-        {!me.demo && <button onClick={() => api("/api/logout", { method: "POST" }).then(onLogout)} className="flex h-10 w-full items-center gap-3 rounded-xl px-3 text-sm text-muted hover:text-ink"><Svg>{Icon.out}</Svg>Déconnexion</button>}
-        <div className="flex items-center justify-center rounded-2xl border border-border bg-surface px-2 py-2 text-sm">
-          <Segmented label="Thème" value={theme} onChange={setTheme} options={[["dark", "Sombre"], ["light", "Clair"], ["auto", "Auto"]] as const} />
-        </div>
-      </div>
-    </nav>
-  );
+  const { data: fresh, reload: reloadFresh } = useData<{ project_id: string; state: string }[]>("/api/freshness");
+  useEffect(() => { const f = () => reloadFresh(); addEventListener("st-today-changed", f); return () => removeEventListener("st-today-changed", f); }, [reloadFresh]);
+  // Voyant d'un projet : rouge si un relevé est en erreur, orange si une source est en retard, vert sinon, éteint sans source.
+  const led = (id: string) => {
+    const mine = (fresh ?? []).filter((f) => f.project_id === id);
+    return !mine.length ? "led-off" : mine.some((f) => f.state === "error") ? "led-bad" : mine.some((f) => f.state !== "ok") ? "led-warn" : "led-ok";
+  };
+  const ordered = [...projects].sort((x, y) => Number(!!y.pinned) - Number(!!x.pinned));
+  const onHome = !q.site && (!q.view || q.view === "projects" || q.view === "portfolio");
+  const askPage = async () => {
+    const name = await ask({ title: "Nouvelle page", inputLabel: "Nom de la page" });
+    if (name) { const d = await api<{ id: string }>("/api/dashboards", { method: "POST", json: { name } }); loadDash(); nav({ ...home, view: "page", id: d.id }); }
+  };
+  const to = (view: string, extra: Record<string, string | undefined> = {}) => () => nav({ ...home, view, ...extra });
+  const siteItems: NavEntry[] = [
+    ...(sites ?? []).map((s) => ({ key: `s:${s.id}`, label: s.domain, hint: s.today > 0 ? fmt(s.today) : undefined, active: s.domain === q.site, onClick: () => nav({ site: s.domain, view: undefined }) })),
+    ...(me.demo ? [] : [{ key: "s:add", label: "Ajouter un site", icon: true, active: q.view === "add", onClick: () => nav({ site: undefined, view: "add" }) }]),
+  ];
+  const pageItems: NavEntry[] = [
+    ...(dash?.dashboards ?? []).map((d) => ({ key: `p:${d.id}`, label: d.name, active: q.view === "page" && (q.id ? q.id === d.id : d === dash!.dashboards[0]), onClick: to("page", { id: d.id }) })),
+    ...(me.demo ? [] : [{ key: "p:new", label: "Nouvelle page", icon: true, active: false, onClick: askPage }]),
+  ];
+  const moreItems: NavEntry[] = me.demo ? [] : [
+    { key: "m:modules", label: "Modules et connexions", active: q.view === "modules" || q.view === "connections", onClick: to("modules") },
+    { key: "m:agents", label: "Agents IA", active: q.view === "agents", onClick: to("agents") },
+    { key: "m:approvals", label: "Approbations", active: q.view === "approvals", onClick: to("approvals") },
+    { key: "m:browser", label: "Navigateur intégré", active: q.view === "browser", onClick: to("browser") },
+    { key: "m:start", label: "Démarrage", active: q.view === "start", onClick: to("start") },
+  ];
+  const todayCount = todayItems?.length ?? 0;
+  const sections: { key: string; label: string; icon: ReactNode; active: boolean; badge?: number; onClick: () => void }[] = [
+    { key: "today", label: "À traiter", icon: Icon.check, active: q.view === "today", badge: todayCount, onClick: to("today") },
+    ...(!me.demo && crmOn ? [{ key: "crm", label: "Contacts", icon: Icon.users, active: q.view === "crm", onClick: to("crm") }] : []),
+    ...(!me.demo && pubsOn ? [{ key: "pubs", label: "Publications", icon: Icon.calendar, active: q.view === "pubs", onClick: to("pubs") }] : []),
+  ];
+  const logout = () => api("/api/logout", { method: "POST" }).then(onLogout);
+  const themeSwitch = <Segmented label="Thème" value={theme} onChange={setTheme} options={[["dark", "Sombre"], ["light", "Clair"], ["auto", "Auto"]] as const} />;
+  const tabCls = (active: boolean) => `inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl px-3.5 text-sm whitespace-nowrap transition-colors ${active ? "border border-control bg-raised font-semibold text-ink" : "border border-transparent text-muted hover:text-ink"}`;
+  const secCls = (active: boolean) => `inline-flex min-h-11 shrink-0 items-center gap-2 px-3 text-sm whitespace-nowrap transition-colors ${active ? "font-semibold text-ink shadow-[inset_0_-2px_0_var(--color-accent)]" : "text-muted hover:text-ink"}`;
 
   return (
-    <div className="flex min-h-screen">
+    <div className="min-h-screen">
       {dialog}
       {palette && <CommandPalette demo={me.demo} sites={sites?.map((s) => s.domain) ?? []} projects={projects.map((p) => ({ id: p.id, name: p.name }))} go={go} onClose={() => setPalette(false)} />}
       {help && <ShortcutHelp onClose={() => setHelp(false)} />}
       <a href="#contenu" className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:rounded-lg focus:bg-surface focus:px-4 focus:py-2 focus:outline-2 focus:outline-accent">Aller au contenu</a>
-      <aside className="sticky top-0 hidden h-screen w-[248px] shrink-0 flex-col md:flex">
-        <div className="flex h-20 items-center gap-2.5 px-7"><Mark className="size-7" /><span className="text-lg font-medium tracking-tight">Searchtide</span></div>
-        {sidebar}
-      </aside>
+
+      <header className="sticky top-0 z-30 border-b border-border bg-surface/95 backdrop-blur">
+        <div className="mx-auto flex max-w-[1600px] items-center gap-3 px-4 md:gap-5 md:px-8">
+          <button type="button" onClick={() => nav(home)} className="flex h-14 shrink-0 items-center gap-2.5" aria-label="Searchtide, accueil"><Mark className="size-7" /><span className="hidden text-base font-semibold tracking-tight sm:inline">Searchtide</span></button>
+          <nav aria-label="Projets" className="no-scrollbar -mx-1 flex min-w-0 flex-1 items-center gap-1 overflow-x-auto px-1 py-1.5">
+            <button type="button" onClick={() => nav(home)} aria-current={onHome ? "page" : undefined} className={tabCls(onHome)}>Tous les projets<span className="num text-xs text-muted">{projects.length}</span></button>
+            {ordered.map((p) => {
+              const active = q.view === "project" && q.id === p.id;
+              return <button key={p.id} type="button" onClick={() => nav({ ...home, view: "project", id: p.id })} aria-current={active ? "page" : undefined} className={tabCls(active)}><span className={`led ${led(p.id)}`} aria-hidden />{p.name}</button>;
+            })}
+            {!me.demo && <button type="button" onClick={() => nav({ ...home, view: "newproject" })} aria-label="Nouveau projet" className="inline-flex size-11 shrink-0 items-center justify-center rounded-xl text-muted hover:text-ink"><Svg>{Icon.plus}</Svg></button>}
+          </nav>
+          <button type="button" onClick={() => setPalette(true)} className="hidden h-11 shrink-0 items-center gap-3 rounded-xl border border-control bg-raised px-3 text-sm text-muted hover:text-ink md:flex">
+            Aller à…<kbd className="num rounded-md border border-control px-1.5 font-mono text-xs">Ctrl K</kbd>
+          </button>
+          <button type="button" onClick={() => setPalette(true)} aria-label="Rechercher" className="flex size-11 shrink-0 items-center justify-center rounded-xl text-muted hover:text-ink md:hidden"><svg viewBox="0 0 16 16" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden><circle cx="7" cy="7" r="4.5" /><path d="M10.5 10.5 14 14" /></svg></button>
+          <button type="button" onClick={to("settings")} aria-label="Réglages" aria-current={q.view === "settings" || q.view === "report" ? "page" : undefined}
+            className={`flex size-11 shrink-0 items-center justify-center rounded-xl hover:text-ink ${q.view === "settings" || q.view === "report" ? "bg-raised text-ink" : "text-muted"}`}><Svg>{Icon.gear}</Svg></button>
+        </div>
+        <div className="mx-auto hidden max-w-[1600px] items-center justify-between gap-4 border-t border-rule px-4 md:flex md:px-8">
+          <nav aria-label="Rubriques" className="flex items-center">
+            {sections.map((x) => (
+              <button key={x.key} type="button" onClick={x.onClick} aria-current={x.active ? "page" : undefined} className={secCls(x.active)}>
+                {x.label}{x.badge ? <span className="num rounded-full bg-accent px-1.5 text-xs font-bold text-on-accent" title="Actions à traiter">{x.badge}</span> : null}
+              </button>
+            ))}
+            <NavMenu label="Sites" active={!!q.site || q.view === "add"} items={siteItems} empty="Aucun site suivi" className={secCls(!!q.site || q.view === "add")} />
+            <NavMenu label="Pages" active={q.view === "page"} items={pageItems} empty="Aucune page" className={secCls(q.view === "page")} />
+          </nav>
+          <div className="flex items-center">
+            {!me.demo && <NavMenu label="Plus" active={["modules", "connections", "agents", "approvals", "browser", "start"].includes(q.view ?? "")} items={moreItems} className={secCls(false)} align="right"
+              footer={<div className="space-y-1 border-t border-border p-2">
+                <div className="flex items-center justify-between gap-3 px-1 text-sm text-muted">Thème{themeSwitch}</div>
+                <a href="https://github.com/Nadir-DNA/searchtide" target="_blank" rel="noreferrer" className="flex min-h-10 items-center gap-3 rounded-lg px-2 text-sm text-muted hover:bg-raised hover:text-ink"><Svg>{Icon.book}</Svg>Documentation</a>
+                <button type="button" onClick={logout} className="flex min-h-10 w-full items-center gap-3 rounded-lg px-2 text-left text-sm text-muted hover:bg-raised hover:text-ink"><Svg>{Icon.out}</Svg>Déconnexion</button>
+              </div>} />}
+            {me.demo && <div className="flex items-center gap-3 py-1 text-sm text-muted">Démo en lecture seule{themeSwitch}</div>}
+          </div>
+        </div>
+      </header>
+
       {menu && (
-        <div className="fixed inset-0 z-20 flex flex-col bg-ground md:hidden">
-          <div className="flex h-14 items-center justify-between px-4">
-            <span className="flex items-center gap-2.5"><Mark className="size-7" /><span className="text-lg font-medium tracking-tight">Searchtide</span></span>
+        <div className="fixed inset-0 z-40 flex flex-col overflow-y-auto bg-ground md:hidden" role="dialog" aria-modal="true" aria-label="Menu">
+          <div className="flex h-14 shrink-0 items-center justify-between px-4">
+            <span className="flex items-center gap-2.5"><Mark className="size-7" /><span className="text-base font-semibold">Menu</span></span>
             <button onClick={() => setMenu(false)} className="h-11 px-2 text-sm">Fermer</button>
           </div>
-          {sidebar}
+          <div className="space-y-5 px-4 pb-24">
+            {([["Sites", siteItems], ["Pages", pageItems], ["Plus", moreItems]] as const).filter(([, list]) => list.length).map(([title, list]) => (
+              <section key={title}><h2 className="label-caps mb-1">{title}</h2>
+                {list.map((it) => <button key={it.key} type="button" onClick={it.onClick} aria-current={it.active ? "page" : undefined} className={`flex min-h-12 w-full items-center justify-between gap-3 border-b border-rule text-left text-[15px] ${it.active ? "font-semibold text-ink" : "text-muted"}`}><span className="flex items-center gap-2">{it.icon && <Svg>{Icon.plus}</Svg>}{it.label}</span>{it.hint && <span className="num text-xs">{it.hint}</span>}</button>)}
+              </section>
+            ))}
+            <div className="flex items-center justify-between text-sm text-muted">Thème{themeSwitch}</div>
+            <a href="https://github.com/Nadir-DNA/searchtide" target="_blank" rel="noreferrer" className="flex min-h-12 items-center gap-3 text-sm text-muted"><Svg>{Icon.book}</Svg>Documentation</a>
+            {!me.demo && <button type="button" onClick={logout} className="flex min-h-12 items-center gap-3 text-sm text-muted"><Svg>{Icon.out}</Svg>Déconnexion</button>}
+          </div>
         </div>
       )}
-      <main id="contenu" tabIndex={-1} className="min-w-0 flex-1 px-4 pb-10 md:pr-8 md:pl-2">
-        <div className="flex h-14 items-center md:hidden">
-          <button onClick={() => setMenu(true)} className="-ml-2 flex h-11 items-center gap-2.5 px-2" aria-label="Ouvrir le menu">
-            <Mark className="size-7" /><span>Menu</span>
-          </button>
-          {me.demo && <span className="ml-auto text-xs text-muted">Démo</span>}
-        </div>
+
+      <main id="contenu" tabIndex={-1} className="mx-auto w-full max-w-[1600px] min-w-0 px-4 pb-28 md:px-8 md:pb-12">
         {site && sites && sites.length > 1 && (
           <div className="flex justify-end pt-3">
             <label className="flex items-center gap-2 text-xs text-muted">Site
@@ -289,6 +303,7 @@ function Shell({ me, onLogout }: { me: Me; onLogout: () => void }) {
           : q.view === "modules" ? <ModulesView open={q.open} go={go} />
           : q.view === "connections" ? <ConnectionsView />
           : q.view === "start" ? <Onboarding go={go} />
+          : q.view === "today" ? <TodayView go={go} />
           : q.view === "projects" || q.view === "portfolio" ? <PortfolioView days={days} go={go} />
           : q.view === "project" && q.id ? <ProjectView key={q.id} id={q.id} days={days} go={go} tab={q.tab ?? "vue"} me={me} onPinned={loadProjects} />
           : q.view === "newproject" ? <ManageProject project={null} onClose={() => go(home)} onSaved={(p) => { loadProjects(); if (p) go({ ...home, view: "project", id: p.id }); }} />
@@ -300,37 +315,63 @@ function Shell({ me, onLogout }: { me: Me; onLogout: () => void }) {
           })())
           : !sites.length && !projects.length && !me.demo && !localStorage.getItem(SKIP_KEY) ? <Onboarding go={go} />
           : me.demo ? <Overview days={days} demo={me.demo} go={go} />
-          : <TodayView go={go} banner={!sites.length && !projects.length ? <p className="mb-4 text-sm text-muted">Démarrage pas terminé. <button onClick={() => go({ view: "start" })} className="text-ink underline">Reprendre le démarrage</button></p> : null} />}
+          : <WallView days={days} go={go} />}
         </Suspense>
         </ErrorBoundary>
       </main>
+
+      <nav aria-label="Navigation mobile" className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-border bg-surface pb-[env(safe-area-inset-bottom)] md:hidden">
+        {([
+          ["Mur", Icon.grid, onHome, () => nav(home), 0],
+          ["À traiter", Icon.check, q.view === "today", to("today"), todayCount],
+          ["Contacts", Icon.users, q.view === "crm", to("crm"), 0],
+          ["Publier", Icon.calendar, q.view === "pubs", to("pubs"), 0],
+          ["Plus", Icon.gear, false, () => setMenu(true), 0],
+        ] as const).filter(([label]) => !me.demo || label === "Mur" || label === "À traiter" || label === "Plus").map(([label, icon, active, onClick, badge]) => (
+          <button key={label} type="button" onClick={onClick} aria-current={active ? "page" : undefined}
+            className={`relative flex min-h-14 flex-col items-center justify-center gap-0.5 text-[11px] ${active ? "font-semibold text-accent" : "text-muted"}`}>
+            <Svg>{icon}</Svg>{label}
+            {badge ? <span className="num absolute top-1.5 right-[calc(50%-20px)] rounded-full bg-accent px-1.5 text-[10px] font-bold text-on-accent">{badge}</span> : null}
+          </button>
+        ))}
+      </nav>
     </div>
   );
 }
 
-/** Rubrique dépliante ; son état ouvert/fermé est retenu par navigateur. Repliée, ses favoris (pinned) restent visibles. */
-function NavGroup({ id, label, icon, active, pinned, children }: { id: string; label: string; icon: ReactNode; active: boolean; pinned?: ReactNode; children: ReactNode }) {
-  const key = `st-nav-${id}`;
-  const [open, setOpen] = useState(() => { try { const v = localStorage.getItem(key); return v ? v === "1" : active; } catch { return active; } });
-  const toggle = () => { const v = !open; setOpen(v); try { localStorage.setItem(key, v ? "1" : "0"); } catch { /* navigation privée */ } };
-  return (
-    <>
-      <button onClick={toggle} aria-expanded={open} className={`flex h-9 min-h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-sm transition-colors md:min-h-9 ${active && !open ? "bg-active text-ink" : "text-muted hover:bg-raised hover:text-ink"}`}>
-        <Svg>{icon}</Svg><span className="flex-1">{label}</span>
-        <svg viewBox="0 0 16 16" className={`size-3.5 transition-transform ${open ? "rotate-90" : ""}`} aria-hidden><path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" strokeWidth="1.5" /></svg>
-      </button>
-      {pinned && !open && <div className="mt-1 pl-3">{pinned}</div>}
-      {open && <div className="mt-1 space-y-1 border-l border-rule pl-3 ml-5">{children}</div>}
-    </>
-  );
-}
+type NavEntry = { key: string; label: ReactNode; hint?: string; icon?: boolean; active: boolean; onClick: () => void };
 
-function NavItem({ icon, active, onClick, children }: { icon: ReactNode; active: boolean; onClick: () => void; children: ReactNode }) {
+/** Menu déroulant de la barre du haut : se ferme au clic extérieur et à Échap. */
+function NavMenu({ label, active, items, empty, className, align = "left", footer }: { label: string; active: boolean; items: NavEntry[]; empty?: string; className: string; align?: "left" | "right"; footer?: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    addEventListener("mousedown", onDown); addEventListener("keydown", onKey);
+    return () => { removeEventListener("mousedown", onDown); removeEventListener("keydown", onKey); };
+  }, [open]);
   return (
-    <button onClick={onClick} aria-current={active ? "page" : undefined}
-      className={`flex h-9 min-h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-sm transition-colors md:min-h-9 ${active ? "bg-active text-ink" : "text-muted hover:bg-raised hover:text-ink"}`}>
-      <Svg>{icon}</Svg>{children}
-    </button>
+    <div ref={ref} className="relative">
+      <button type="button" aria-haspopup="menu" aria-expanded={open} aria-current={active ? "page" : undefined} onClick={() => setOpen(!open)} className={className}>
+        {label}<svg viewBox="0 0 16 16" className="size-3" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden><path d="m4 6 4 4 4-4" /></svg>
+      </button>
+      {open && (
+        <div role="menu" className={`absolute z-40 mt-1 w-64 overflow-hidden rounded-xl border border-border bg-surface shadow-2xl ${align === "right" ? "right-0" : "left-0"}`}>
+          <div className="max-h-80 overflow-y-auto p-1">
+            {items.length === 0 && <p className="px-3 py-2 text-sm text-muted">{empty}</p>}
+            {items.map((it) => (
+              <button key={it.key} type="button" role="menuitem" onClick={() => { setOpen(false); it.onClick(); }}
+                className={`flex min-h-10 w-full items-center justify-between gap-3 rounded-lg px-3 text-left text-sm ${it.active ? "bg-active text-ink" : "text-muted hover:bg-raised hover:text-ink"}`}>
+                <span className="flex min-w-0 items-center gap-2 truncate">{it.icon && <Svg>{Icon.plus}</Svg>}{it.label}</span>{it.hint && <span className="num text-xs">{it.hint}</span>}
+              </button>
+            ))}
+          </div>
+          {footer}
+        </div>
+      )}
+    </div>
   );
 }
 

@@ -14,8 +14,9 @@ test("mobile 375 px : le menu s'ouvre et reste dans l'écran", async ({ page }) 
   await login(page);
   await page.evaluate(() => localStorage.setItem("searchtide-demarrage-passe", "1"));
   await page.goto("/?view=today");
-  await page.getByRole("button", { name: "Ouvrir le menu" }).click();
-  await expect(page.getByRole("navigation", { name: "Navigation" })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Navigation mobile" })).toBeVisible();
+  await page.getByRole("navigation", { name: "Navigation mobile" }).getByRole("button", { name: "Plus" }).click();
+  await expect(page.getByRole("dialog", { name: "Menu" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Fermer" })).toBeVisible();
   expect(await noHScroll(page)).toBe(true);
 });

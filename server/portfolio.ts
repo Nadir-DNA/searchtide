@@ -19,22 +19,27 @@ const all = (sql: string, ...p: (string | number)[]) => db.prepare(sql).all(...p
 const ph = (n: number) => Array(n).fill("?").join(", ");
 
 function siteTotals(ids: string[], r: Range) {
-  if (!ids.length) return { visitors: 0, clicks: 0, impressions: 0, position: null as number | null };
-  const t = all(`SELECT COUNT(DISTINCT site_id || visitor || day) AS visitors FROM events
+  if (!ids.length) return { visitors: 0, pageviews: 0, ai: 0, clicks: 0, impressions: 0, position: null as number | null };
+  const t = all(`SELECT COUNT(DISTINCT site_id || visitor || day) AS visitors, COUNT(*) AS pageviews,
+    COUNT(DISTINCT CASE WHEN channel = 'ai' THEN site_id || visitor || day END) AS ai FROM events
     WHERE site_id IN (${ph(ids.length)}) AND day BETWEEN ? AND ? AND type = 'pageview'`, ...ids, r.from, r.to)[0];
   const g = all(`SELECT COALESCE(SUM(clicks), 0) AS clicks, COALESCE(SUM(impressions), 0) AS impressions,
     ROUND(SUM(position * impressions) / NULLIF(SUM(impressions), 0), 1) AS position
     FROM gsc_rows WHERE site_id IN (${ph(ids.length)}) AND day BETWEEN ? AND ? AND query = '' AND page = ''`, ...ids, r.from, r.to)[0];
-  return { visitors: t.visitors as number, clicks: g.clicks as number, impressions: g.impressions as number, position: g.position as number | null };
+  return { visitors: t.visitors as number, pageviews: t.pageviews as number, ai: t.ai as number, clicks: g.clicks as number, impressions: g.impressions as number, position: g.position as number | null };
 }
 
 /**
  * Mesures comparables entre projets (colonnes du Portefeuille). `kind` règle l'agrégation de la ligne Total :
  * count = somme ; money = somme seulement si tous les projets ont la même devise (sinon « Devises mélangées ») ; les autres : pas de total.
  */
-export const MEASURES: Record<string, { label: string; kind: "count" | "money" | "score" | "rating" | "position" | "seconds" | "ratio"; lowerIsBetter?: boolean }> = {
+export const MEASURES: Record<string, { label: string; kind: "count" | "money" | "score" | "rating" | "position" | "seconds" | "ratio" | "percent"; lowerIsBetter?: boolean }> = {
   visitors: { label: "Visites", kind: "count" },
+  pageviews: { label: "Pages vues", kind: "count" },
+  ai_visitors: { label: "Visites venues des IA", kind: "count" },
   clicks: { label: "Clics Google", kind: "count" },
+  impressions: { label: "Impressions Google", kind: "count" },
+  ctr: { label: "Taux de clic Google", kind: "percent" },
   position: { label: "Position Google", kind: "position", lowerIsBetter: true },
   revenue: { label: "CA net", kind: "money" },
   mrr: { label: "MRR", kind: "money" },
@@ -48,6 +53,9 @@ export const MEASURES: Record<string, { label: string; kind: "count" | "money" |
   "play:active_installs": { label: "Installations actives (Play)", kind: "count" },
   "play:daily_installs": { label: "Installations par jour (Play)", kind: "count" },
   leads: { label: "Nouveaux contacts", kind: "count" },
+  pipeline: { label: "Montant en négociation", kind: "money" },
+  followups: { label: "Relances à faire", kind: "count", lowerIsBetter: true },
+  published: { label: "Publications publiées", kind: "count" },
 };
 type Measure = { value: number | null; previous: number | null; unit: string | null; manual?: boolean };
 const SUMMED = new Set(["count", "money"]);
@@ -97,6 +105,18 @@ function indicatorMeasures(inds: Row[]): Record<string, Measure> {
 const money = (inds: Row[], metric: string, key: "value" | "previous") =>
   inds.filter((i) => i.source === "stripe" && i.config?.metric === metric && i[key] != null).reduce((n, i) => n + i[key], 0);
 
+/** Publications publiées sur la période ; absent tant que le projet n'a aucune publication (jamais un faux zéro). */
+function pubsCount(x: { id: string; crm_key: string | null }, r: Range, p: Range): Record<string, Measure> | null {
+  if (!x.id) return null;
+  try { return pubsCountRaw(x, r, p); } catch { return null; }   // colonne d'état absente tant que le module Publications n'a pas démarré
+}
+function pubsCountRaw(x: { id: string; crm_key: string | null }, r: Range, p: Range): Record<string, Measure> | null {
+  const keys = [x.id, x.crm_key ?? x.id];
+  const q = (from: string, to: string) => (db.prepare(`SELECT COUNT(*) AS n FROM publications WHERE project IN (?, ?) AND (status = 'published' OR state = 'published') AND day BETWEEN ? AND ?`).get(keys[0], keys[1], from, to) as Row).n as number;
+  const any = (db.prepare("SELECT COUNT(*) AS n FROM publications WHERE project IN (?, ?)").get(keys[0], keys[1]) as Row).n as number;
+  return any ? { published: { value: q(r.from, r.to), previous: q(p.from, p.to), unit: null } } : null;
+}
+
 export function portfolio(r: Range, weights: Weights = getWeights(), onlyIds: Set<string> | null = null) {
   const p = previous(r);
   const today = localDay();
@@ -126,7 +146,8 @@ export function portfolio(r: Range, weights: Weights = getWeights(), onlyIds: Se
     const crm = x.crm_key ? all(`SELECT
       SUM(created_at BETWEEN ? AND ?) AS leads, SUM(created_at BETWEEN ? AND ?) AS leads_prev,
       SUM(stage IN ('new', 'contacted', 'qualified', 'proposal')) AS open,
-      SUM(next_at <= ? AND opt_out = 0 AND stage NOT IN ('won', 'lost')) AS todo
+      SUM(next_at <= ? AND opt_out = 0 AND stage NOT IN ('won', 'lost')) AS todo,
+      COALESCE(SUM(CASE WHEN stage IN ('qualified', 'proposal') THEN value END), 0) AS pipeline
       FROM contacts WHERE project = ?`, Date.parse(r.from), Date.parse(r.to) + 86399999, Date.parse(p.from), Date.parse(p.to) + 86399999, today, x.crm_key)[0] : null;
     // Indicateurs métier (hors trafic du site, déjà dans les colonnes)
     const kpis = inds.filter((i) => i.source !== "site").slice(0, 3).map((i) => ({ id: i.id, label: i.label, unit: i.unit, mode: i.mode, value: i.value, previous: i.previous, error: i.last_error }));
@@ -182,8 +203,21 @@ export function portfolio(r: Range, weights: Weights = getWeights(), onlyIds: Se
       id: x.id, name: x.name, color: x.color, url: x.url, sites: ss.map((s) => s.domain), to, health, mrrPrev: money(inds, "mrr", "previous"),
       measures: {
         ...indicatorMeasures(inds),
-        ...(ids.length ? { visitors: { value: now.visitors, previous: before.visitors, unit: null } } : {}),
-        ...(ss.some((s) => s.gsc_property) ? { clicks: { value: now.clicks, previous: before.clicks, unit: null }, position: { value: now.position, previous: before.position, unit: null } } : {}),
+        ...(ids.length ? {
+          visitors: { value: now.visitors, previous: before.visitors, unit: null },
+          pageviews: { value: now.pageviews, previous: before.pageviews, unit: null },
+          ai_visitors: { value: now.ai, previous: before.ai, unit: null },
+        } : {}),
+        ...(ss.some((s) => s.gsc_property) ? {
+          clicks: { value: now.clicks, previous: before.clicks, unit: null }, position: { value: now.position, previous: before.position, unit: null },
+          impressions: { value: now.impressions, previous: before.impressions, unit: null },
+          ctr: { value: now.impressions ? (now.clicks / now.impressions) * 100 : null, previous: before.impressions ? (before.clicks / before.impressions) * 100 : null, unit: "%" },
+        } : {}),
+        ...(x.crm_key ? {
+          pipeline: { value: crm?.pipeline ?? 0, previous: null, unit: "€" },
+          followups: { value: crm?.todo ?? 0, previous: null, unit: null },
+        } : {}),
+        ...(pubsCount(x as { id: string; crm_key: string | null }, r, p) ?? {}),
         ...(revenueMeasure ? { revenue: revenueMeasure } : {}),
         ...(contactsMeasure ? { leads: contactsMeasure } : {}),
       } as Record<string, Measure>,

@@ -72,3 +72,20 @@ test("CA22 : la ligne Total additionne les comptes, jamais des devises différen
   assert.deepEqual(columnTotal("score", [{ value: 80, unit: null }, { value: 60, unit: null }]), { value: null, unit: null, mixed: false }, "un score ne se totalise pas");
   assert.deepEqual(columnTotal("position", [{ value: 4, unit: null }]), { value: null, unit: null, mixed: false });
 });
+
+test("nouveaux KPI : pipeline et relances viennent des contacts du projet, rien sans clé de contacts, taux de clic calculé", () => {
+  const withKey = saveProject(null, { name: "Avec contacts", crm_key: "avec-contacts" })!, without = saveProject(null, { name: "Sans contacts" })!;
+  const now = Date.now();
+  db.prepare("INSERT INTO contacts (id, name, project, stage, value, next_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run("k1", "A", "avec-contacts", "proposal", 1200, "2000-01-01", now, now);
+  db.prepare("INSERT INTO contacts (id, name, project, stage, value, next_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run("k2", "B", "avec-contacts", "won", 900, null, now, now);
+  const p = portfolio(lastDays(7)).projects;
+  const a = p.find((x) => x.id === withKey.id)!, b = p.find((x) => x.id === without.id)!;
+  assert.equal(a.measures.pipeline.value, 1200, "seuls les contacts en négociation comptent, pas les gagnés");
+  assert.equal(a.measures.pipeline.unit, "€");
+  assert.equal(a.measures.followups.value, 1, "une relance en retard");
+  assert.equal(b.measures.pipeline, undefined, "pas de clé de contacts → pas de faux zéro");
+  assert.equal(b.measures.followups, undefined);
+  assert.equal(b.measures.published, undefined, "aucune publication → pas de mesure");
+  assert.equal(MEASURES.ctr.kind, "percent");
+  db.exec("DELETE FROM contacts");
+});

@@ -33,10 +33,13 @@ test("CA B3 : la période choisie est retenue d'une visite à l'autre", async ({
 
 test("CA B4 : Auto suit le système, Sombre reste le défaut", async ({ page }) => {
   await login(page);
+  const more = () => page.getByRole("button", { name: "Plus", exact: true }).click();
+  await more();
   await page.getByRole("group", { name: "Thème" }).getByRole("button", { name: "Auto" }).click();
   await expect.poll(() => page.evaluate(() => document.documentElement.dataset.theme)).toBe("light");
   await page.reload();
   await page.waitForLoadState("networkidle");
+  await more();
   await expect(page.getByRole("group", { name: "Thème" }).getByRole("button", { name: "Auto" })).toHaveAttribute("aria-pressed", "true");
   await page.getByRole("group", { name: "Thème" }).getByRole("button", { name: "Sombre" }).click();
   await expect.poll(() => page.evaluate(() => document.documentElement.dataset.theme)).toBe("dark");

@@ -9,7 +9,7 @@ export function Card({ title, action, children, className = "" }: { title?: Reac
     <section className={`min-w-0 rounded-2xl border border-border bg-surface p-5 sm:p-6 ${className}`}>
       {(title || action) && (
         <div className="mb-5 flex min-h-8 flex-wrap items-center justify-between gap-3">
-          {typeof title === "string" ? <h2 className="text-lg font-light">{title}</h2> : title}
+          {typeof title === "string" ? <h2 className="label-caps">{title}</h2> : title}
           {action}
         </div>
       )}
@@ -18,8 +18,8 @@ export function Card({ title, action, children, className = "" }: { title?: Reac
   );
 }
 
-export function Pill({ tone = "neutral", children }: { tone?: "positive" | "negative" | "neutral"; children: ReactNode }) {
-  const look = tone === "positive" ? "bg-positive-bg text-positive" : tone === "negative" ? "bg-negative-bg text-negative" : "bg-raised text-muted";
+export function Pill({ tone = "neutral", children }: { tone?: "positive" | "negative" | "warn" | "neutral"; children: ReactNode }) {
+  const look = tone === "positive" ? "bg-positive-bg text-positive" : tone === "negative" ? "bg-negative-bg text-negative" : tone === "warn" ? "bg-warn-bg text-warn" : "bg-raised text-muted";
   return <span className={`num inline-flex h-6 shrink-0 items-center rounded-full px-2 text-xs font-medium whitespace-nowrap ${look}`}>{children}</span>;
 }
 
@@ -30,7 +30,9 @@ export function Delta({ now, before, lowerIsBetter = false }: { now: number | nu
   const change = lowerIsBetter ? before - now : ((now - before) / before) * 100;
   const sign = change > 0 ? "+" : change < 0 ? "−" : "";
   const text = lowerIsBetter ? `${sign}${fmt(Math.abs(change), 1)}` : `${sign}${fmt(Math.abs(change), 1)} %`;
-  return <Pill tone={Math.abs(change) < 0.05 ? "neutral" : change > 0 ? "positive" : "negative"}>{text}</Pill>;
+  const flat = Math.abs(change) < 0.05;
+  const arrow = flat ? "–" : change > 0 ? "▲" : "▼";
+  return <Pill tone={flat ? "neutral" : change > 0 ? "positive" : "negative"}><span aria-hidden className="mr-1 text-[9px]">{arrow}</span>{text}</Pill>;
 }
 
 export function Segmented<T extends string>({ options, value, onChange, label }: {
@@ -54,12 +56,12 @@ export function KpiCard({ label, value, delta, active, onClick, hint }: {
 }) {
   const body = (
     <>
-      <div className="flex items-center justify-between gap-2 text-[13px] text-muted">
+      <div className="label-caps flex items-center justify-between gap-2">
         <span>{label}</span>
         {active && <span className="size-2 rounded-full bg-accent" aria-hidden />}
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1">
-        <span className="num text-[28px] leading-9 font-light">{value}</span>
+        <span className="kpi text-[34px] font-medium">{value}</span>
         {delta}
       </div>
       {hint && <div className="mt-1 text-xs text-muted">{hint}</div>}

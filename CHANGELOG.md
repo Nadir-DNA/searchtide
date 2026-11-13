@@ -2,6 +2,19 @@
 
 Toutes les versions notables sont consignées ici. Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/).
 
+## [Non publié] — Refonte de l'interface
+
+### Modifié
+
+- **Nouvelle interface « salle de contrôle »** : thème sombre plus contrasté, grands chiffres en chasse fixe, voyants d'état toujours doublés d'un texte, variations avec flèche et signe.
+- **Navigation en haut** : un onglet par projet (voyant de fraîcheur des sources), rubriques « À traiter », Contacts, Publications, menus Sites et Pages, menu « Plus » (Modules, Agents, Approbations, Navigateur, thème, déconnexion). Sur mobile : barre du bas.
+- **Accueil = mur de projets** : totaux du portefeuille, une tuile par projet (état, chiffre principal, courbe, six chiffres clés, prochaine action), puis « À traiter ». L'ancien fil « Aujourd'hui » reste accessible sous « À traiter ».
+- Page d'un projet : bandeau des chiffres clés avec emplacements « Connecter » pour les sources absentes.
+
+### Ajouté
+
+- Nouveaux KPI comparables entre projets (colonnes du tableau et mur) : pages vues, visites venues des IA, impressions Google, taux de clic, montant en négociation, relances à faire, publications publiées. Une mesure sans source n'apparaît pas (jamais de faux zéro).
+
 ## [0.4.0] — non publiée
 
 Clés d'agent bornées par projet, actions sensibles soumises à approbation, navigateur intégré et publications. **Les publications sont SIMULÉES** (fournisseur factice) : aucun réseau social réel n'est joint dans cette version, et le navigateur n'a été éprouvé que sur des pages de test. Notes complètes : [docs/release-v0.4.0.md](docs/release-v0.4.0.md).
