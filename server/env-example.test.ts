@@ -16,6 +16,10 @@ test("CA3 : .env.example contient exactement 3 variables non commentées (SECRET
     assert.doesNotMatch(example, new RegExp(`^[^#\\n]*${old}`, "m"), `${old} ne doit plus être une variable active`);
   // A7 : le fuseau des journées est documenté, mais reste commenté (pas une variable active).
   assert.match(example, /^# DAY_TZ=Europe\/Paris$/m, "DAY_TZ est documenté dans .env.example");
+  // LinkedIn : documenté et facultatif ; l'instance démarre sans (le bouton explique la marche à suivre).
+  for (const v of ["LINKEDIN_CLIENT_ID", "LINKEDIN_CLIENT_SECRET"])
+    assert.match(example, new RegExp(`^# ${v}=$`, "m"), `${v} documenté et commenté`);
+  assert.match(example, /api\/pub-oauth\/linkedin\/callback/, "le retour OAuth LinkedIn est documenté");
 });
 
 test("CA3 : une instance en production démarre avec un .env qui ne contient que SECRET et ADMIN_PASSWORD, l'administrateur se connecte et peut enregistrer une connexion", async () => {

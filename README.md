@@ -135,6 +135,18 @@ POST /api/sites/{id}/sync
 - **Navigateur intégré** (option, administrateur seul) : connexion manuelle dans Searchtide, tout le trafic de Chromium passe par un proxy filtrant (adresses privées, redirections, DNS). Docker : [docs/exploitation.md](docs/exploitation.md).
 - **Publications — simulées dans cette version** : le fournisseur est factice (adresse de preuve fictive `sim.test`), aucun réseau social réel n'est joint ; le navigateur n'a été éprouvé que sur des pages de test.
 
+## Publication LinkedIn
+
+Searchtide peut publier un texte sur votre **profil LinkedIn**. Le compte se branche depuis l'écran **Connexions**, carte « Publication LinkedIn » : choisissez un projet, cliquez sur « Connecter LinkedIn », autorisez chez LinkedIn ; le jeton est chiffré sur votre instance et n'est jamais réaffiché.
+
+1. Créez une application sur [LinkedIn Developers](https://www.linkedin.com/developers/apps) avec le produit **Share on LinkedIn** (et **Sign In with LinkedIn using OpenID Connect**).
+2. Déclarez l'URL de retour `PUBLIC_URL/api/pub-oauth/linkedin/callback` — par exemple `https://stats.nadirdaoudi.com/api/pub-oauth/linkedin/callback`.
+3. Renseignez `LINKEDIN_CLIENT_ID` et `LINKEDIN_CLIENT_SECRET` dans `.env`, puis redémarrez. Sans ces valeurs, le bouton reste visible et explique la marche à suivre.
+
+Le jeton d'accès LinkedIn dure **60 jours**. Searchtide ne demande pas le jeton de rafraîchissement (accès réservé par LinkedIn) : à l'expiration, le compte passe **« À reconnecter »**, rien n'est publié, et il suffit de refaire la connexion. Une erreur d'autorisation (401/403) produit le même état.
+
+Aucune publication n'est faite sans approbation : le texte part après validation, une seule fois, et un doute sur la réponse de LinkedIn laisse le post « À vérifier » plutôt que de le renvoyer.
+
 ## Sécurité
 
 - **Coffre chiffré** : secrets AES-256-GCM, clé dérivée de `SECRET` par HKDF ; aucune API ne renvoie un secret en entier ; seul un court indice (préfixe et 4 derniers caractères) est affiché. Une rotation de `SECRET` passe les connexions en « à reconnecter » sans perdre l'historique.

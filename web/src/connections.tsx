@@ -334,6 +334,84 @@ export function useCatalog() {
 type RelayStatus = { enabled: boolean; ok: boolean; mode: "test" | "live" | null; error: string | null; url?: string };
 
 /** Carte « Connexion avec Stripe » : consentement explicite, relais optionnel, repli clé limitée (C5, CA32, CA51, CA52). */
+type PubAccount = { id: string; project: string; network: string; label: string; status: string };
+type Projet = { id: string; name: string };
+
+/** Publication LinkedIn : le compte se branche par OAuth (jeton au coffre), puis l'écran le montre connecté. */
+function LinkedInConnect() {
+  const [comptes, setComptes] = useState<PubAccount[]>([]);
+  const [projets, setProjets] = useState<Projet[]>([]);
+  const [projet, setProjet] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [erreur, setErreur] = useState("");
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    fetch("/api/pub-accounts", { headers: { accept: "application/json" } })
+      .then((r) => (r.ok ? r.json() : [])).then(setComptes).catch(() => {});
+    fetch("/api/projects", { headers: { accept: "application/json" } })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((ps: Projet[]) => { setProjets(ps); setProjet((v) => v || ps[0]?.id || ""); })
+      .catch(() => {});
+    // retour d'autorisation : le serveur redirige ici avec ?oauth=ok ou un message
+    const q = new URLSearchParams(location.search), o = q.get("oauth");
+    if (o) {
+      setMessage(o === "ok" ? "Compte LinkedIn connecté." : o === "admin" ? "Reconnectez-vous en administrateur, puis recommencez." : o);
+      q.delete("oauth");
+      const reste = q.toString();
+      history.replaceState(null, "", location.pathname + (reste ? "?" + reste : "") + location.hash);
+    }
+  }, []);
+
+  const comptesLi = comptes.filter((a) => a.network === "linkedin");
+  async function connecter() {
+    setBusy(true); setErreur(""); setMessage("");
+    try {
+      const r = await fetch("/api/pub-oauth/linkedin/start", {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ project: projet }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error ?? "La connexion LinkedIn n'a pas pu démarrer.");
+      window.location.href = j.url;
+    } catch (e) { setErreur((e as Error).message); setBusy(false); }
+  }
+
+  return (
+    <Card className="mb-6 p-5">
+      <h2 className="text-sm font-medium">Publication LinkedIn</h2>
+      <p className="mt-1 text-sm text-muted">
+        Autorisez Searchtide à publier sur votre profil LinkedIn. Le jeton reste chiffré sur votre instance et n'est jamais réaffiché.
+      </p>
+      {comptesLi.length > 0 && (
+        <ul className="mt-3 space-y-1 text-sm">
+          {comptesLi.map((a) => (
+            <li key={a.id} className="flex flex-wrap items-center gap-2">
+              <span className="text-ink">{a.label}</span>
+              <span className="text-muted">· {a.project}</span>
+              <span className={a.status === "connected" ? "text-positive" : "text-negative"}>
+                {a.status === "connected" ? "Connecté" : "À reconnecter"}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="mt-3 text-sm text-muted">
+        Le jeton LinkedIn dure <strong>60 jours</strong>. Searchtide ne demande pas le jeton de rafraîchissement
+        (accès réservé par LinkedIn) : au bout de 60 jours, le compte passe « À reconnecter » et il suffit de refaire cette connexion.
+      </p>
+      {message && <p className="mt-3 text-sm text-positive">{message}</p>}
+      {erreur && <p role="alert" className="mt-3 text-sm text-negative">{erreur}</p>}
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <label htmlFor="li-projet" className="text-sm">Projet</label>
+        <select id="li-projet" value={projet} onChange={(e) => setProjet(e.target.value)} className={`${inputCls} max-w-xs`}>
+          {projets.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+        <Button onClick={connecter} disabled={busy || !projet}>{busy ? "Redirection…" : "Connecter LinkedIn"}</Button>
+      </div>
+    </Card>
+  );
+}
+
 function StripeConnect({ onUseKey }: { onUseKey: () => void }) {
   const [st, setSt] = useState<RelayStatus | null>(null);
   const [consent, setConsent] = useState(false);
@@ -400,7 +478,12 @@ export function ConnectionsView() {
 
   return (
     <>
-      {catalog?.admin && !catalog.demo && <StripeConnect onUseKey={() => open("stripe")} />}
+      {catalog?.admin && !catalog.demo && (
+        <>
+          <StripeConnect onUseKey={() => open("stripe")} />
+          <LinkedInConnect />
+        </>
+      )}
       <header className="pt-4 pb-6 md:min-h-20 md:pt-6">
         <h1 className="text-2xl leading-9 font-light md:text-[30px] md:leading-10">Connexions</h1>
         <p className="mt-1 max-w-2xl text-sm text-muted">Branchez vos services ici. Les clés sont chiffrées sur votre instance et ne sont jamais réaffichées.</p>
