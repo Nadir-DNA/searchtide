@@ -29,6 +29,7 @@ import { registerSources } from "./sources.ts";
 import { registerOps } from "./ops.ts";
 import { registerPortfolio } from "./portfolio.ts";
 import { registerStripeOAuth } from "./stripe-oauth.ts";
+import { registerPublisherOAuth } from "./publishers/oauth.ts";
 import { canAccess, findAgent, projectForPath, registerAgents, visibleDomains, visibleProjectIds, writableProjectIds } from "./agents.ts";
 import { registerApprovals } from "./approvals.ts";
 import { registerDashboards } from "./dashboards.ts";
@@ -504,6 +505,7 @@ registerReport(app);
 registerProjects(app)
 registerConnections(app);
 registerStripeOAuth(app);
+registerPublisherOAuth(app);
 registerSources(app);
 startVault();
 await loadPlugins();

@@ -12,6 +12,9 @@ import { publicationBinding, publishWithBrowser } from "../browser/runner.ts";
 import { revokeBrowserSession } from "../browser/live.ts";
 import { fixturesEnabled } from "../browser/pool.ts";
 import { createApproval, decideApproval } from "../approvals.ts";
+import { providerFor, type PublishResult } from "./provider.ts";
+import { credentialsFor } from "./tokens.ts";
+import "./providers/linkedin.ts";
 
 type Row = Record<string, any>;
 
@@ -24,6 +27,7 @@ for (const sql of [
   "ALTER TABLE pub_accounts ADD COLUMN web_url TEXT",
   "ALTER TABLE pub_accounts ADD COLUMN fixture_port INTEGER",
   "ALTER TABLE publications ADD COLUMN approval_id TEXT",
+  "ALTER TABLE pub_accounts ADD COLUMN connection_id TEXT",
 ]) { try { db.exec(sql); } catch { /* colonne déjà présente */ } }
 db.exec(`CREATE TABLE IF NOT EXISTS pub_idempotency (
   key TEXT PRIMARY KEY, url TEXT NOT NULL, at INTEGER NOT NULL
@@ -97,13 +101,16 @@ export function validatePublication(p: Row, account: Row | undefined): string[] 
     if (account.status !== "connected") issues.push(`Compte ${account.status === "expired" ? "à reconnecter" : "indisponible"}`);
   }
   const text = String(p.text ?? "");
+  const real = account?.connection_id ? providerFor(network) : undefined;
   if (!text.trim()) issues.push("Texte requis");
-  if (limit && text.length > limit.text) issues.push(`Texte trop long pour ${network} : ${text.length} / ${limit.text} caractères`);
+  const textMax = real?.limits.text ?? limit?.text;
+  if (textMax && text.length > textMax) issues.push(`Texte trop long pour ${network} : ${text.length} / ${textMax} caractères`);
   if (limit?.needsTitle && !String(p.title ?? "").trim()) issues.push("Titre requis pour YouTube");
   if (limit?.needsVisibility && !String(p.visible ?? "").trim()) issues.push("Confidentialité à choisir pour TikTok");
   // Médias : nombre par réseau, formats et plafonds officiels les plus stricts (§16.2).
   const media = p.id ? mediaOf(String(p.id)) as { mime: string; size: number }[] : [];
-  if (limit && media.length > limit.media) issues.push(`Trop de médias pour ${network} : ${media.length} / ${limit.media}`);
+  const mediaMax = real?.limits.media ?? limit?.media;
+  if (mediaMax !== undefined && media.length > mediaMax) issues.push(real && !mediaMax ? `${network} : les médias ne sont pas encore pris en charge pour un compte réel` : `Trop de médias pour ${network} : ${media.length} / ${mediaMax}`);
   const video = (m: string) => m.startsWith("video/");
   if (network === "instagram") {
     if (media.some((m) => m.mime.startsWith("image/") && m.mime !== "image/jpeg")) issues.push("Instagram : images JPEG uniquement");
@@ -116,15 +123,26 @@ export function validatePublication(p: Row, account: Row | undefined): string[] 
   return issues;
 }
 
-export type PublishResult = { ok: true; url: string } | { ok: false; kind: "auth" | "format" | "quota" | "rate" | "network" | "refused" | "unknown" | "to_verify"; message: string };
+export type { PublishResult } from "./provider.ts";
 
-/** Fournisseur factice : aucun réseau joint, résultat déterministe pour les tests. */
+/** Compte relié à un vrai réseau : la connexion OAuth est dans le coffre, jamais ici. */
+export function createConnectedAccount(o: { project: string; network: string; label: string; connection_id: string }) {
+  const id = randomUUID();
+  db.prepare("INSERT INTO pub_accounts (id, project, network, label, daily_cap, mode, connection_id, created_at) VALUES (?, ?, ?, ?, 3, 'api', ?, ?)")
+    .run(id, o.project, o.network, o.label.slice(0, 80), o.connection_id, Date.now());
+  return db.prepare("SELECT * FROM pub_accounts WHERE id = ?").get(id) as Row;
+}
+
+/** Fournisseur réel si le compte a une connexion et que le réseau en a un ; sinon fournisseur factice (tests, démonstration). */
 export async function publishToNetwork(p: Row, account: Row): Promise<PublishResult> {
   if (account.status === "expired") return { ok: false, kind: "auth", message: "Compte à reconnecter" };
   const text = String(p.text ?? "");
-  if (text.includes("[quota]")) return { ok: false, kind: "quota", message: "Quota du réseau atteint" };
-  if (text.includes("[rate]")) return { ok: false, kind: "rate", message: "Limite de débit atteinte" };
-  if (text.includes("[fail]")) return { ok: false, kind: "refused", message: "Publication refusée par le réseau" };
+  const real = account.connection_id ? providerFor(String(account.network)) : undefined;
+  if (!real) {
+    if (text.includes("[quota]")) return { ok: false, kind: "quota", message: "Quota du réseau atteint" };
+    if (text.includes("[rate]")) return { ok: false, kind: "rate", message: "Limite de débit atteinte" };
+    if (text.includes("[fail]")) return { ok: false, kind: "refused", message: "Publication refusée par le réseau" };
+  }
   // Clé d'idempotence, intention AVANT l'envoi (url vide = « envoi commencé, adresse inconnue ») puis adresse APRÈS.
   // Une intention sans adresse n'est jamais rejouée : « À vérifier » (un vrai réseau a pu publier avant le plantage).
   const key = p.idempotency_key ? String(p.idempotency_key) : null;
@@ -133,6 +151,15 @@ export async function publishToNetwork(p: Row, account: Row): Promise<PublishRes
     if (seen?.url) return { ok: true, url: seen.url };
     if (seen) return { ok: false, kind: "to_verify", message: "Un envoi précédent a commencé sans adresse de preuve : vérifiez sur le réseau" };
     db.prepare("INSERT INTO pub_idempotency (key, url, at) VALUES (?, '', ?)").run(key, Date.now());
+  }
+  if (real) {
+    const cred = await credentialsFor(account);
+    if (!cred.ok) { if (key) db.prepare("DELETE FROM pub_idempotency WHERE key = ?").run(key); return { ok: false, kind: "auth", message: cred.message }; }
+    const r = await real.publish(text, cred.token, cred.accountId);
+    // Échec certain (rien n'est parti) : l'intention est levée pour qu'une nouvelle tentative soit possible. Un doute la garde.
+    if (!r.ok && r.kind !== "to_verify" && key) db.prepare("DELETE FROM pub_idempotency WHERE key = ?").run(key);
+    if (r.ok && key) db.prepare("UPDATE pub_idempotency SET url = ?, at = ? WHERE key = ?").run(r.url, Date.now(), key);
+    return r;
   }
   if (text.includes("[crash]")) throw new Error("plantage simulé après l'intention");
   const url = `https://sim.test/${encodeURIComponent(String(p.network))}/${p.id}`;
