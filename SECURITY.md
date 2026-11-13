@@ -52,7 +52,7 @@ Ne sont **pas** dans le périmètre, par conception :
 
 ## Versions prises en charge
 
-La dernière version publiée (aujourd'hui `0.2.x` ; `0.4.0` est préparée mais non publiée) reçoit les correctifs de sécurité. Les versions antérieures ne sont pas maintenues.
+La dernière version publiée (`0.5.x`) reçoit les correctifs de sécurité. Les versions antérieures ne sont pas maintenues.
 
 ## Bonnes pratiques pour les utilisateurs
 

@@ -2,7 +2,9 @@
 
 Toutes les versions notables sont consignées ici. Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/).
 
-## [Non publié] — Refonte de l'interface
+## [0.5.0] — 2026-11-13
+
+Refonte de l'interface, nouveaux KPI, rendez-vous et publication réelle par réseau. Notes complètes : [docs/release-v0.5.0.md](docs/release-v0.5.0.md).
 
 ### Modifié
 
@@ -13,16 +15,17 @@ Toutes les versions notables sont consignées ici. Format inspiré de [Keep a Ch
 
 ### Ajouté
 
+- **Publication réelle** (LinkedIn, X, Facebook, Instagram, TikTok, YouTube) en remplacement du fournisseur factice, médias et publication en deux temps. À valider sur vos propres comptes avant d'en dépendre.
+- **Rendez-vous** (module) : un lien de réservation public par type de RDV (`/rdv/<identifiant>`), créneaux calculés d'après vos horaires, jours bloqués, préavis et tampon, sans double réservation. Invitation `.ics` au client et à vous, flux iCal d'abonnement, annulation et report par lien personnel, RDV classés par projet, outils MCP.
+- **Agenda relié** au module Rendez-vous : **Google Agenda** par le relais Searchtide Connect (occupations lues, RDV écrits, lien Meet créé automatiquement ; le relais ne lit jamais l'agenda et ne garde aucun jeton Google) ou **CalDAV** (iCloud, Nextcloud, Fastmail, Synology) avec un mot de passe d'application. **Google n'est activable qu'une fois l'application Google du relais validée** : voir `relay/README.md`.
 - Nouveaux KPI comparables entre projets (colonnes du tableau et mur) : pages vues, visites venues des IA, impressions Google, taux de clic, montant en négociation, relances à faire, publications publiées. Une mesure sans source n'apparaît pas (jamais de faux zéro).
 
-## [0.4.0] — non publiée
+## [0.4.0] — 2026-11-12
 
 Clés d'agent bornées par projet, actions sensibles soumises à approbation, navigateur intégré et publications. **Les publications sont SIMULÉES** (fournisseur factice) : aucun réseau social réel n'est joint dans cette version, et le navigateur n'a été éprouvé que sur des pages de test. Notes complètes : [docs/release-v0.4.0.md](docs/release-v0.4.0.md).
 
 ### Ajouté
 
-- **Rendez-vous** (module) : un lien de réservation public par type de RDV (`/rdv/<identifiant>`), créneaux calculés d'après vos horaires, jours bloqués, préavis et tampon, sans double réservation. Invitation `.ics` au client et à vous, flux iCal d'abonnement, annulation et report par lien personnel, RDV classés par projet, outils MCP.
-- **Agenda relié** au module Rendez-vous : **Google Agenda** par le relais Searchtide Connect (occupations lues, RDV écrits, lien Meet créé automatiquement ; le relais ne lit jamais l'agenda et ne garde aucun jeton Google) ou **CalDAV** (iCloud, Nextcloud, Fastmail, Synology) avec un mot de passe d'application. **Google n'est activable qu'une fois l'application Google du relais validée** : voir `relay/README.md`.
 - **Portée par projet** des clés d'agent (lecture ou écriture, projet par projet), appliquée de la même façon en REST et en MCP : une cible hors portée répond « Introuvable ». Les outils MCP sont sur liste blanche pour une clé limitée.
 - **Approbations** : une clé d'agent ne supprime pas un projet ni un indicateur sans approbation de l'administrateur, à usage unique et liée à la cible. Un instantané de la base est pris avant toute suppression de projet.
 - **Navigateur intégré** (option, administrateur seul) : écran « Connexions navigateur » pour se connecter à la main, session scellée dans le coffre. Tout le trafic de Chromium passe par un **proxy sortant filtrant** (adresses privées, métadonnées, redirections, DNS épinglé). Mode recette `BROWSER_FIXTURES=1` : pages de test locales listées dans l'écran.

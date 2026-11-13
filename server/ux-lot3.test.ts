@@ -8,7 +8,7 @@ test("A8 : /api/diagnostic donne version, heure, fuseau, disque et tâches ; 403
   const s = await startServer(t.path);
   try {
     const d = await (await fetch(`${s.base}/api/diagnostic`, { headers: { Cookie: await login(s.base) } })).json();
-    assert.equal(d.version, "0.4.0");
+    assert.equal(d.version, "0.5.0");
     assert.equal(typeof d.now, "number");
     assert.equal(d.tz, "Europe/Paris");
     assert.equal(typeof d.disk.free, "number");

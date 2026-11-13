@@ -4,7 +4,7 @@
 # sans CAP_SYS_ADMIN) et un /dev/shm plus grand. Sans le bac à sable, la fonction échoue clairement : il n'y a pas de repli.
 services:
   searchtide:
-    image: searchtide:0.4.0-browser
+    image: searchtide:0.5.0-browser
     build:
       context: .
       args:

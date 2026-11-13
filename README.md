@@ -17,7 +17,7 @@ Une instance, un fichier SQLite, vos clés chiffrées chez vous. Pas de service 
 Données fictives, aucune clé, lecture seule :
 
 ```bash
-docker run -d -p 127.0.0.1:3030:3030 -e DEMO=1 -v searchtide_demo:/data ghcr.io/nadir-dna/searchtide:0.4.0
+docker run -d -p 127.0.0.1:3030:3030 -e DEMO=1 -v searchtide_demo:/data ghcr.io/nadir-dna/searchtide:0.5.0
 ```
 
 Ouvrez <http://localhost:3030>. Détails et deuxième capture (portefeuille multi-projets) : [docs/demo.md](docs/demo.md).
@@ -37,13 +37,13 @@ Ouvrez <http://localhost:3030>. Détails et deuxième capture (portefeuille mult
 ### Docker, une commande
 
 ```bash
-docker run -d --name searchtide --restart unless-stopped -p 127.0.0.1:3030:3030 -v searchtide:/data ghcr.io/nadir-dna/searchtide:0.4.0
+docker run -d --name searchtide --restart unless-stopped -p 127.0.0.1:3030:3030 -v searchtide:/data ghcr.io/nadir-dna/searchtide:0.5.0
 docker logs searchtide    # mot de passe administrateur généré au premier lancement
 ```
 
 Aucun fichier à éditer : `SECRET` et le mot de passe sont générés au premier démarrage et conservés dans le volume `/data`. Le mot de passe n'est affiché qu'une fois — notez-le.
 
-Images `linux/amd64` et `linux/arm64`, tags `0.4.0` et `v0.4.0`.
+Images `linux/amd64` et `linux/arm64`, tags `0.5.0` et `v0.5.0`.
 
 ### Docker Compose
 
@@ -200,7 +200,8 @@ Ne joignez jamais ce volume à un ticket ou à une archive de support. Mot de pa
 
 - **0.3** : modules activables par projet, catalogue de KPI et KPI calculés, jalons, fil « Aujourd'hui », modules privés (voir [docs/release-v0.3.0.md](docs/release-v0.3.0.md)).
 - **0.4** : portée par projet, approbations, navigateur intégré, publications simulées (voir [docs/release-v0.4.0.md](docs/release-v0.4.0.md)).
-- **Ensuite** : premiers posts réels par réseau, médias LinkedIn, photos TikTok, Connexion avec Stripe hors bêta une fois le relais stabilisé en production.
+- **0.5** : interface « salle de contrôle » (mur de projets, navigation en haut), nouveaux KPI, publication réelle par réseau, rendez-vous avec Google Agenda et CalDAV (voir [docs/release-v0.5.0.md](docs/release-v0.5.0.md)).
+- **Ensuite** : suivi de mots-clés et indexation, KPI des réseaux sociaux, génération de visuels et vidéos, Connexion avec Stripe hors bêta une fois le relais stabilisé en production.
 - **Ensuite, sans date** : connecteurs reportés (Cloudflare, Gmail en lecture, CRM tiers, sauvegarde distante S3).
 
 ## Contribuer

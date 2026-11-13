@@ -76,8 +76,8 @@ test("A6 : README et compose annoncent la même version publiée, jamais latest"
   const compose = readFileSync(new URL("../docker-compose.yml", import.meta.url), "utf8");
   const readme = readFileSync(new URL("../README.md", import.meta.url), "utf8");
   const tag = compose.match(/ghcr\.io\/nadir-dna\/searchtide:([\w.]+)/)?.[1];
-  assert.equal(tag, "0.4.0");
-  assert.match(readme, new RegExp("tags `0\\.4\\.0` et `v0\\.4\\.0`"));
+  assert.equal(tag, "0.5.0");
+  assert.match(readme, new RegExp("tags `0\\.5\\.0` et `v0\\.5\\.0`"));
   assert.doesNotMatch(readme, /`latest`/);
   assert.match(readme, /--restart unless-stopped/);
 });

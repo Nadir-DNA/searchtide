@@ -38,7 +38,7 @@ test("CA23 : catalogue lisible à 375 px, sans défilement horizontal, statuts a
   for (const t of ["Non connecté", "Connecté · 1 compte", "À reconnecter", "Intégré"]) await expect(page.getByText(t, { exact: true }).first()).toBeVisible();
   await expect(page.getByText("Plus tard")).toBeVisible();
   // une carte par connecteur, sur une colonne
-  const boxes = await page.getByRole("button", { name: /Connecter|Gérer/ }).evaluateAll((els) => els.map((e) => e.getBoundingClientRect()).map((r) => ({ x: Math.round(r.x), w: Math.round(r.width) })));
+  const boxes = await page.getByRole("button", { name: /Connecter|Gérer/ }).filter({ hasNotText: /^\s*Connecter\s/ }).evaluateAll((els) => els.map((e) => e.getBoundingClientRect()).map((r) => ({ x: Math.round(r.x), w: Math.round(r.width) })));
   expect(boxes.length).toBe(4);
   expect(new Set(boxes.map((b) => b.x)).size).toBe(1);
 });
