@@ -46,7 +46,15 @@ Stripe n'offre pas, pour ce type de connexion, d'autorisation « lecture seule �
 ### Changements
 Ce texte peut évoluer ; la date de dernière mise à jour figure ci-dessous. Une modification qui élargit les données traitées sera annoncée dans les notes de version, et exigera un nouveau consentement.
 
-Dernière mise à jour : **10 novembre 2026**.
+### Google Agenda (module Rendez-vous de Searchtide)
+Si vous cliquez sur « Connecter Google Agenda », le service utilise l'application Google « Searchtide Connect » pour obtenir de votre part deux autorisations : voir vos **occupations** (plages libres ou occupées) et **créer ou supprimer des événements** dans votre agenda.
+- **Le service ne lit pas votre agenda** et ne reçoit aucun événement. Après votre accord, Google remet un jeton de renouvellement au service, qui le **transmet à votre instance** (chiffré, 2 minutes au plus, effacé dès la remise) puis ne le conserve pas. Votre instance le garde dans son coffre.
+- Ensuite, votre instance demande au service un jeton d'accès de courte durée (le service détient le secret de l'application Google, pas votre instance) ; **c'est votre instance qui parle directement à Google**. Le service ne voit passer que le jeton, jamais vos événements.
+- Données conservées pour ce volet : empreinte non réversible de l'IP (1 heure au plus) et journal technique (date, route, code de réponse, 7 jours). Aucun jeton Google, aucune adresse Google.
+- L'utilisation et le transfert, vers toute autre application, des informations reçues des API Google par Searchtide Connect respectent la [politique de données utilisateur des services API de Google](https://developers.google.com/terms/api-services-user-data-policy), y compris les exigences d'utilisation limitée. Ces informations servent uniquement à proposer des créneaux libres et à inscrire vos rendez-vous : jamais de publicité, de vente, ni de lecture humaine.
+- **Révoquer :** « Supprimer » la connexion dans votre instance révoque le jeton chez Google ; vous pouvez aussi retirer l'accès dans https://myaccount.google.com/permissions.
+
+Dernière mise à jour : **13 novembre 2026**.
 
 ---`;
 
@@ -70,4 +78,6 @@ export const PRIVACY_EN = `**Searchtide Connect** is a small service that lets y
 
 **Sub-processors.** Stripe and Cloudflare.
 
-**Changes.** A change that widens the data processed will be announced in release notes and will require new consent. Last updated: **10 November 2026**.`;
+**Changes.** A change that widens the data processed will be announced in release notes and will require new consent. Last updated: **10 November 2026**.
+
+**Google Calendar (Searchtide Appointments module).** If you click "Connect Google Calendar", the service uses the Google application "Searchtide Connect" to obtain two permissions from you: see your **free/busy times** and **create or delete events** in your calendar. The service **does not read your calendar** and receives no event. After your consent, Google hands a refresh token to the service, which **passes it to your instance** (encrypted, 2 minutes at most, erased on hand-over) and does not keep it; your instance stores it in its vault. Your instance then asks the service for a short-lived access token (the service holds the Google application secret, your instance does not); **your instance talks to Google directly**, and the service never sees your events. Retained for this part: a non-reversible IP fingerprint (1 hour at most) and a technical log (date, route, status code, 7 days). No Google token, no Google address. Searchtide Connect's use and transfer to any other app of information received from Google APIs adheres to the [Google API Services User Data Policy](https://developers.google.com/terms/api-services-user-data-policy), including the Limited Use requirements. It is used only to offer free slots and record your appointments: never for advertising, sale or human reading. **Revoke:** deleting the connection in your instance revokes the token at Google; you can also remove access at https://myaccount.google.com/permissions. Last updated: **13 November 2026**.`;

@@ -89,6 +89,11 @@ registerModule({
 });
 
 registerModule({
+  id: "rdv", name: "Rendez-vous", scope: "instance", category: "commercial", connectors: ["smtp", "gcal", "caldav"],
+  description: "Un lien de réservation public par type de RDV (Meet, Teams, Zoom ou téléphone), invitation .ics, flux iCal, Google Agenda avec lien Meet automatique, ou agenda CalDAV (iCloud, Nextcloud, Fastmail), rendez-vous classés par projet.",
+});
+
+registerModule({
   id: "notifications", name: "Notifications", scope: "instance", category: "notifications", connectors: ["smtp", "ntfy"],
   description: "Rapport hebdomadaire par e-mail et alertes sur le téléphone.",
 });

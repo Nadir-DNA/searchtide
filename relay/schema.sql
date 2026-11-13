@@ -8,6 +8,11 @@ CREATE TABLE IF NOT EXISTS codes (
   return_url TEXT NOT NULL, stripe_user_id TEXT NOT NULL, livemode INTEGER NOT NULL,
   expires_at INTEGER NOT NULL, used INTEGER NOT NULL DEFAULT 0
 );
+-- Google Agenda : code à usage unique portant le jeton de renouvellement chiffré (AES-GCM), effacé dès l'échange (120 s au plus).
+CREATE TABLE IF NOT EXISTS gcodes (
+  hash TEXT PRIMARY KEY, instance_id TEXT NOT NULL, challenge TEXT NOT NULL, blob TEXT NOT NULL,
+  expires_at INTEGER NOT NULL, used INTEGER NOT NULL DEFAULT 0
+);
 CREATE TABLE IF NOT EXISTS tokens (
   hash TEXT PRIMARY KEY, instance_id TEXT NOT NULL, host TEXT NOT NULL, stripe_user_id TEXT NOT NULL,
   livemode INTEGER NOT NULL, created_at INTEGER NOT NULL, last_used INTEGER NOT NULL,

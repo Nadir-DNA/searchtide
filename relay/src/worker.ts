@@ -1,8 +1,10 @@
 // Relais Searchtide Connect (Cloudflare Worker + D1). Aucune donnée Stripe n'est stockée.
 // Routes : /v1/health, /v1/start, /authorize, /oauth/authorize, /oauth/callback, /v1/token,
-// /v1/stripe/read, /v1/revoke, /v1/webhook, /privacy.
+// /v1/stripe/read, /v1/revoke, /v1/webhook, /privacy, et les routes Google (voir google.ts).
 import { D1Store, MemoryStore, sha256, type CodeRow, type StateRow, type Store, type TokenRow, type D1 } from "./store.ts";
 import { PRIVACY_EN, PRIVACY_FR } from "./privacy.ts";
+import { TERMS_EN, TERMS_FR } from "./terms.ts";
+import { googleReady, handleGoogle } from "./google.ts";
 
 export type Env = {
   DB?: D1;
@@ -16,6 +18,9 @@ export type Env = {
   /** Ancien secret, accepté le temps d'une rotation Stripe. */
   WEBHOOK_SECRET_PREVIOUS?: string;
   STATE_SECRET?: string;
+  /** Application Google (Agenda) : identifiant public et secret. */
+  GOOGLE_CLIENT_ID?: string;
+  GOOGLE_CLIENT_SECRET?: string;
   MODE?: "test" | "live";
   RELAY_URL?: string;
   /** Tests uniquement. */
@@ -123,7 +128,24 @@ export function modeMismatch(env: Env) {
 export const policyIncomplete = (fr: string, en: string) => fr.includes("[À compléter") || en.includes("[À compléter");
 
 function privacyPage() {
-  return page("Searchtide Connect — confidentialité / privacy", `<h1>Searchtide Connect</h1><section lang="fr" style="white-space:pre-wrap">${esc(PRIVACY_FR)}</section><hr><section lang="en" style="white-space:pre-wrap">${esc(PRIVACY_EN)}</section>`);
+  return page("Searchtide Connect — confidentialité / privacy", `<h1>Searchtide Connect</h1><section lang="fr" style="white-space:pre-wrap">${esc(PRIVACY_FR)}</section><hr><section lang="en" style="white-space:pre-wrap">${esc(PRIVACY_EN)}</section><p><a href="/terms">Conditions d'utilisation / terms of use</a></p>`);
+}
+
+/** Conditions d'utilisation : URL publique exigée par l'écran de consentement OAuth de Google. */
+function termsPage() {
+  return page("Searchtide Connect — conditions / terms", `<h1>Searchtide Connect</h1><section lang="fr" style="white-space:pre-wrap">${esc(TERMS_FR)}</section><hr><section lang="en" style="white-space:pre-wrap">${esc(TERMS_EN)}</section><p><a href="/privacy">Politique de confidentialité / privacy policy</a></p>`);
+}
+
+/** Page d'accueil publique : exigée par Google comme page d'accueil de l'application (même domaine que la politique). */
+function homePage() {
+  return page("Searchtide Connect", `<h1>Searchtide Connect</h1>
+<p lang="fr"><strong>Searchtide Connect</strong> est le service relais de <a href="https://github.com/Nadir-DNA/searchtide">Searchtide</a>, logiciel libre d'analyse web et de suivi SEO. Il relie une instance Searchtide à vos comptes <strong>Stripe</strong> (chiffre d'affaires en lecture seule) et à votre <strong>agenda Google</strong> (créneaux libres et rendez-vous réservés par vos clients), sans que le secret de l'application Google quitte le relais.</p>
+<p lang="en"><strong>Searchtide Connect</strong> is the relay service of <a href="https://github.com/Nadir-DNA/searchtide">Searchtide</a>, a free and open-source web analytics and SEO tool. It links a Searchtide instance to your <strong>Stripe</strong> account (read-only figures) and to your <strong>Google Calendar</strong> (free slots and appointments booked by your customers), without the Google application secret ever leaving the relay.</p>
+<ul>
+<li><a href="/privacy">Politique de confidentialité / privacy policy</a></li>
+<li><a href="/terms">Conditions d'utilisation / terms of use</a></li>
+<li><a href="https://github.com/Nadir-DNA/searchtide/tree/main/relay">Code du relais / relay source code</a></li>
+</ul>`);
 }
 
 /* ── handler ─────────────────────────────────────────────────────────────── */
@@ -138,12 +160,20 @@ export async function handle(req: Request, env: Env): Promise<Response> {
   if (url.pathname === "/v1/health") {
     if (missingSecrets(env).length || (env.MODE !== "test" && env.MODE !== "live")) { log(503); return json({ ok: false, error: "Configuration incomplète" }, 503); }
     if (modeMismatch(env)) { log(503); return json({ ok: false, error: "Mode incohérent" }, 503); }
-    log(200); return json({ ok: true, mode: env.MODE });
+    log(200); return json({ ok: true, mode: env.MODE, ...(googleReady(env) ? { google: true } : {}) });
   }
   if (url.pathname === "/privacy") {
     if (env.MODE === "live" && policyIncomplete(PRIVACY_FR, PRIVACY_EN)) { log(503); return new Response("Politique incomplète : déploiement en production refusé.", { status: 503 }); }
     log(200); return privacyPage();
   }
+  if (url.pathname === "/terms") {
+    if (env.MODE === "live" && policyIncomplete(TERMS_FR, TERMS_EN)) { log(503); return new Response("Conditions incomplètes : déploiement en production refusé.", { status: 503 }); }
+    log(200); return termsPage();
+  }
+  if (url.pathname === "/") { log(200); return homePage(); }
+  const g = await handleGoogle({ req, url, env, store, now, origin, fetch: fetchOf(env), log, json, page, esc, random, hmac, same, pkce,
+    signState: (nonce) => signState(env, nonce), verifyState: (raw) => verifyState(env, raw) });
+  if (g) return g;
   if (missingSecrets(env).length) { log(503); return json({ ok: false, error: "Configuration incomplète" }, 503); }
   if (modeMismatch(env) && ["/v1/start", "/oauth/authorize", "/oauth/callback"].includes(url.pathname)) { log(503); return json({ ok: false, error: "Mode incohérent" }, 503); }
 

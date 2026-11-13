@@ -14,6 +14,7 @@ import type { Dashboards } from "./dashboard";
 const Onboarding = lazy(() => import("./onboarding").then((m) => ({ default: m.Onboarding })));
 const ConnectionsView = lazy(() => import("./connections").then((m) => ({ default: m.ConnectionsView })));
 const CrmView = lazy(() => import("./modules/crm").then((m) => ({ default: m.CrmView })));
+const RdvView = lazy(() => import("./modules/rdv").then((m) => ({ default: m.RdvView })));
 const PubsView = lazy(() => import("./modules/publications").then((m) => ({ default: m.PubsView })));
 const ReportView = lazy(() => import("./modules/notifications/ReportView").then((m) => ({ default: m.ReportView })));
 const ProjectView = lazy(() => import("./projects").then((m) => ({ default: m.ProjectView })));
@@ -166,7 +167,7 @@ function Shell({ me, onLogout }: { me: Me; onLogout: () => void }) {
   const home = { site: undefined, tab: undefined, view: undefined, id: undefined, q: undefined, project: undefined, source: undefined, month: undefined };
 
   const mods = useModules();
-  const crmOn = mods.active("crm"), pubsOn = mods.active("publications");
+  const crmOn = mods.active("crm"), pubsOn = mods.active("publications"), rdvOn = mods.active("rdv");
   const pinned = projects.filter((p) => p.pinned);
   const pin = async (p: Project) => { await api(`/api/projects/${p.id}`, { method: "PATCH", json: { pinned: !p.pinned } }); loadProjects(); };
   const projectItem = (p: Project) => (
@@ -193,7 +194,7 @@ function Shell({ me, onLogout }: { me: Me; onLogout: () => void }) {
           </NavGroup>
         </li>
         <li>
-          <NavGroup id="projets" label="Projets" icon={Icon.users} active={["projects", "portfolio", "project", "newproject", "crm", "pubs"].includes(q.view ?? "")}
+          <NavGroup id="projets" label="Projets" icon={Icon.users} active={["projects", "portfolio", "project", "newproject", "crm", "pubs", "rdv"].includes(q.view ?? "")}
             pinned={pinned.length > 0 && <ul aria-label="Projets épinglés" className="space-y-1">{pinned.map((p) => <li key={p.id}>{projectItem(p)}</li>)}</ul>}>
             <NavItem icon={Icon.grid} active={q.view === "projects" || q.view === "portfolio"} onClick={() => nav({ ...home, view: "projects" })}>Tous les projets</NavItem>
             {projects.map((p) => (
@@ -206,6 +207,7 @@ function Shell({ me, onLogout }: { me: Me; onLogout: () => void }) {
             <NavItem icon={Icon.plus} active={q.view === "newproject"} onClick={() => nav({ ...home, view: "newproject" })}>Nouveau projet</NavItem>
             {!me.demo && crmOn && <NavItem icon={Icon.users} active={q.view === "crm"} onClick={() => nav({ ...home, view: "crm" })}>Contacts</NavItem>}
             {!me.demo && pubsOn && <NavItem icon={Icon.calendar} active={q.view === "pubs"} onClick={() => nav({ ...home, view: "pubs" })}>Publications</NavItem>}
+            {!me.demo && rdvOn && <NavItem icon={Icon.calendar} active={q.view === "rdv"} onClick={() => nav({ ...home, view: "rdv" })}>Rendez-vous</NavItem>}
           </NavGroup>
         </li>
         <li>
@@ -282,6 +284,7 @@ function Shell({ me, onLogout }: { me: Me; onLogout: () => void }) {
         ) : sites === null ? null
           : q.view === "crm" ? <CrmView tab={q.tab ?? ""} go={go} q={q} />
           : q.view === "pubs" ? <PubsView q={q} go={go} />
+          : q.view === "rdv" ? <RdvView q={q} go={go} />
           : q.view === "report" ? <ReportView />
           : q.view === "settings" ? <SettingsView go={go} />
           : q.view === "agents" ? <AgentsView />
