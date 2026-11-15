@@ -45,6 +45,11 @@ test("SEO en sous-onglets, anciennes adresses de site et espace Rapports", async
     sub: new URLSearchParams(location.search).get("sub"),
   }))).toEqual({ view: "project", id: p.id, tab: "seo", sub: "google" });
 
+  // Une ancienne adresse « installation » ouvre le panneau du script dans le projet
+  await page.goto(`/?site=${domain}&tab=setup`);
+  await expect(page.getByRole("dialog")).toContainText("Script de suivi");
+  await page.keyboard.press("Escape");
+
   // Les anciens espaces Projets et Rapport de la semaine vivent dans Rapports
   await page.goto("/?view=projects");
   await expect(page.getByRole("heading", { name: "Rapports", level: 1 })).toBeVisible();

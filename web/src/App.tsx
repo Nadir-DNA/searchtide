@@ -178,7 +178,7 @@ function Shell({ me, onLogout }: { me: Me; onLogout: () => void }) {
     if (!owner) return;
     const tab = q.tab === "search" ? "seo" : q.tab === "outils" ? "seo" : "trafic";
     const sub = q.tab === "search" ? "google" : q.tab === "outils" ? "audit" : undefined;
-    go({ view: "project", id: owner.id, tab, sub, site: q.site });
+    go({ view: "project", id: owner.id, tab, sub, site: q.site, install: q.tab === "setup" ? "1" : undefined });
   }, [q.site, q.tab, q.view, projects]); // eslint-disable-line react-hooks/exhaustive-deps
   // Réinitialise les filtres propres à chaque vue
   const home = { site: undefined, tab: undefined, view: undefined, id: undefined, q: undefined, project: undefined, source: undefined, month: undefined };
@@ -335,7 +335,7 @@ function Shell({ me, onLogout }: { me: Me; onLogout: () => void }) {
           : q.view === "today" ? <TodayView go={go} />
           : q.view === "reports" || q.view === "projects" || q.view === "portfolio" ? <ReportsView tab={q.view === "reports" ? q.tab ?? "portefeuille" : "portefeuille"} days={days} go={go} />
           : q.view === "report" ? <ReportsView tab="semaine" days={days} go={go} />
-          : q.view === "project" && q.id ? <ProjectView key={q.id} id={q.id} days={days} go={go} tab={q.tab ?? "vue"} sub={q.sub} domain={q.site} me={me} onPinned={loadProjects} />
+          : q.view === "project" && q.id ? <ProjectView key={q.id} id={q.id} days={days} go={go} tab={q.tab ?? "vue"} sub={q.sub} domain={q.site} install={q.install} me={me} onPinned={loadProjects} />
           : q.view === "newproject" ? <ManageProject project={null} onClose={() => go(home)} onSaved={(p) => { loadProjects(); if (p) go({ ...home, view: "project", id: p.id }); }} />
           : q.view === "add" ? <AddSite onAdded={(s) => { load(); go({ site: s.domain, tab: "setup", view: undefined }); }} />
           : site ? <SiteView key={site.id} site={site} me={me} days={days} tab={q.tab ?? "traffic"} go={go} onChange={load} />

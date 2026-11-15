@@ -41,11 +41,11 @@ export function ProjectTabBar({ project, tab, go }: { project: Project; tab: str
   );
 }
 
-export function ProjectTabBody({ project, tab, sub, domain, days, go, me, onChanged }: { project: Project; tab: string; sub?: string; domain?: string; days: number; go: Go; me: Me; onChanged: () => void }) {
+export function ProjectTabBody({ project, tab, sub, domain, openInstall, days, go, me, onChanged }: { project: Project; tab: string; sub?: string; domain?: string; openInstall?: boolean; days: number; go: Go; me: Me; onChanged: () => void }) {
   const { data: sites } = useData<Site[]>("/api/sites");
   const own = (sites ?? []).filter((s) => project.sites.includes(s.domain));
   const [siteDom, setSiteDom] = useState(domain ?? "");
-  const [install, setInstall] = useState(false);
+  const [install, setInstall] = useState(!!openInstall);
   const site = own.find((s) => s.domain === (siteDom || domain)) ?? own[0];
   if (tab === "reglages") return <div className="space-y-4"><ProjectSettings project={project} sites={own} onChanged={onChanged} /><ClientReportCard projectId={project.id} /></div>;
   if (tab === "trafic") return (

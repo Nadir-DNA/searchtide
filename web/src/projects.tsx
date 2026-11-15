@@ -98,7 +98,7 @@ function ProjectKpis({ id, days, go }: { id: string; days: number; go: Go }) {
 }
 
 // ── Page d'un projet ──
-export function ProjectView({ id, days, go, tab = "vue", sub, domain, me = { gsc: false, demo: false }, onPinned }: { id: string; days: number; go: Go; tab?: string; sub?: string; domain?: string; me?: { gsc: boolean; demo: boolean }; onPinned?: () => void }) {
+export function ProjectView({ id, days, go, tab = "vue", sub, domain, install, me = { gsc: false, demo: false }, onPinned }: { id: string; days: number; go: Go; tab?: string; sub?: string; domain?: string; install?: string; me?: { gsc: boolean; demo: boolean }; onPinned?: () => void }) {
   const { data: p, error, reload } = useData<Project>(`/api/projects/${id}?days=${days}`);
   const [selected, setSelected] = useState<string | null>(null);
   const [manage, setManage] = useState(false);
@@ -118,7 +118,7 @@ export function ProjectView({ id, days, go, tab = "vue", sub, domain, me = { gsc
       </Header>
       <ProjectTabBar project={p} tab={tab} go={go} />
       {tab === "vue" && <ProjectKpis id={p.id} days={days} go={go} />}
-      {tab !== "vue" ? <ProjectTabBody project={p} tab={tab} sub={sub} domain={domain} days={days} go={go} me={me} onChanged={reload} /> :
+      {tab !== "vue" ? <ProjectTabBody project={p} tab={tab} sub={sub} domain={domain} openInstall={install === "1"} days={days} go={go} me={me} onChanged={reload} /> :
       <div className="space-y-4">
         {p.indicators.length ? (
           <>
