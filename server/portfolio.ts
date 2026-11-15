@@ -146,12 +146,13 @@ export function portfolio(r: Range, weights: Weights = getWeights(), onlyIds: Se
       WHERE site_id IN (${ph(ids.length)}) AND day BETWEEN ? AND ? AND type = 'pageview' GROUP BY day`, ...ids, r.from, r.to) : [];
     for (const d of series) daily.set(d.day, { ...daily.get(d.day), day: d.day, [x.id || "_"]: d.v });
     const inds = x.indicators as Row[];
-    const crm = x.crm_key ? all(`SELECT
+    const keys = [String(x.id), String(x.crm_key ?? x.id)];
+    const crm = all(`SELECT
       SUM(created_at BETWEEN ? AND ?) AS leads, SUM(created_at BETWEEN ? AND ?) AS leads_prev,
       SUM(stage IN ('new', 'contacted', 'qualified', 'proposal')) AS open,
       SUM(next_at <= ? AND opt_out = 0 AND stage NOT IN ('won', 'lost')) AS todo,
       COALESCE(SUM(CASE WHEN stage IN ('qualified', 'proposal') THEN value END), 0) AS pipeline
-      FROM contacts WHERE project = ?`, Date.parse(r.from), Date.parse(r.to) + 86399999, Date.parse(p.from), Date.parse(p.to) + 86399999, today, x.crm_key)[0] : null;
+      FROM contacts WHERE project IN (?, ?)`, Date.parse(r.from), Date.parse(r.to) + 86399999, Date.parse(p.from), Date.parse(p.to) + 86399999, today, ...keys)[0];
     // Indicateurs métier (hors trafic du site, déjà dans les colonnes)
     const kpis = inds.filter((i) => i.source !== "site").slice(0, 3).map((i) => ({ id: i.id, label: i.label, unit: i.unit, mode: i.mode, value: i.value, previous: i.previous, error: i.last_error }));
     const goals = inds.filter((i) => i.goal).map((i) => ({ label: i.label, unit: i.unit, ...i.goal }));

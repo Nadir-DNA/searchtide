@@ -492,8 +492,8 @@ export function annotations(projectId: string | undefined, r: Range) {
   // Un jalon reste un jalon tant que sa date n'est pas passée ; ensuite c'est une note sur la courbe
   const notes = db.prepare(`SELECT id, day, label, CASE WHEN milestone = 1 AND day >= ? THEN 'jalon' ELSE 'note' END AS kind FROM annotations WHERE day BETWEEN ? AND ? ${p ? "AND (project_id = ? OR project_id IS NULL)" : ""}`)
     .all(...[localDay(), r.from, r.to, ...(p ? [p.id] : [])]) as Row[];
-  const pubs = db.prepare(`SELECT id, day, title AS label, 'publication' AS kind FROM publications WHERE status = 'published' AND day BETWEEN ? AND ? ${p?.crm_key ? "AND project = ?" : p ? "AND 0" : ""}`)
-    .all(...[r.from, r.to, ...(p?.crm_key ? [p.crm_key] : [])]) as Row[];
+  const pubs = db.prepare(`SELECT id, day, title AS label, 'publication' AS kind FROM publications WHERE status = 'published' AND day BETWEEN ? AND ? ${p ? "AND project IN (?, ?)" : ""}`)
+    .all(...[r.from, r.to, ...(p ? [String(p.id), String(p.crm_key ?? p.id)] : [])]) as Row[];
   return [...notes, ...pubs].sort((a, b) => a.day.localeCompare(b.day));
 }
 

@@ -6,6 +6,7 @@ import type { McpServer } from "@modelcontextprotocol/server";
 import { db, localDay } from "./db.ts";
 import { migrate } from "./migrations.ts";
 import { removeAllMedia } from "./publishers/media.ts";
+import "./projects.ts"; // la table projects existe avant la migration de rattachement
 
 /** Le CRM contient des données de contacts : en démonstration (lecture ouverte à tous) il n'expose ni route ni outil MCP. */
 export const crmEnabled = () => process.env.DEMO !== "1";
@@ -62,6 +63,16 @@ ALTER TABLE publications ADD COLUMN evidence_url TEXT;
 ALTER TABLE publications ADD COLUMN visible TEXT;
 ALTER TABLE publications ADD COLUMN updated_at INTEGER;`);
 migrate("2026-11-11-publications-idempotence", "ALTER TABLE publications ADD COLUMN idempotency_key TEXT");
+// C3 : contacts et publications désignent le projet par son identifiant, plus par sa clé ou son nom.
+const LEGACY_PROJECT_SQL = `
+UPDATE contacts SET project = (SELECT id FROM projects WHERE projects.crm_key = contacts.project OR projects.name = contacts.project ORDER BY projects.created_at LIMIT 1)
+  WHERE project IS NOT NULL AND EXISTS (SELECT 1 FROM projects WHERE projects.crm_key = contacts.project OR projects.name = contacts.project);
+UPDATE publications SET project = (SELECT id FROM projects WHERE projects.crm_key = publications.project OR projects.name = publications.project ORDER BY projects.created_at LIMIT 1)
+  WHERE project IS NOT NULL AND EXISTS (SELECT 1 FROM projects WHERE projects.crm_key = publications.project OR projects.name = publications.project);
+`;
+migrate("2026-11-15-projet-par-id", LEGACY_PROJECT_SQL);
+/** Rejoue le rattachement (idempotent) : utilisé par les tests de migration. */
+export function migrateProjectIds() { db.exec(LEGACY_PROJECT_SQL); }
 
 export const STAGES = ["new", "contacted", "qualified", "proposal", "won", "lost"] as const;
 export const PUB_STATUS = ["idea", "scheduled", "published"] as const;
@@ -136,7 +147,8 @@ export function listContacts(f: { q?: string; stage?: string; project?: string; 
     where.push("(name LIKE ? OR company LIKE ? OR email LIKE ? OR phone LIKE ? OR city LIKE ? OR sector LIKE ?)");
     args.push(...Array(6).fill(`%${f.q}%`));
   }
-  for (const k of ["stage", "project", "source"] as const) if (f[k]) { where.push(`${k} = ?`); args.push(f[k]!); }
+  for (const k of ["stage", "source"] as const) if (f[k]) { where.push(`${k} = ?`); args.push(f[k]!); }
+  if (f.project) { const keys = projectKeysOf(f.project); where.push(`project IN (${keys.map(() => "?").join(", ")})`); args.push(...keys); }
   if (f.todo) { where.push("next_at <= ? AND opt_out = 0 AND stage NOT IN ('won', 'lost')"); args.push(today()); }
   const w = where.length ? `WHERE ${where.join(" AND ")}` : "";
   const limit = Math.min(Math.max(f.limit ?? 50, 1), 500), offset = Math.max(f.offset ?? 0, 0);
@@ -326,6 +338,25 @@ export function registerBusiness(app: Hono) {
     const changed = db.prepare("DELETE FROM publications WHERE id = ?").run(c.req.param("id")).changes;
     if (changed) removeAllMedia(c.req.param("id"));
     return changed ? c.json({ ok: true }) : c.json({ error: "Publication introuvable" }, 404);
+  });
+
+  // C3 : valeurs de projet qui ne désignent aucun projet (anciennes clés ou textes libres), à rattacher.
+  const orphanValues = () => db.prepare(`
+    SELECT value, SUM(n) AS n FROM (
+      SELECT project AS value, COUNT(*) AS n FROM contacts c WHERE project IS NOT NULL AND project <> ''
+        AND NOT EXISTS (SELECT 1 FROM projects p WHERE p.id = c.project OR p.crm_key = c.project OR p.name = c.project) GROUP BY project
+      UNION ALL
+      SELECT project AS value, COUNT(*) AS n FROM publications p WHERE project IS NOT NULL AND project <> ''
+        AND NOT EXISTS (SELECT 1 FROM projects x WHERE x.id = p.project OR x.crm_key = p.project OR x.name = p.project) GROUP BY project
+    ) GROUP BY value ORDER BY n DESC`).all();
+  app.get("/api/diagnostic/orphans", (c) => c.json(orphanValues()));
+  app.post("/api/diagnostic/orphans", async (c) => {
+    const b = await c.req.json().catch(() => ({}));
+    const from = String(b.from ?? "").trim(), to = String(b.project_id ?? "").trim();
+    if (!from || !db.prepare("SELECT 1 FROM projects WHERE id = ?").get(to)) return c.json({ error: "Projet ou valeur invalide" }, 400);
+    const contacts = db.prepare("UPDATE contacts SET project = ?, updated_at = ? WHERE project = ?").run(to, Date.now(), from).changes;
+    const pubs = db.prepare("UPDATE publications SET project = ?, updated_at = ? WHERE project = ?").run(to, Date.now(), from).changes;
+    return c.json({ contacts, publications: pubs });
   });
 }
 
