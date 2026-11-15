@@ -128,6 +128,9 @@ Une seule connexion facultative « Données SEO » (fournisseur payé à l'usage
 - **Étape 3 livrée** : D1 limité à Pinterest, Reddit et Google Business Profile (choix du 2026-11-16), D6, D7, B2, B3, B5 ; recettes navigateur Instagram, TikTok, YouTube, Pinterest et Reddit ; compte « Agent IA » (variante sans recette du D12).
 - Limites de l'étape 3 : appels aux réseaux et aux IA testés avec des réponses simulées ; recettes navigateur non éprouvées (Instagram et TikTok finissent en « À vérifier ») ; pas de recette pour Google Business Profile ; Pinterest publie par navigateur sur le dernier tableau choisi ; la visibilité IA interroge les modèles sans recherche web ; LinkedIn : premier commentaire non éprouvé.
 
+- **Étape 4 livrée** : A6, A7, A8, A9, A10, D11. Le lot C attend le choix d'un fournisseur de données payant.
+- Limites de l'étape 4 : un membre d'équipe voit toutes les données en lecture (pas encore de restriction par projet) et n'a pas de second facteur ; le PDF du rapport passe par l'impression du navigateur ; la vidéo est un diaporama (pas de découpe de vidéo longue) et demande ffmpeg (inclus dans l'image Docker avec navigateur) ; GA4 et Google Business Profile testés avec des réponses simulées.
+
 ## Ordre de livraison proposé
 
 Tout peut sortir dans une seule mise à jour, mais livrer par étapes réduit le risque. Ordre conseillé, du plus utile et gratuit vers le plus coûteux :

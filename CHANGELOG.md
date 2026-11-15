@@ -2,9 +2,16 @@
 
 Toutes les versions notables sont consignées ici. Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/).
 
-## [Non publié] — SEO complet et publication, étapes 1, 2 et 3
+## [Non publié] — SEO complet et publication, étapes 1 à 4
 
 ### Ajouté
+
+- **Équipe** : comptes nominatifs (adresse e-mail), rôle administrateur ou membre en lecture seule, mot de passe créé et affiché une fois, déconnexion à chaque changement. Écran Équipe dans Réglages.
+- **Rapport client en marque blanche** : une page par projet à votre nom, logo et couleur, partagée par un lien secret révocable (avec expiration), imprimable en PDF.
+- **Analyse des concurrents** : votre page face à six pages concurrentes (longueur, intertitres, données structurées, images, liens, vitesse) et les écarts à combler. Outil `competitor_compare`.
+- **Google Analytics 4** : sessions, utilisateurs actifs, événements clés, sessions venues de Google et revenus, jour par jour, comme indicateurs de projet.
+- **Fiches Google** : note, avis, vues, appels, itinéraires, clics vers le site ; réponse aux avis avec brouillon de l'IA ; avis sans réponse dans À traiter ; section dans le rapport client. Outil `gbp_overview`.
+- **Visuels et vidéos** : carrousels aux couleurs du projet rendus en images par le Chromium embarqué, vidéo diaporama MP4 par ffmpeg, joints à un brouillon. Outil `visual_generate`.
 
 - **Pinterest, Reddit et Google Business Profile** : un fournisseur par réseau (tableaux Pinterest et fiches d'établissement ouverts comme comptes, subreddit réglé par compte), statistiques quand le réseau les donne, guide de création de l'application développeur dans Connexions.
 - **Premier commentaire, fils et hashtags** : suites envoyées une par une après la publication (X, LinkedIn, Facebook, Instagram, Reddit), chacune avec son état ; une partie incertaine arrête le fil sans rien rejouer. Découpe automatique en fil, hashtags retenus par projet et par réseau.
