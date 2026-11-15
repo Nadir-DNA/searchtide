@@ -15,6 +15,7 @@ import { gscPropertyFor } from "./gsc.ts";
 import { activeModules, enabledFor, isEnabled } from "./modules/state.ts";
 import { getModule } from "./modules/index.ts";
 import { freshness } from "./freshness.ts";
+import { keywordDrops } from "./keywords.ts";
 
 type Row = Record<string, any>;
 migrate("2026-11-10-aujourdhui", "CREATE TABLE today_items (key TEXT PRIMARY KEY, project_id TEXT, state TEXT NOT NULL, until TEXT, updated_at INTEGER NOT NULL)");
@@ -47,6 +48,19 @@ function builtinActions(moduleId: string, p: Row, today: string): Omit<TodayItem
   return [];
 }
 
+/** Mots-clés suivis qui reculent d'au moins 3 places sur 7 jours. */
+function keywordAlerts(p: Row): TodayItem[] {
+  return (JSON.parse(p.sites) as string[]).filter((d) => gscPropertyFor(d, p.id)).flatMap((d) => {
+    const s = db.prepare("SELECT id FROM sites WHERE domain = ?").get(d) as Row | undefined;
+    if (!s) return [];
+    return keywordDrops(s.id, lastDays(7)).map((k): TodayItem => ({
+      key: itemKey("google", "recul", p.id, d, k.query), kind: "alerte", tone: "warn", project_id: p.id, metric: "Clics Google",
+      text: `${p.name} · « ${k.query} » recule de ${nf(k.position! - k.previous.position!, 1)} places (position ${nf(k.previous.position!, 1)} → ${nf(k.position!, 1)})`,
+      to: { view: "project", id: p.id, tab: "recherche" },
+    }));
+  });
+}
+
 function collectItems(now: Date): TodayItem[] {
   const today = localDay(now);
   const projects = db.prepare("SELECT id, name, sites, crm_key FROM projects ORDER BY position, name").all() as Row[];
@@ -56,6 +70,7 @@ function collectItems(now: Date): TodayItem[] {
     const custom = getModule(m.id)?.actions;
     if (custom) continue; // actions asynchrones des modules privés : ajoutées par todayAsync()
     for (const a of builtinActions(m.id, p, today)) items.push({ ...a, kind: "action", tone: "info" });
+    if (m.id === "google") items.push(...keywordAlerts(p));
   }
   // Relances des contacts rattachés à aucun projet connu
   if (isEnabled("crm")) {

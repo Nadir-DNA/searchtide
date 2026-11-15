@@ -6,6 +6,7 @@ import { ErrorLine, KpiSkeleton, useData } from "../../App";
 import { ActivateLink } from "../ActivatePrompt";
 import { Button, Card, Delta, EmptyBox, KpiCard, Segmented, ShareList, Skeleton, Table, fmt, inputCls, downloadCsv, copyText } from "../../ui";
 import { SettingCard } from "../analytics";
+import { KeywordsPanel } from "./keywords";
 type Me = { gsc: boolean; demo: boolean };
 
 export function SearchView({ site, me, days, onChange, onSetup }: { site: Site; me: Me; days: number; onChange: () => void; onSetup: () => void }) {
@@ -79,6 +80,7 @@ export function SearchView({ site, me, days, onChange, onSetup }: { site: Site; 
           <Donut total={s.queries.length} totalLabel="mots-clés" parts={buckets.map(([label, lo, hi]) => ({ label, value: s.queries.filter((q) => q.position > lo && q.position <= hi).length })).filter((p) => p.value)} />
         </Card>
       </div>
+      <KeywordsPanel site={site} days={days} demo={me.demo} />
       <Card title="À travailler en priorité" action={
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <span className="text-muted">Position 4 à 20, déjà des impressions</span>

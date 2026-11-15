@@ -14,6 +14,7 @@ import { activate, backupCodesLeft, consumeSecondFactor, consumeTotp, disable, e
 import { bumpEpoch, sessionValue, validSession } from "./sessions.ts";
 import { missing2faWarning } from "./twofa-warning.ts";
 import { lastDays, overview, searchStats, strikingDistance, trafficStats, type Range } from "./stats.ts";
+import { registerKeywords } from "./keywords.ts";
 import { convertGoogleEnv, gscConfigured, listProperties, setSiteGscProperty, syncAll, syncSite } from "./gsc.ts";
 import { handleMcp, mcpAccess } from "./mcp.ts";
 import { registerBusiness } from "./business.ts";
@@ -209,6 +210,7 @@ const KEY_WRITES: [string, RegExp][] = [
   ["POST", /^\/api\/indicators\/[^/]+\/value$/],
   ["POST", /^\/api\/indicators\/[^/]+\/values$/],
   ["POST", /^\/api\/sites\/[^/]+\/sync$/],
+  ["POST", /^\/api\/sites\/[^/]+\/keywords$/],
 ];
 const keyMayWrite = (method: string, path: string) => KEY_WRITES.some(([m, re]) => m === method && re.test(path));
 
@@ -491,6 +493,7 @@ app.get("/api/sites/:id/search", (c) => {
   const r = rangeOf(c);
   return c.json({ ...searchStats(s.id, r), opportunities: strikingDistance(s.id, r) });
 });
+registerKeywords(app, getSite, rangeOf);
 app.post("/api/sites/:id/sync", async (c) => {
   const s = getSite(c.req.param("id"));
   if (!s) return c.json({ error: "Site introuvable" }, 404);

@@ -1,3 +1,4 @@
+import { keywordSuggestions, seoInsights, trackKeyword, trackedKeywords } from "./keywords.ts";
 import { McpServer, WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { db, type Site } from "./db.ts";
@@ -68,11 +69,11 @@ const mapResult = (r: any, fn: (d: any) => any) => {
  * Lecture : la cible doit être dans la portée. Écriture : la cible doit être dans la portée en écriture.
  */
 const SCOPED_READ = new Set([
-  "list_sites", "traffic_stats", "search_stats", "seo_opportunities", "projects_kpis", "portfolio_overview", "alerts", "today",
+  "list_sites", "traffic_stats", "search_stats", "seo_opportunities", "keywords_tracked", "seo_insights", "projects_kpis", "portfolio_overview", "alerts", "today",
   "milestones_list", "kpi_catalog", "crm_list_contacts", "crm_get_contact", "pubs_list", "modules_list", "dashboard_catalog", "dashboard_list", "dashboard_get",
 ]);
 const SCOPED_WRITE = new Set([
-  "sync_search_console", "kpi_add", "milestone_save", "indicator_record", "crm_save_contact", "crm_log", "pubs_save", "today_update",
+  "sync_search_console", "keyword_track", "kpi_add", "milestone_save", "indicator_record", "crm_save_contact", "crm_log", "pubs_save", "today_update",
   "module_enable_for_project", "module_disable_for_project",
 ]);
 
@@ -168,6 +169,21 @@ function googleTools(server: McpServer, readOnly: boolean) {
     description: "Mots-clés en position 4 à 20 avec beaucoup d'impressions : les plus faciles à faire passer en première page.",
     inputSchema: z.object(period),
   }, async ({ site: d, days }) => json(strikingDistance(site(d).id, range(days))));
+
+  server.registerTool("keywords_tracked", {
+    description: "Mots-clés suivis d'un site : clics, impressions, position et position jour par jour, comparés à la période précédente ; plus des suggestions (position 4 à 20, pas encore suivis).",
+    inputSchema: z.object(period),
+  }, async ({ site: d, days }) => { const s = site(d), r = range(days); return json({ tracked: trackedKeywords(s.id, r), suggestions: keywordSuggestions(s.id, r) }); });
+
+  server.registerTool("seo_insights", {
+    description: "Diagnostics Search Console d'un site : pages qui perdent des clics, pages au taux de clic anormalement bas pour leur position (titre ou description à réécrire), requêtes cannibalisées par plusieurs pages.",
+    inputSchema: z.object(period),
+  }, async ({ site: d, days }) => json(seoInsights(site(d).id, range(days))));
+
+  if (!readOnly) server.registerTool("keyword_track", {
+    description: "Suit (ou ne suit plus) un mot-clé sur un site. Le suivi utilise les données Search Console déjà importées.",
+    inputSchema: z.object({ site: period.site, query: z.string().min(1).max(200), tracked: z.boolean().default(true) }),
+  }, async ({ site: d, query, tracked }) => json(trackKeyword(site(d).id, query, tracked)));
 
   if (!readOnly) server.registerTool("sync_search_console", {
     description: "Relance l'import des données Search Console d'un site.",
