@@ -313,7 +313,7 @@ function Shell({ me, onLogout }: { me: Me; onLogout: () => void }) {
           : q.view === "pubs" ? <PubsView q={q} go={go} />
           : q.view === "rdv" ? <RdvView q={q} go={go} />
           : q.view === "report" ? <ReportView />
-          : q.view === "settings" ? <SettingsView go={go} />
+          : q.view === "settings" ? <SettingsView go={go} tab={q.tab ?? "general"} />
           : q.view === "agents" ? <AgentsView />
           : q.view === "approvals" ? <ApprovalsView />
           : q.view === "browser" ? <BrowserView q={q} />

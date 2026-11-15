@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { api } from "./api";
 import { ErrorLine, Header, KpiSkeleton, useData } from "./App";
-import { Button, Card, EmptyBox, Pill, inputCls, Status } from "./ui";
+import { Button, Card, EmptyBox, Pill, Segmented, inputCls, Status } from "./ui";
 import { TeamCard } from "./team";
 
 type Ops = {
@@ -239,12 +239,13 @@ function FreshnessCard() {
   );
 }
 
-export function SettingsView({ go }: { go?: (n: Record<string, string | undefined>) => void } = {}) {
+export function SettingsView({ go, tab = "general" }: { go?: (n: Record<string, string | undefined>) => void; tab?: string } = {}) {
   const { data: o, error, reload } = useData<Ops>("/api/ops");
   const { data: auth } = useData<{ totp: boolean }>("/api/auth-config");
   const [msg, setMsg] = useState<Record<string, string>>({});
   const [pass, setPass] = useState("");
   const [passAdmin, setPassAdmin] = useState("");
+  const setTab = (v: string) => go?.({ tab: v === "general" ? undefined : v });
   const run = async (k: string, path: string, ok: string) => {
     setMsg((m) => ({ ...m, [k]: "En cours…" }));
     try { await api(path, { method: "POST" }); setMsg((m) => ({ ...m, [k]: ok })); reload(); }
@@ -255,10 +256,16 @@ export function SettingsView({ go }: { go?: (n: Record<string, string | undefine
   return (
     <>
       <Header title="Réglages" sub="Surveillance, sauvegardes, notifications et sécurité" />
+      <div className="mb-5 -mt-1 overflow-x-auto">
+        <Segmented label="Sections des réglages" value={tab} onChange={setTab} options={[
+          ["general", "Général"], ["projets", "Projets"], ["equipe", "Équipe"], ["alertes", "Alertes"], ["securite", "Sécurité"], ["diagnostic", "Diagnostic"],
+        ] as const} />
+      </div>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <div className="min-w-0 lg:col-span-2"><HealthWeights /></div>
-        <div className="min-w-0 lg:col-span-2"><TeamCard /></div>
-        <Card title="Surveillance" action={<span className="text-xs text-muted">Toutes les 5 min, depuis Cloudflare</span>}>
+        {tab === "projets" && <div className="min-w-0 lg:col-span-2"><HealthWeights /></div>}
+        {tab === "equipe" && <div className="min-w-0 lg:col-span-2"><TeamCard /></div>}
+        {tab === "alertes" && <>
+          <Card title="Surveillance" action={<span className="text-xs text-muted">Toutes les 5 min, depuis Cloudflare</span>}>
           {o.veille ? (
             <ul className="divide-y divide-rule">
               {o.veille.map((s) => (
@@ -288,9 +295,10 @@ export function SettingsView({ go }: { go?: (n: Record<string, string | undefine
               <p className="mt-3 text-xs text-muted">Vous recevrez : site hors ligne, relevé en erreur, baisse de plus de 30 % sur une semaine, nouvelle vente, relances du jour. Gardez ce nom de sujet pour vous : il fait office de clé.</p>
               <div className="mt-4 flex items-center gap-3"><Button variant="secondary" onClick={() => run("ntfy", "/api/ops/test-notification", "Envoyée")}>Envoyer un essai</Button><Status>{msg.ntfy}</Status></div>
             </>
-          ) : <EmptyBox>ntfy n'est pas connecté : ajoutez-le dans Connexions.{go && <> <button onClick={() => go({ view: "connections" })} className="text-ink underline">Ouvrir Connexions</button></>}</EmptyBox>}
+          ) : <EmptyBox>ntfy n'est pas connecté : ajoutez-le dans Intégrations.{go && <> <button onClick={() => go({ view: "integrations" })} className="text-ink underline">Ouvrir Intégrations</button></>}</EmptyBox>}
         </Card>
-        <Card title="Sauvegardes">
+        </>}
+        {tab === "securite" && <Card title="Sauvegardes">
           <p className="text-sm">
             Chaque nuit : une copie locale dans le volume de l'instance ({o.backups.dir}, 14 jours)
             {o.offsiteConfigured ? " et une copie compressée chez Cloudflare (30 jours)." : "."}
@@ -316,29 +324,31 @@ export function SettingsView({ go }: { go?: (n: Record<string, string | undefine
           </div>
           {o.docker && <p className="mt-2 text-xs text-muted">En Docker, copiez le volume sur votre ordinateur : <code className="font-mono break-all">docker cp &lt;nom-du-conteneur&gt;:/data/backups ./sauvegardes</code></p>}
           <div className="mt-4 flex items-center gap-3"><Button variant="secondary" onClick={() => run("backup", "/api/ops/backup", "Sauvegarde envoyée")}>Sauvegarder maintenant</Button><Status>{msg.backup}</Status></div>
-        </Card>
-        <Card title="Instance">
+        </Card>}
+        {tab === "general" && <Card title="Instance">
           <ul className="space-y-2 text-sm">
             <li className="flex items-center justify-between gap-3"><span>Version</span><span className="num">{o.version}</span></li>
             <li className="flex items-center justify-between gap-3"><span>Dernière migration</span><span className="num">{o.migration ? when(o.migration) : "aucune"}</span></li>
             <li className="flex items-center justify-between gap-3"><span>Fuseau des journées</span><code className="font-mono text-xs">{o.tz}</code></li>
           </ul>
           <p className="mt-3 text-xs text-muted">Le fuseau vient de <code className="font-mono">DAY_TZ</code> et n'est pas modifiable ici : le changer recouperait les journées déjà enregistrées. Un redémarrage est nécessaire après modification.</p>
-        </Card>
+        </Card>}
+        {tab === "diagnostic" && <>
         <FreshnessCard />
         <DiagnosticCard />
         <div className="min-w-0 lg:col-span-2"><JobsCard /></div>
-        <Card title="Rapport hebdomadaire">
+        </>}
+        {tab === "general" && <Card title="Rapport hebdomadaire">
           <p className="text-sm">Chaque lundi à 8 h, le point de la semaine par e-mail (module Notifications).</p>
           {go && <div className="mt-4"><Button variant="secondary" onClick={() => go({ view: "report" })}>Voir le rapport de la semaine</Button></div>}
-        </Card>
-        <Card title="Sécurité">
+        </Card>}
+        {tab === "securite" && <Card title="Sécurité">
           <TwoFactor onChanged={reload} />
           <ul className="mt-3 space-y-2 border-t border-rule pt-3 text-sm">
             <li className="flex items-center justify-between gap-3"><span>Essais de connexion limités</span><Pill tone="positive">5 par 15 min</Pill></li>
             <li className="flex items-center justify-between gap-3"><span>Rapport et alertes par e-mail</span>{o.mail ? <Pill tone="positive">Branché</Pill> : <Pill>Non branché</Pill>}</li>
           </ul>
-        </Card>
+        </Card>}
       </div>
     </>
   );

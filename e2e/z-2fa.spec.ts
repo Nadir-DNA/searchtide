@@ -10,7 +10,7 @@ test("CA 1.4 : activer la 2FA, se reconnecter avec un code de secours, puis la d
   await page.keyboard.press("Enter");
   await page.waitForLoadState("networkidle");
 
-  await page.goto("/?view=settings");
+  await page.goto("/?view=settings&tab=securite");
   await page.getByRole("button", { name: "Configurer" }).click();
   const secretLine = page.getByText(/Clé à saisir à la main/);
   await expect(secretLine).toBeVisible();
@@ -35,7 +35,7 @@ test("CA 1.4 : activer la 2FA, se reconnecter avec un code de secours, puis la d
   await expect(page.getByRole("navigation", { name: "Projets" })).toBeVisible();
 
   // Désactivation : mot de passe + code courant.
-  await page.goto("/?view=settings");
+  await page.goto("/?view=settings&tab=securite");
   await page.locator("summary", { hasText: "Désactiver" }).click();
   await page.getByLabel("Mot de passe pour désactiver").fill(PASSWORD);
   await page.getByLabel("Code pour désactiver").fill(disableCode);
