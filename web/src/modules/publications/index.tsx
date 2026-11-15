@@ -298,12 +298,13 @@ function PubSheet({ pub, onClose, onSaved }: { pub: Partial<Pub>; onClose: () =>
   );
 }
 
-type Account = { id: string; project: string; network: string; label: string; status: string; mode: string; web_url: string | null; publications: number };
+type Account = { id: string; project: string; network: string; label: string; status: string; mode: string; web_url: string | null; publications: number; connection_id?: string | null; browser_fallback?: number };
 
 /** Comptes de publication de la phase 1 (fournisseur factice) : aucun réseau réel n'est joint. */
 function AccountsCard() {
   const { ask, dialog } = useAsk();
   const { data, reload } = useData<Account[]>("/api/pub-accounts");
+  const { data: recipes } = useData<{ network: string; validated: string | null }[]>("/api/browser/recipes");
   const { data: mods } = useData<{ id: string; enabled: boolean }[]>("/api/modules");
   const queueOff = mods?.some((m) => m.id === "publications" && !m.enabled);
   const [error, setError] = useState("");
@@ -312,12 +313,22 @@ function AccountsCard() {
     try { await api("/api/pub-accounts", { method: "POST", json: Object.fromEntries(new FormData(e.currentTarget)) }); reload(); (e.currentTarget as HTMLFormElement).reset(); }
     catch (err) { setError((err as Error).message); }
   }
+  async function toggleFallback(a: Account) {
+    setError("");
+    if (!a.browser_fallback) {
+      const ok = await ask({ title: `Repli navigateur pour « ${a.label} » ?`, confirmLabel: "Activer",
+        message: "Si l'API ne peut pas publier (jeton refusé, quota), Searchtide publiera par le navigateur intégré avec votre session. La plupart des réseaux restreignent l'automatisation hors API : votre compte peut être limité. Enregistrez ensuite la session de ce compte dans « Connexions navigateur »." });
+      if (ok === null) return;
+    }
+    try { await api(`/api/pub-accounts/${a.id}`, { method: "PATCH", json: { browser_fallback: !a.browser_fallback } }); reload(); }
+    catch (err) { setError((err as Error).message); }
+  }
   async function remove(a: Account) {
     if ((await ask({ title: `Retirer le compte « ${a.label} » ?`, message: "Ses publications programmées seront annulées.", confirmLabel: "Retirer" })) === null) return;
     await api(`/api/pub-accounts/${a.id}`, { method: "DELETE" }); reload();
   }
   return (
-    <Card title="Comptes de publication" action={<span className="text-xs text-muted">Fournisseur factice — aucun réseau joint</span>}>
+    <Card title="Comptes de publication" action={<span className="text-xs text-muted">Comptes réels : connectez-les dans Connexions. Ici : comptes de test et comptes navigateur.</span>}>
       {dialog}
       <form onSubmit={add} className="mb-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_1fr_1.4fr_auto]">
         <input name="project" required aria-label="Projet du compte" placeholder="Projet (clé CRM)" className={inputCls} />
@@ -333,7 +344,10 @@ function AccountsCard() {
         { label: "Compte", render: (a) => a.label },
         { label: "Réseau", render: (a) => a.network },
         { label: "Projet", render: (a) => a.project },
-        { label: "Transport", render: (a) => a.mode === "web" ? "Navigateur" : "API factice" },
+        { label: "Transport", render: (a) => a.mode === "web" ? "Navigateur" : a.connection_id ? "API" : "API factice" },
+        { label: "Repli navigateur", render: (a) => a.mode === "web" || !recipes?.some((r) => r.network === a.network) ? <span className="text-muted">—</span> : (
+          <label className="flex items-center gap-2"><input type="checkbox" checked={!!a.browser_fallback} onChange={() => toggleFallback(a)} className="size-4 accent-[var(--color-accent)]" aria-label="Repli navigateur" />
+            <span className="text-xs text-muted">{a.browser_fallback ? "activé" : "désactivé"}</span></label>) },
         { label: "État", render: (a) => <Pill tone={a.status === "connected" ? "positive" : "negative"}>{a.status === "connected" ? "Connecté" : "À reconnecter"}</Pill> },
         { label: "", num: true, render: (a) => <button onClick={() => remove(a)} className="text-negative hover:underline">Retirer</button> },
       ]} />

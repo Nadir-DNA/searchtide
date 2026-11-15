@@ -7,6 +7,7 @@ import { Button, Card, inputCls } from "./ui";
 
 type Status = { open: boolean; viewers: number };
 type Fixtures = { enabled: boolean; port?: number; pages?: { path: string; url: string }[] };
+type Acc = { id: string; project: string; network: string; label: string; mode: string; browser_fallback?: number };
 
 export function BrowserView({ q }: { q: Record<string, string> }) {
   const { data: status, reload } = useData<Status>("/api/browser/status");
@@ -17,6 +18,10 @@ export function BrowserView({ q }: { q: Record<string, string> }) {
   const [frame, setFrame] = useState("");
   const [typing, setTyping] = useState("");
   const [busy, setBusy] = useState(false);
+  const { data: accounts } = useData<Acc[]>("/api/pub-accounts");
+  const eligible = (accounts ?? []).filter((a) => a.mode === "web" || a.browser_fallback);
+  const [target, setTarget] = useState("");
+  const [saved, setSaved] = useState("");
   const img = useRef<HTMLImageElement>(null);
   const events = useRef<number[]>([]);
 
@@ -41,8 +46,12 @@ export function BrowserView({ q }: { q: Record<string, string> }) {
     } catch (err) { setError((err as Error).message); } finally { setBusy(false); }
   }
   const start = (e: FormEvent<HTMLFormElement>) => { e.preventDefault(); void open(url); };
-  async function close() {
-    try { await api("/api/browser/live/close", { method: "POST", json: {} }); } catch { /* déjà fermée */ }
+  async function close(save?: Acc) {
+    setError("");
+    try {
+      const r = await api<{ saved: boolean }>("/api/browser/live/close", { method: "POST", json: save ? { save: true, account_id: save.id, project_id: save.project } : {} });
+      if (save) setSaved(r.saved ? `Session enregistrée pour ${save.label}` : "Session non enregistrée");
+    } catch (err) { setError((err as Error).message); return; }
     setTicket(""); setFrame(""); reload();
   }
   async function send(event: Record<string, unknown>) {
@@ -63,8 +72,23 @@ export function BrowserView({ q }: { q: Record<string, string> }) {
   return (
     <>
       <Header title="Connexions navigateur" sub="Connexion manuelle sur un site, dans Searchtide. Vous tapez vous-même vos identifiants et vos codes : Searchtide ne les stocke pas et ne résout aucune vérification.">
-        {ticket && <Button variant="secondary" onClick={close}>Fermer la vue</Button>}
+        {ticket && <Button variant="secondary" onClick={() => close()}>Fermer la vue</Button>}
       </Header>
+      {saved && <p role="status" className="mb-3 text-sm text-positive">{saved}</p>}
+      {ticket && (
+        <Card title="Garder cette session pour un compte">
+          {eligible.length ? (
+            <div className="flex flex-wrap items-end gap-3">
+              <label className="text-sm"><span className="mb-1.5 block text-muted">Compte de publication</span>
+                <select value={target} onChange={(e) => setTarget(e.target.value)} className={`${inputCls} w-auto`}>
+                  <option value="">— choisir —</option>{eligible.map((a) => <option key={a.id} value={a.id}>{a.label} ({a.network}{a.mode === "web" ? ", navigateur" : ", repli"})</option>)}
+                </select></label>
+              <Button disabled={!target} onClick={() => close(eligible.find((a) => a.id === target))}>Fermer et enregistrer la session</Button>
+            </div>
+          ) : <p className="text-sm text-muted">Aucun compte ne publie par le navigateur. Activez le « Repli navigateur » d'un compte dans Publications, ou créez un compte en mode Navigateur.</p>}
+          <p className="mt-2 text-xs text-muted">Connectez-vous d'abord vous-même dans la vue. La session est chiffrée dans le coffre de l'instance et sert uniquement aux publications de ce compte.</p>
+        </Card>
+      )}
       <div className="space-y-4">
         <Card title="Avertissement">
           <p className="text-sm text-muted">

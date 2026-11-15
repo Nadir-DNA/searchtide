@@ -9,7 +9,8 @@ import { isAdmin } from "../admin.ts";
 import { securityEvent } from "../security-events.ts";
 import { mediaFiles, mediaOf, publicMediaReady } from "./media.ts";
 import { publicationBinding, publishWithBrowser } from "../browser/runner.ts";
-import { revokeBrowserSession } from "../browser/live.ts";
+import { openBrowserSession, revokeBrowserSession } from "../browser/live.ts";
+import { FIXTURE_RECIPE, recipeFor, recipes, type Recipe } from "../browser/recipes.ts";
 import { fixturesEnabled } from "../browser/pool.ts";
 import { createApproval, decideApproval } from "../approvals.ts";
 import { definitive, providerFor, type PublishResult } from "./provider.ts";
@@ -24,6 +25,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS pub_accounts (
 )`);
 for (const sql of [
   "ALTER TABLE pub_accounts ADD COLUMN mode TEXT NOT NULL DEFAULT 'api'",
+  "ALTER TABLE pub_accounts ADD COLUMN browser_fallback INTEGER NOT NULL DEFAULT 0",
   "ALTER TABLE pub_accounts ADD COLUMN web_url TEXT",
   "ALTER TABLE pub_accounts ADD COLUMN fixture_port INTEGER",
   "ALTER TABLE publications ADD COLUMN approval_id TEXT",
@@ -213,24 +215,10 @@ async function runOne(p: Row, now: number): Promise<void> {
   if (account.mode === "web") {
     const approvalId = String(p.approval_id ?? "");
     if (!approvalId) { setState(p.id, "failed", { status: "idea" }); attempt(p.id, "failed", "approbation absente"); return; }
-    const r = await publishWithBrowser({
-      publication: { ...p, scheduled_at: p.scheduled_at },
-      account, approvalId, agentId: "administrateur",
-      baseUrl: String(account.web_url ?? ""), fixturePort: fixturesEnabled() ? Number(account.fixture_port) || 0 : 0,
-    });
-    if (r.state === "published") {
-      setState(p.id, "published", { status: "published", url: r.proof ?? null, evidence_url: r.proof ?? null, published_at: Date.now() });
-      attempt(p.id, "published", "publié (navigateur, preuve)", r.proof);
-    } else if (r.state === "action_required") {
-      setState(p.id, "needs_action", { status: "idea" });
-      attempt(p.id, "needs_action", r.message ?? "action requise");
-    } else if (r.state === "to_verify") {
-      setState(p.id, "to_verify", { status: "idea" });
-      attempt(p.id, "to_verify", r.message ?? "résultat incertain");
-    } else {
-      setState(p.id, "failed", { status: "idea" });
-      attempt(p.id, "failed", `${r.kind ?? "échec"} : ${r.message ?? ""}`);
-    }
+    const fixture = fixturesEnabled() && Number(account.fixture_port) > 0;
+    const recipe = fixture ? FIXTURE_RECIPE : recipeFor(String(account.network));
+    if (!recipe) { setState(p.id, "failed", { status: "idea" }); attempt(p.id, "failed", `format : pas de recette navigateur pour ${account.network}`); return; }
+    await runBrowser(p, account, recipe, approvalId, "navigateur");
     return;
   }
   const dayStart = Date.UTC(new Date(now).getUTCFullYear(), new Date(now).getUTCMonth(), new Date(now).getUTCDate());
@@ -242,12 +230,70 @@ async function runOne(p: Row, now: number): Promise<void> {
   }
   try {
     const r = await publishToNetwork(p, account);
+    // D12 : échec certain de l'API (rien n'est parti) et repli activé sur ce compte → le navigateur prend le relais.
+    const recipe = recipeFor(String(account.network));
+    if (shouldFallback(r, account, !!recipe, !!sessionOf(account.id))) {
+      attempt(p.id, "running", `API indisponible (${r.ok ? "" : r.message}) : repli par le navigateur intégré`);
+      await runBrowser(p, account, recipe!, autoApproval(p), "repli navigateur");
+      return;
+    }
     applyResult(p, r, account.connection_id ? providerFor(String(account.network))?.label ?? "réseau" : "factice");
   } catch (e) {
     // Après le geste final, ou en cas d'ambiguïté : jamais de nouvelle tentative aveugle.
     setState(p.id, "to_verify", { status: "idea" });
     attempt(p.id, "to_verify", `résultat incertain : ${(e as Error).message}`);
   }
+}
+
+/**
+ * Repli navigateur seulement quand l'API n'a rien pu envoyer (jeton refusé, quota, limite de débit), sur un compte
+ * où l'utilisateur l'a activé, avec une recette pour ce réseau et une session enregistrée. Un doute (« à vérifier »)
+ * ne repart jamais par le navigateur : la publication serait peut-être faite deux fois.
+ */
+export function shouldFallback(r: PublishResult, account: Row, hasRecipe: boolean, hasSession: boolean): boolean {
+  return !r.ok && ["auth", "quota", "rate"].includes(r.kind) && !!account.browser_fallback && hasRecipe && hasSession;
+}
+const sessionOf = (accountId: string) => { try { return openBrowserSession(accountId); } catch { return null; } };
+
+/** La programmation par l'administrateur vaut approbation (§16.1 point 4) : liée au contenu exact, à usage unique. */
+function autoApproval(p: Row): string {
+  const projectId = (db.prepare("SELECT id FROM projects WHERE id = ? OR crm_key = ?").get(String(p.project), String(p.project)) as { id: string } | undefined)?.id;
+  if (!projectId) throw new Error("Projet de la publication introuvable");
+  const approval = createApproval("administrateur", { action: "publication_publish", project_id: projectId, target_id: String(p.id), payload: publicationBinding(p) });
+  decideApproval(approval.id, "approved");
+  return approval.id;
+}
+
+async function runBrowser(p: Row, account: Row, recipe: Recipe, approvalId: string, source: string) {
+  const fixture = recipe === FIXTURE_RECIPE;
+  const r = await publishWithBrowser({
+    publication: { ...p, scheduled_at: p.scheduled_at }, account, approvalId, agentId: "administrateur", recipe,
+    baseUrl: String(account.web_url ?? ""), fixturePort: fixture ? Number(account.fixture_port) || 0 : 0,
+    storageState: fixture ? null : sessionOf(account.id),
+    mediaPaths: (mediaOf(String(p.id)) as { path: string }[]).map((m) => m.path),
+  });
+  if (r.state === "published") {
+    setState(p.id, "published", { status: "published", url: r.proof ?? null, evidence_url: r.proof ?? null, published_at: Date.now() });
+    attempt(p.id, "published", `publié (${source}, preuve)`, r.proof);
+  } else if (r.state === "action_required") {
+    setState(p.id, "needs_action", { status: "idea" });
+    attempt(p.id, "needs_action", `${source} : ${r.message ?? "action requise"}`);
+  } else if (r.state === "to_verify") {
+    setState(p.id, "to_verify", { status: "idea" });
+    attempt(p.id, "to_verify", `${source} : ${r.message ?? "résultat incertain"}`);
+  } else {
+    setState(p.id, "failed", { status: "idea" });
+    attempt(p.id, "failed", `${source} : ${r.kind ?? "échec"} : ${r.message ?? ""}`);
+  }
+}
+
+/** Activer le repli : seulement pour un réseau qui a une recette. */
+export function setBrowserFallback(accountId: string, on: boolean) {
+  const a = db.prepare("SELECT network FROM pub_accounts WHERE id = ?").get(accountId) as Row | undefined;
+  if (!a) throw new Error("Compte introuvable");
+  if (on && !recipeFor(String(a.network))) throw new Error(`Pas de recette navigateur pour ${a.network} : le repli n'est pas possible`);
+  db.prepare("UPDATE pub_accounts SET browser_fallback = ? WHERE id = ?").run(on ? 1 : 0, accountId);
+  return db.prepare("SELECT * FROM pub_accounts WHERE id = ?").get(accountId);
 }
 
 /** Résultat d'un envoi ou d'une relecture → état de la publication. */
@@ -388,6 +434,12 @@ export function registerPublishers(app: Hono) {
     const denied = admin(c); if (denied) return denied;
     try { return c.json(createAccount(await c.req.json().catch(() => ({}))), 201); } catch (e) { return c.json({ error: (e as Error).message }, 400); }
   });
+  app.patch("/api/pub-accounts/:id", async (c) => {
+    const denied = admin(c); if (denied) return denied;
+    const b = await c.req.json().catch(() => ({}));
+    try { return c.json(setBrowserFallback(c.req.param("id"), !!b.browser_fallback)); } catch (e) { return c.json({ error: (e as Error).message }, 400); }
+  });
+  app.get("/api/browser/recipes", (c) => admin(c) ?? c.json(recipes()));
   app.delete("/api/pub-accounts/:id", (c) => {
     const denied = admin(c); if (denied) return denied;
     return deleteAccount(c.req.param("id")) ? c.json({ ok: true }) : c.json({ error: "Compte introuvable" }, 404);
@@ -430,8 +482,8 @@ export const nowString = nowIso;
 
 /** B2-D4 : le compte existe, est un compte navigateur, et appartient bien au projet indiqué (id ou clé du projet). */
 export function accountBelongsToProject(accountId: string, projectId: string): boolean {
-  const a = db.prepare("SELECT project, mode FROM pub_accounts WHERE id = ?").get(accountId) as { project: string; mode: string } | undefined;
-  if (!a || a.mode !== "web") return false;
+  const a = db.prepare("SELECT project, mode, browser_fallback FROM pub_accounts WHERE id = ?").get(accountId) as { project: string; mode: string; browser_fallback: number } | undefined;
+  if (!a || (a.mode !== "web" && !a.browser_fallback)) return false;
   const p = db.prepare("SELECT id, crm_key FROM projects WHERE id = ? OR crm_key = ?").get(projectId, projectId) as { id: string; crm_key: string | null } | undefined;
   return !!p && (a.project === p.id || (!!p.crm_key && a.project === p.crm_key));
 }

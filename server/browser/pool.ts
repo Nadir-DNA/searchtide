@@ -70,11 +70,13 @@ async function withTimeout<T>(p: Promise<T>, ms: number, stop: () => Promise<voi
   try { return await Promise.race([p, limit]); } finally { clearTimeout(timer!); }
 }
 
-export type PageRun = { fixturePort: number; sandbox?: boolean; timeoutMs?: number; lookup?: (host: string) => Promise<string[]>; chromiumSandbox?: boolean };
+export type PageRun = { fixturePort: number; sandbox?: boolean; timeoutMs?: number; lookup?: (host: string) => Promise<string[]>; chromiumSandbox?: boolean;
+  /** Session scellée du compte (cookies, stockage), rechargée en mémoire seulement le temps de l'exécution. */
+  storageState?: Record<string, unknown> | null };
 
 /**
  * Ouvre une page de test dans un contexte neuf, exécute `fn`, ferme tout.
- * Aucune session n'est chargée ici (B1) : chaque exécution part sans cookie.
+ * Sans `storageState`, l'exécution part sans cookie ; avec, elle reprend la session enregistrée du compte (repli navigateur).
  */
 export async function withPage<T>(url: string, fn: (page: Page) => Promise<T>, o: PageRun): Promise<T> {
   const sandbox = o.sandbox ?? sandboxEnabled();
@@ -88,7 +90,7 @@ export async function withPage<T>(url: string, fn: (page: Page) => Promise<T>, o
       // Tout le trafic (boucle locale comprise) passe par le proxy filtrant : redirections, sous-ressources, DNS.
       browser = await chromium.launch({ headless: true, chromiumSandbox: o.chromiumSandbox ?? sandbox, executablePath: chromiumExecutable(), args: [...LAUNCH_ARGS],
         proxy: { server: `http://127.0.0.1:${proxy.port}`, bypass: "<-loopback>", username: proxy.auth.username, password: proxy.auth.password } });
-      const context = await browser.newContext({ acceptDownloads: false, serviceWorkers: "block", permissions: [] });
+      const context = await browser.newContext({ acceptDownloads: false, serviceWorkers: "block", permissions: [], ...(o.storageState ? { storageState: o.storageState as any } : {}) });
       // Chaque requête (y compris sous-ressource) repasse par le même contrôle d'hôte.
       await context.route("**/*", async (route) => {
         try { assertAllowedUrl(route.request().url(), { sandbox, fixturePort: o.fixturePort }); await route.continue(); }
