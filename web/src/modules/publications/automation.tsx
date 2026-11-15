@@ -7,7 +7,7 @@ import { Button, Card, copyText, inputCls, useAsk } from "../../ui";
 type Account = { id: string; label: string; network: string };
 type Feed = { id: string; url: string; accounts: string; mode: string; template: string; checked_at: number | null; error: string | null };
 type Hook = { id: string; url: string; events: string; last_status: number | null; last_error: string | null; last_at: number | null };
-const EVENTS: [string, string][] = [["published", "Publiée"], ["failed", "Échec"], ["to_verify", "À vérifier"], ["needs_action", "Action requise"]];
+const EVENTS: [string, string][] = [["published", "Publiée"], ["failed", "Échec"], ["to_verify", "À vérifier"], ["needs_action", "Action requise"], ["threshold", "Seuil atteint"]];
 
 export function AutomationCard() {
   const { ask, dialog } = useAsk();
@@ -94,6 +94,51 @@ export function AutomationCard() {
             </li>))}</ul>
         </section>
       </div>
+    </Card>
+  );
+}
+
+type Rule = { id: string; account_id: string; account_label: string; network: string; metric: string; threshold: number; action: string; text: string | null; delay_hours: number; enabled: number; created_by: string; fires: number };
+const METRIC: Record<string, string> = { likes: "j'aime", comments: "commentaires", shares: "partages", views: "vues", impressions: "impressions", engagement: "interactions (j'aime + commentaires + partages)" };
+const ACTION: Record<string, string> = { repost: "Republier", comment: "Ajouter un commentaire", webhook: "Prévenir par webhook", todo: "L'inscrire dans À traiter" };
+
+/** Actions sur seuil (plan D7) : quand un post atteint un chiffre, un geste sur ce post. Jamais de like ni d'abonnement automatique. */
+export function RulesCard() {
+  const { ask, dialog } = useAsk();
+  const { data: accounts } = useData<Account[]>("/api/pub-accounts");
+  const { data: rules, reload } = useData<Rule[]>("/api/pub-rules");
+  const [action, setAction] = useState("todo");
+  const [error, setError] = useState("");
+  async function add(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault(); setError("");
+    const f = Object.fromEntries(new FormData(e.currentTarget));
+    try { await api("/api/pub-rules", { method: "POST", json: { ...f, threshold: Number(f.threshold), delay_hours: Number(f.delay_hours) || 24 } }); (e.target as HTMLFormElement).reset(); setAction("todo"); reload(); }
+    catch (err) { setError((err as Error).message); }
+  }
+  const toggle = async (r: Rule) => { await api(`/api/pub-rules/${r.id}`, { method: "PATCH", json: { enabled: !r.enabled } }); reload(); };
+  const remove = async (r: Rule) => { if ((await ask({ title: "Supprimer cette règle ?", confirmLabel: "Supprimer" })) === null) return; await api(`/api/pub-rules/${r.id}`, { method: "DELETE" }); reload(); };
+  return (
+    <Card title="Actions sur seuil">
+      {dialog}
+      <p className="mb-3 text-sm text-muted">Quand un post atteint un chiffre (relevé une fois par jour), Searchtide fait un geste sur ce post. Une fois par post, seulement pour les posts parus après la création de la règle. Pas de like ni d'abonnement automatique : les réseaux les sanctionnent.</p>
+      {error && <p role="alert" className="mb-3 text-sm text-negative">{error}</p>}
+      <form onSubmit={add} className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[1.3fr_1fr_.7fr_1.2fr_auto]">
+        <select name="account_id" required aria-label="Compte" className={inputCls}><option value="">Compte…</option>{(accounts ?? []).map((a) => <option key={a.id} value={a.id}>{a.label} · {a.network}</option>)}</select>
+        <select name="metric" aria-label="Mesure" className={inputCls}>{Object.entries(METRIC).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
+        <input name="threshold" type="number" min={1} required placeholder="Seuil, ex. 100" aria-label="Seuil" className={inputCls} />
+        <select name="action" value={action} onChange={(e) => setAction(e.target.value)} aria-label="Action" className={inputCls}>{Object.entries(ACTION).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
+        <Button>Ajouter</Button>
+        {(action === "comment" || action === "repost") && <textarea name="text" rows={2} required={action === "comment"} aria-label="Texte" placeholder={action === "comment" ? "Texte du commentaire" : "Texte de la republication (vide = même texte ; obligatoire sur X)"} className={`${inputCls} h-auto py-2 sm:col-span-2 lg:col-span-4`} />}
+        {action === "repost" && <label className="flex items-center gap-2 text-sm text-muted">Délai <input name="delay_hours" type="number" min={1} defaultValue={24} className={`${inputCls} w-20`} /> h</label>}
+      </form>
+      <ul className="mt-4 divide-y divide-rule">{(rules ?? []).map((r) => (
+        <li key={r.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 text-sm">
+          <span aria-hidden className={`led ${r.enabled ? "led-ok" : "led-off"}`} />
+          <span className="min-w-0 flex-1">{r.account_label} · à <span className="num font-semibold">{r.threshold}</span> {METRIC[r.metric]?.split(" (")[0]} → {ACTION[r.action]?.toLowerCase()}{r.text ? ` « ${r.text.slice(0, 60)}${r.text.length > 60 ? "…" : ""} »` : ""}</span>
+          <span className="text-xs text-muted">{r.fires} déclenchement{r.fires > 1 ? "s" : ""}{r.created_by !== "administrateur" ? ` · proposée par ${r.created_by}` : ""}</span>
+          <button type="button" onClick={() => toggle(r)} className={`text-xs ${r.enabled ? "text-muted" : "font-semibold text-accent"} hover:underline`}>{r.enabled ? "Désactiver" : "Activer"}</button>
+          <button type="button" onClick={() => remove(r)} className="text-xs text-negative hover:underline">Supprimer</button>
+        </li>))}</ul>
     </Card>
   );
 }

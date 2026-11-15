@@ -120,7 +120,7 @@ export function bestSlots(o: { account?: string; network?: string } = {}) {
 }
 
 // ── D10 : webhooks sortants ──
-export const WEBHOOK_EVENTS = ["published", "failed", "to_verify", "needs_action"] as const;
+export const WEBHOOK_EVENTS = ["published", "failed", "to_verify", "needs_action", "threshold"] as const;
 
 export function addWebhook(input: { url?: string; events?: string[] }) {
   const url = String(input.url ?? "").trim();

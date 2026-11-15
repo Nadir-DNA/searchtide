@@ -152,8 +152,13 @@ function collectItems(now: Date): TodayItem[] {
       to: { view: "settings" },
     });
   }
+  for (const fn of extraSources) { try { items.push(...fn()); } catch (e) { console.error("[aujourd'hui]", (e as Error).message); } }
   return items;
 }
+
+/** Sources ajoutées par d'autres modules (règles de seuil, visibilité IA…), sans dépendance circulaire. */
+const extraSources: (() => TodayItem[])[] = [];
+export const addTodaySource = (fn: () => TodayItem[]) => { extraSources.push(fn); };
 
 const rank = (i: TodayItem) => i.tone === "bad" ? 0 : i.kind === "jalon" ? 1 : 2;
 
