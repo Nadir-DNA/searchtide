@@ -1,3 +1,4 @@
+import { checkPage, hostAllowed, pageUrlFor } from "./pagecheck.ts";
 import { keywordSuggestions, seoInsights, trackKeyword, trackedKeywords } from "./keywords.ts";
 import { McpServer, WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/server";
 import { z } from "zod";
@@ -69,7 +70,7 @@ const mapResult = (r: any, fn: (d: any) => any) => {
  * Lecture : la cible doit être dans la portée. Écriture : la cible doit être dans la portée en écriture.
  */
 const SCOPED_READ = new Set([
-  "list_sites", "traffic_stats", "search_stats", "seo_opportunities", "keywords_tracked", "seo_insights", "projects_kpis", "portfolio_overview", "alerts", "today",
+  "list_sites", "traffic_stats", "search_stats", "seo_opportunities", "keywords_tracked", "seo_insights", "page_check", "projects_kpis", "portfolio_overview", "alerts", "today",
   "milestones_list", "kpi_catalog", "crm_list_contacts", "crm_get_contact", "pubs_list", "modules_list", "dashboard_catalog", "dashboard_list", "dashboard_get",
 ]);
 const SCOPED_WRITE = new Set([
@@ -159,6 +160,18 @@ function analyticsTools(server: McpServer) {
   }, async ({ site: d, days }) => json(trafficStats(site(d).id, range(days))));
 }
 
+/** Vérificateur de page : lecture seule, domaine du site uniquement, sans Google. */
+function seoTools(server: McpServer) {
+  server.registerTool("page_check", {
+    description: "Vérifie une page d'un site suivi : réponse, titre, meta description, H1, canonical, noindex, langue, viewport, Open Graph, données structurées, images sans alt, liens, volume de texte, robots.txt et sitemap. Chaque point dit quoi corriger.",
+    inputSchema: z.object({ site: period.site, url: z.string().max(2000).default("/").describe("chemin (/tarifs) ou adresse complète sur le domaine du site") }),
+  }, async ({ site: d, url }) => {
+    const s = site(d), target = pageUrlFor(s.domain, url);
+    if (!hostAllowed(s.domain)(new URL(target).hostname)) throw new Error(`Adresse hors du site ${s.domain}`);
+    return json(await checkPage(target, hostAllowed(s.domain)));
+  });
+}
+
 function googleTools(server: McpServer, readOnly: boolean) {
   server.registerTool("search_stats", {
     description: "Données Google Search Console : clics, impressions, CTR, position moyenne, meilleurs mots-clés et pages.",
@@ -196,7 +209,7 @@ function googleTools(server: McpServer, readOnly: boolean) {
 
 /** Outils des modules livrés ; un module privé apporte les siens par Module.mcp. */
 const BUILTIN_TOOLS: Record<string, (server: McpServer, readOnly: boolean, agent: string) => void> = {
-  analytics: (s) => analyticsTools(s),
+  analytics: (s) => { analyticsTools(s); seoTools(s); },
   google: googleTools,
   rdv: (s, ro) => rdvTools(s, ro),
   crm: (s, ro) => registerBusinessTools(only(s, (n) => n.startsWith("crm_")), ro),

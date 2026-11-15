@@ -29,6 +29,7 @@ const SettingsView = lazy(() => import("./settings").then((m) => ({ default: m.S
 const ModulesView = lazy(() => import("./modules/ModulesView").then((m) => ({ default: m.ModulesView })));
 const SetupView = lazy(() => import("./modules/analytics").then((m) => ({ default: m.SetupView })));
 const TrafficView = lazy(() => import("./modules/analytics").then((m) => ({ default: m.TrafficView })));
+const SeoToolsView = lazy(() => import("./seotools").then((m) => ({ default: m.SeoToolsView })));
 const SearchView = lazy(() => import("./modules/google").then((m) => ({ default: m.SearchView })));
 import { Button, Card, Delta, EmptyBox, Icon, KpiCard, Mark, Segmented, ShareList, Skeleton, Svg, Table, fmt, inputCls, useAsk, downloadCsv } from "./ui";
 
@@ -521,15 +522,16 @@ function SiteView({ site, me, days, tab, go, onChange }: {
   site: Site; me: Me; days: number; tab: string; go: (n: Record<string, string | undefined>) => void; onChange: () => void;
 }) {
   // L'onglet Recherche n'existe que si le module Google est actif et connecté (la démonstration le montre toujours)
-  const tabs = [["traffic", "Trafic"], ...(me.gsc || me.demo ? [["search", "Recherche Google"] as const] : []), ["setup", "Installation"]] as const;
+  const tabs = [["traffic", "Trafic"], ...(me.gsc || me.demo ? [["search", "Recherche Google"] as const] : []), ["outils", "Outils SEO"], ["setup", "Installation"]] as const;
   return (
     <>
-      <Header title={site.domain} days={tab === "setup" ? undefined : days} go={go} demo={me.demo}
+      <Header title={site.domain} days={tab === "setup" || tab === "outils" ? undefined : days} go={go} demo={me.demo}
         sub={<a href={`https://${site.domain}`} target="_blank" rel="noreferrer" className="hover:text-ink">Ouvrir le site ↗</a>} />
       <div className="mb-5 -mt-1 overflow-x-auto">
         <Segmented label="Sections du site" value={tab as (typeof tabs)[number][0]} onChange={(v) => go({ tab: v === "traffic" ? undefined : v })} options={tabs} />
       </div>
-      {tab === "search" ? <SearchView site={site} me={me} days={days} onChange={onChange} onSetup={() => go({ tab: "setup" })} />
+      {tab === "outils" ? <SeoToolsView site={site} />
+        : tab === "search" ? <SearchView site={site} me={me} days={days} onChange={onChange} onSetup={() => go({ tab: "setup" })} />
         : tab === "setup" ? <SetupView site={site} me={me} onChange={onChange} go={go} />
         : <TrafficView site={site} days={days} onSetup={() => go({ tab: "setup" })} />}
     </>

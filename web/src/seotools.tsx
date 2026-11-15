@@ -1,0 +1,164 @@
+// Outils SEO d'un site (plan A2 et A3) : vérificateur de page, générateur de robots.txt, générateur de données structurées.
+import { useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { api, type Site } from "./api";
+import { Button, Card, copyText, inputCls } from "./ui";
+
+type Check = { id: string; label: string; status: "ok" | "warn" | "bad" | "info"; value: string; advice?: string };
+type Result = { url: string; score: { ok: number; warn: number; bad: number }; checks: Check[] };
+
+const STATUS = {
+  bad: { text: "À corriger", led: "led-bad", cls: "text-negative" },
+  warn: { text: "À améliorer", led: "led-warn", cls: "text-warn" },
+  ok: { text: "Bon", led: "led-ok", cls: "text-positive" },
+  info: { text: "Info", led: "led-off", cls: "text-muted" },
+} as const;
+const ORDER = { bad: 0, warn: 1, info: 2, ok: 3 } as const;
+
+function CopyBlock({ text, label }: { text: string; label: string }) {
+  const [state, setState] = useState<"" | "ok" | "err">("");
+  return (
+    <div className="mt-4">
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <span className="label-caps">{label}</span>
+        <span className="flex items-center gap-3">
+          {state && <span role="status" className={`text-xs ${state === "ok" ? "text-positive" : "text-negative"}`}>{state === "ok" ? "Copié" : "Copie impossible : sélectionnez le texte"}</span>}
+          <Button type="button" variant="secondary" onClick={async () => setState((await copyText(text)) ? "ok" : "err")}>Copier</Button>
+        </span>
+      </div>
+      <pre className="max-h-80 overflow-auto rounded-xl border border-border bg-raised p-4 font-mono text-xs leading-5 whitespace-pre-wrap">{text}</pre>
+    </div>
+  );
+}
+
+const Field = ({ label, children }: { label: string; children: ReactNode }) => <label className="block text-sm"><span className="mb-1.5 block text-muted">{label}</span>{children}</label>;
+
+export function PageChecker({ site }: { site: Site }) {
+  const [path, setPath] = useState("/");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [result, setResult] = useState<Result | null>(null);
+  async function run(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true); setError(""); setResult(null);
+    try { setResult(await api<Result>(`/api/sites/${site.id}/page-check?url=${encodeURIComponent(path)}`)); }
+    catch (err) { setError((err as Error).message); }
+    setBusy(false);
+  }
+  const checks = useMemo(() => [...(result?.checks ?? [])].sort((a, b) => ORDER[a.status] - ORDER[b.status]), [result]);
+  return (
+    <Card title="Vérifier une page">
+      <form onSubmit={run} className="flex flex-wrap items-end gap-3">
+        <label className="min-w-0 flex-[1_1_280px] text-sm"><span className="mb-1.5 block text-muted">Adresse sur {site.domain}</span>
+          <span className="flex items-center rounded-lg border border-control bg-raised pl-3 text-sm"><span className="shrink-0 text-muted">https://{site.domain}</span>
+            <input value={path} onChange={(e) => setPath(e.target.value)} aria-label="Chemin de la page" className="h-10 min-w-0 flex-1 bg-transparent px-1 text-ink outline-none" placeholder="/tarifs" /></span>
+        </label>
+        <Button disabled={busy}>{busy ? "Vérification…" : "Vérifier"}</Button>
+      </form>
+      <p className="mt-2 text-xs text-muted">La page, son robots.txt et le sitemap sont lus depuis votre instance, comme le ferait un robot. Seules les adresses de ce site sont acceptées.</p>
+      {error && <p role="alert" className="mt-4 text-sm text-negative">{error}</p>}
+      {result && (
+        <div className="mt-5">
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2" aria-live="polite">
+            <span className="text-sm text-muted">{result.url}</span>
+            <span className="num text-sm"><span className="text-negative">{result.score.bad} à corriger</span> · <span className="text-warn">{result.score.warn} à améliorer</span> · <span className="text-positive">{result.score.ok} bons</span></span>
+          </div>
+          <ul className="mt-3 divide-y divide-rule">
+            {checks.map((c) => (
+              <li key={c.id} className="grid gap-x-4 gap-y-1 py-3 sm:grid-cols-[minmax(0,14rem)_minmax(0,1fr)]">
+                <div className="flex items-start gap-2.5"><span aria-hidden className={`led mt-1.5 ${STATUS[c.status].led}`} />
+                  <div><div className="font-medium">{c.label}</div><div className={`text-xs font-semibold ${STATUS[c.status].cls}`}>{STATUS[c.status].text}</div></div></div>
+                <div className="min-w-0 text-sm"><div className="break-words">{c.value}</div>{c.advice && <div className="mt-0.5 text-muted">{c.advice}</div>}</div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+const AI_BOTS = ["GPTBot", "ClaudeBot", "CCBot", "Google-Extended"];
+
+export function RobotsGenerator({ domain }: { domain: string }) {
+  const [sitemap, setSitemap] = useState(`https://${domain}/sitemap.xml`);
+  const [blocked, setBlocked] = useState("/admin/\n/panier/");
+  const [noAi, setNoAi] = useState(false);
+  const text = [
+    "User-agent: *",
+    ...blocked.split("\n").map((l) => l.trim()).filter(Boolean).map((p) => `Disallow: ${p.startsWith("/") ? p : "/" + p}`),
+    ...(blocked.trim() ? [] : ["Disallow:"]),
+    ...(noAi ? AI_BOTS.flatMap((b) => ["", `User-agent: ${b}`, "Disallow: /"]) : []),
+    ...(sitemap.trim() ? ["", `Sitemap: ${sitemap.trim()}`] : []),
+  ].join("\n");
+  return (
+    <Card title="Générer un robots.txt">
+      <div className="grid gap-4 md:grid-cols-2">
+        <Field label="Adresse du sitemap"><input value={sitemap} onChange={(e) => setSitemap(e.target.value)} className={inputCls} /></Field>
+        <Field label="Chemins à ne pas explorer (un par ligne)"><textarea value={blocked} onChange={(e) => setBlocked(e.target.value)} rows={3} className={`${inputCls} h-auto py-2`} /></Field>
+      </div>
+      <label className="mt-4 flex items-start gap-2.5 text-sm"><input type="checkbox" checked={noAi} onChange={(e) => setNoAi(e.target.checked)} className="mt-0.5 size-4 accent-[var(--color-accent)]" />
+        <span>Bloquer les robots d'entraînement des IA ({AI_BOTS.join(", ")})<span className="block text-xs text-muted">Votre contenu ne servira plus à les entraîner, mais vous pouvez aussi perdre en présence dans leurs réponses.</span></span></label>
+      <CopyBlock text={text} label={`À publier sur https://${domain}/robots.txt`} />
+    </Card>
+  );
+}
+
+type SchemaType = "Organization" | "LocalBusiness" | "Product" | "Article" | "FAQPage";
+const SCHEMA_FIELDS: Record<SchemaType, [string, string][]> = {
+  Organization: [["name", "Nom"], ["url", "Site"], ["logo", "Adresse du logo"], ["sameAs", "Profils (un par ligne)"]],
+  LocalBusiness: [["name", "Nom"], ["url", "Site"], ["telephone", "Téléphone"], ["streetAddress", "Adresse"], ["postalCode", "Code postal"], ["addressLocality", "Ville"], ["openingHours", "Horaires (ex. Mo-Fr 09:00-18:00)"]],
+  Product: [["name", "Nom"], ["description", "Description"], ["image", "Adresse de l'image"], ["brand", "Marque"], ["price", "Prix"]],
+  Article: [["headline", "Titre"], ["author", "Auteur"], ["datePublished", "Date de publication (AAAA-MM-JJ)"], ["image", "Adresse de l'image"]],
+  FAQPage: [["faq", "Questions et réponses : une par ligne, « Question ? | Réponse »"]],
+};
+const LABELS: Record<SchemaType, string> = { Organization: "Organisation", LocalBusiness: "Entreprise locale", Product: "Produit", Article: "Article", FAQPage: "FAQ" };
+
+export function buildSchema(type: SchemaType, v: Record<string, string>, domain: string): object {
+  const s = (k: string) => (v[k] ?? "").trim() || undefined;
+  const base = { "@context": "https://schema.org", "@type": type };
+  if (type === "Organization") return { ...base, name: s("name"), url: s("url") ?? `https://${domain}`, logo: s("logo"), sameAs: s("sameAs")?.split("\n").map((x) => x.trim()).filter(Boolean) };
+  if (type === "LocalBusiness") return { ...base, name: s("name"), url: s("url") ?? `https://${domain}`, telephone: s("telephone"), openingHours: s("openingHours"),
+    address: { "@type": "PostalAddress", streetAddress: s("streetAddress"), postalCode: s("postalCode"), addressLocality: s("addressLocality"), addressCountry: "FR" } };
+  if (type === "Product") return { ...base, name: s("name"), description: s("description"), image: s("image"), brand: s("brand") ? { "@type": "Brand", name: s("brand") } : undefined,
+    offers: s("price") ? { "@type": "Offer", price: s("price")!.replace(",", "."), priceCurrency: "EUR", availability: "https://schema.org/InStock" } : undefined };
+  if (type === "Article") return { ...base, headline: s("headline"), author: s("author") ? { "@type": "Person", name: s("author") } : undefined, datePublished: s("datePublished"), image: s("image") };
+  return { ...base, mainEntity: (v.faq ?? "").split("\n").map((l) => l.split("|")).filter((p) => p.length >= 2 && p[0].trim())
+    .map(([q, ...a]) => ({ "@type": "Question", name: q.trim(), acceptedAnswer: { "@type": "Answer", text: a.join("|").trim() } })) };
+}
+
+export function SchemaGenerator({ domain }: { domain: string }) {
+  const [type, setType] = useState<SchemaType>("Organization");
+  const [values, setValues] = useState<Record<string, string>>({});
+  const json = JSON.stringify(buildSchema(type, values, domain), null, 2);
+  return (
+    <Card title="Générer des données structurées">
+      <Field label="Type de page">
+        <select value={type} onChange={(e) => setType(e.target.value as SchemaType)} className={inputCls}>
+          {(Object.keys(LABELS) as SchemaType[]).map((t) => <option key={t} value={t}>{LABELS[t]}</option>)}
+        </select>
+      </Field>
+      <div className="mt-4 grid gap-4 md:grid-cols-2">
+        {SCHEMA_FIELDS[type].map(([k, label]) => (
+          <Field key={k} label={label}>
+            {k === "sameAs" || k === "faq" || k === "description"
+              ? <textarea value={values[k] ?? ""} onChange={(e) => setValues({ ...values, [k]: e.target.value })} rows={3} className={`${inputCls} h-auto py-2`} />
+              : <input value={values[k] ?? ""} onChange={(e) => setValues({ ...values, [k]: e.target.value })} className={inputCls} />}
+          </Field>
+        ))}
+      </div>
+      <CopyBlock text={`<script type="application/ld+json">\n${json}\n</script>`} label="À coller dans le <head> de la page" />
+    </Card>
+  );
+}
+
+export function SeoToolsView({ site }: { site: Site }) {
+  return (
+    <div className="space-y-4">
+      <PageChecker site={site} />
+      <div className="grid gap-4 xl:grid-cols-2">
+        <RobotsGenerator domain={site.domain} />
+        <SchemaGenerator domain={site.domain} />
+      </div>
+    </div>
+  );
+}

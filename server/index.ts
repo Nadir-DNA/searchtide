@@ -15,6 +15,7 @@ import { bumpEpoch, sessionValue, validSession } from "./sessions.ts";
 import { missing2faWarning } from "./twofa-warning.ts";
 import { lastDays, overview, searchStats, strikingDistance, trafficStats, type Range } from "./stats.ts";
 import { registerKeywords } from "./keywords.ts";
+import { registerPageCheck } from "./pagecheck.ts";
 import { convertGoogleEnv, gscConfigured, listProperties, setSiteGscProperty, syncAll, syncSite } from "./gsc.ts";
 import { handleMcp, mcpAccess } from "./mcp.ts";
 import { registerBusiness } from "./business.ts";
@@ -494,6 +495,7 @@ app.get("/api/sites/:id/search", (c) => {
   return c.json({ ...searchStats(s.id, r), opportunities: strikingDistance(s.id, r) });
 });
 registerKeywords(app, getSite, rangeOf);
+registerPageCheck(app, getSite);
 app.post("/api/sites/:id/sync", async (c) => {
   const s = getSite(c.req.param("id"));
   if (!s) return c.json({ error: "Site introuvable" }, 404);
