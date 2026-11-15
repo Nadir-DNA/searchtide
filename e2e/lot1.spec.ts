@@ -22,9 +22,13 @@ test("CA 1.3 : /api/sites en 500 affiche un message et « Réessayer » recharge
 
 test("CA E1 : « Aller au contenu » au premier Tab, Entrée place le focus sur main", async ({ page }) => {
   await login(page);
-  // Point de départ du focus clavier remis sur le document (pas sur un champ de l'onboarding
-  // ni sur le lien d'évitement lui-même).
-  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  // Point de départ du focus clavier remis sur le document : `blur()` seul ne déplace pas le point de départ
+  // de la navigation séquentielle quand un champ de l'onboarding a le focus automatique.
+  await page.evaluate(() => {
+    document.body.setAttribute("tabindex", "-1");
+    document.body.focus();
+    document.body.removeAttribute("tabindex");
+  });
   await page.keyboard.press("Tab");
   const skip = page.getByRole("link", { name: "Aller au contenu" });
   await expect(skip).toBeFocused();

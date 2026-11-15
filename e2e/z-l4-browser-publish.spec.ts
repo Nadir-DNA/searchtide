@@ -21,15 +21,18 @@ test("B3 : compte navigateur, publication immédiate, preuve lue sur la page de 
     await page.goto("/?view=pubs");
     await page.getByRole("button", { name: "Nouvelle publication" }).click();
     const dialog = page.getByRole("dialog");
-    await dialog.getByLabel("Titre *").fill("Publication navigateur");
-    await dialog.getByLabel("Projet", { exact: true }).selectOption(key);
-    await dialog.getByLabel("Réseau").fill("x");
-    await dialog.getByLabel(/^Texte/).fill("Bonjour depuis le navigateur");
-    await dialog.getByLabel("Compte de publication").selectOption({ label: "Compte navigateur (x)" });
-    await dialog.getByRole("button", { name: "Créer le brouillon" }).click();
+    await dialog.getByLabel("Titre (pour vous) *").fill("Publication navigateur");
+    await dialog.getByRole("combobox", { name: "Projet", exact: true }).selectOption(key);
+    await dialog.getByRole("checkbox", { name: /Compte navigateur/ }).check();
+    await dialog.getByLabel(/^Texte pour Compte navigateur/).fill("Bonjour depuis le navigateur");
+    await dialog.getByRole("button", { name: "Maintenant", exact: true }).click();
     await dialog.getByRole("button", { name: "Publier maintenant" }).click();
-    await expect(dialog.getByText("● Publié")).toBeVisible({ timeout: 20_000 });
-    await expect(dialog.getByRole("link", { name: "Voir la preuve" })).toHaveAttribute("href", "https://exemple.test/posts/1");
+    await expect(dialog).toBeHidden({ timeout: 20_000 });
+    await page.getByRole("button", { name: /Publication navigateur/ }).first().click();
+    const suivi = page.getByRole("dialog");
+    await suivi.getByText("Suivi", { exact: true }).click();
+    await expect(suivi.getByText("● Publiée")).toBeVisible({ timeout: 20_000 });
+    await expect(suivi.getByRole("link", { name: "Voir la preuve" })).toHaveAttribute("href", "https://exemple.test/posts/1");
 
     // Le projet témoin et le compte restent cohérents.
     expect((await (await page.request.get(`/api/projects/${project.id}`)).json()).id).toBe(project.id);
