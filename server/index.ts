@@ -29,6 +29,7 @@ import { registerBriefs } from "./briefs.ts";
 import { registerCompetitors } from "./competitors.ts";
 import { registerVisibility } from "./visibility.ts";
 import { registerClientReport } from "./client-report.ts";
+import { registerGbpInsights } from "./gbp-insights.ts";
 import { loginMember, logoutMember, memberFromCookie, registerTeam } from "./team.ts";
 import { convertGoogleEnv, gscConfigured, listProperties, setSiteGscProperty, syncAll, syncSite } from "./gsc.ts";
 import { handleMcp, mcpAccess } from "./mcp.ts";
@@ -224,7 +225,7 @@ app.post("/api/logout", async (c) => {
 
 // SEC-06 : les clés lisent en REST une liste blanche ; ces routes sont réservées à l'administrateur.
 const READ_PREFIXES = ["/api/freshness", "/api/me", "/api/overview", "/api/sites", "/api/projects", "/api/indicators", "/api/portfolio", "/api/today", "/api/milestones", "/api/annotations", "/api/dashboards", "/api/jobs"];
-const ADMIN_PREFIXES = ["/api/team", "/api/report-brand", "/api/report-shares", "/api/ops", "/api/agents", "/api/connections", "/api/contacts", "/api/business", "/api/outreach", "/api/rdv", "/api/publications", "/api/pub-accounts", "/api/media", "/api/modules", "/api/diagnostic", "/api/2fa", "/api/browser"];
+const ADMIN_PREFIXES = ["/api/gbp", "/api/team", "/api/report-brand", "/api/report-shares", "/api/ops", "/api/agents", "/api/connections", "/api/contacts", "/api/business", "/api/outreach", "/api/rdv", "/api/publications", "/api/pub-accounts", "/api/media", "/api/modules", "/api/diagnostic", "/api/2fa", "/api/browser"];
 const under = (path: string, prefix: string) => path === prefix || path.startsWith(prefix + "/");
 const isAdminOnlyPath = (path: string) => ADMIN_PREFIXES.some((p) => under(path, p)) || /^\/api\/sites\/[^/]+\/(purge|events\/count)$/.test(path);
 const isReadPath = (path: string) => READ_PREFIXES.some((p) => under(path, p));
@@ -568,6 +569,7 @@ registerAssistant(app);
 registerVisibility(app);
 registerTeam(app);
 registerClientReport(app);
+registerGbpInsights(app);
 registerPublishers(app);
 registerMedia(app);
 registerReport(app);

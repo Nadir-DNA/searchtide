@@ -12,6 +12,7 @@ import { auditReport } from "./audit.ts";
 import { indexingStatus } from "./indexing.ts";
 import { socialStats } from "./publishers/stats.ts";
 import { visibilityReport } from "./visibility.ts";
+import { locationsReport } from "./gbp-insights.ts";
 
 type Row = Record<string, any>;
 
@@ -64,6 +65,7 @@ export function projectReport(projectId: string, days = 28) {
       };
     }),
     social: socialStats({ project: projectId, days: Math.min(days, 90) }).accounts.filter((a) => a.followers != null).map((a) => ({ label: a.label, network: a.network, followers: a.followers, before: a.followersBefore })),
+    local: locationsReport({ project: String(p.id), days: Math.min(Math.max(days, 7), 90) }).filter((l) => l.rating != null || l.actions).map((l) => ({ label: l.label, rating: l.rating, total: l.total, actions: l.actions, previous: l.previous })),
     visibility: visibilityReport(String(p.id)).models.filter((m) => m.last).map((m) => ({ label: m.label, share: m.last!.share, week: m.last!.week })),
   };
 }
@@ -118,6 +120,7 @@ td .d{display:inline}.muted{color:var(--muted);font-weight:400;font-size:13px}.i
 <div class="muted">Du ${dfr(data.range.from)} au ${dfr(data.range.to)}, comparé à la période précédente</div></div></header>
 ${section("Indicateurs du projet", data.indicators.length ? `<div class="grid">${data.indicators.map((i) => kpi(i.label, `${nf(i.value, 2)}${i.unit ? ` <small>${esc(i.unit)}</small>` : ""}`, delta(i.value, i.previous))).join("")}</div>` : "")}
 ${sites}
+${section("Fiche Google", data.local.length ? data.local.map((l) => `<h3>${esc(l.label)}</h3><div class="grid">${kpi("Note", l.rating == null ? "—" : `${nf(l.rating, 1)} / 5`, `<span class="d">${nf(l.total)} avis</span>`)}${kpi("Vues de la fiche", nf(l.actions?.views), delta(l.actions?.views, l.previous?.views))}${kpi("Appels", nf(l.actions?.calls), delta(l.actions?.calls, l.previous?.calls))}${kpi("Itinéraires", nf(l.actions?.directions), delta(l.actions?.directions, l.previous?.directions))}${kpi("Clics vers le site", nf(l.actions?.website), delta(l.actions?.website, l.previous?.website))}</div>`).join("") : "")}
 ${section("Réseaux sociaux", data.social.length ? `<table><thead><tr><th>Compte</th><th>Abonnés</th><th>Évolution</th></tr></thead><tbody>${data.social.map((a) => `<tr><td>${esc(a.label)} <span class="muted">· ${esc(a.network)}</span></td><td>${nf(a.followers)}</td><td>${delta(a.followers, a.before) || "—"}</td></tr>`).join("")}</tbody></table>` : "")}
 ${section("Visibilité dans les IA", data.visibility.length ? `<div class="grid">${data.visibility.map((v) => kpi(v.label, `${nf(v.share)} %`, `<span class="d">des réponses vous citent (semaine ${esc(v.week.slice(-3))})</span>`)).join("")}</div><p class="muted">Tendance indicative : les réponses des IA varient d'une fois à l'autre.</p>` : "")}
 <footer>${esc(b.footer)}${b.footer ? " · " : ""}Rapport généré le ${new Date(data.generatedAt).toLocaleDateString("fr-FR")}</footer>

@@ -6,6 +6,7 @@ import { Button, Card, EmptyBox, Pill, Segmented, Table, fmt, inputCls, copyText
 import { ATTEMPT_LABEL, PUB_CHIP, PUB_STATE } from "../shared";
 import { MultiComposer } from "./composer";
 import { SocialStatsCard } from "./stats";
+import { GbpCard } from "./gbp";
 import { AutomationCard, RulesCard } from "./automation";
 import { type Contact, type Pub, type Summary, type Go, STAGES, type Stage, stageName, KINDS, PUB_STATUS, NETWORKS, NET_LIMIT, NET_NAME, filterCls, eur, today, dateFr, Sheet, Field } from "../shared";
 
@@ -93,6 +94,7 @@ export function PubsView({ q, go }: { q: Record<string, string>; go: Go }) {
           </Card>
           <p className="mt-3 hidden text-xs text-muted md:block">Double-cliquez sur un jour pour y ajouter une publication.</p>
           <div className="mt-4"><SocialStatsCard project={q.project} /></div>
+          <div className="mt-4"><GbpCard project={q.project} /></div>
           <div className="mt-4"><AccountsCard /></div>
           <div className="mt-4"><AutomationCard /></div>
           <div className="mt-4"><RulesCard /></div>
