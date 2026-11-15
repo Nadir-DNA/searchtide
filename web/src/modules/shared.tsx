@@ -13,14 +13,14 @@ export type Contact = {
 export type Pub = { id: string; day: string; title: string; project: string | null; network: string | null; status: "idea" | "scheduled" | "published"; url: string | null; notes: string | null; campaign?: string | null; visits?: number;
   text?: string | null; account_id?: string | null; state?: string | null; scheduled_at?: number | null; evidence_url?: string | null; visible?: string | null; published_at?: number | null };
 export const PUB_STATE: Record<string, [string, string]> = {
-  draft: ["Brouillon", "text-muted"], scheduled: ["Programmé", "text-ink"], running: ["En cours", "text-ink"],
+  draft: ["Brouillon", "text-muted"], scheduled: ["Programmée", "text-ink"], running: ["En cours", "text-ink"],
   processing: ["En traitement", "text-ink"],
-  published: ["Publié", "text-positive"], failed: ["Échec", "text-negative"], needs_action: ["Action requise", "text-negative"],
-  to_verify: ["À vérifier", "text-negative"], missed: ["Manqué", "text-negative"], cancelled: ["Annulé", "text-muted"],
+  published: ["Publiée", "text-positive"], failed: ["Échec", "text-negative"], needs_action: ["Action requise", "text-negative"],
+  to_verify: ["À vérifier", "text-negative"], missed: ["Manquée", "text-negative"], cancelled: ["Annulée", "text-muted"],
 };
 /** Libellés des tentatives (journal de la file) : jamais d'état brut affiché. */
 export const ATTEMPT_LABEL: Record<string, string> = {
-  scheduled: "Programmé", running: "En cours", processing: "En traitement", published: "Publié", failed: "Échec", needs_action: "Action requise", to_verify: "À vérifier", missed: "Manqué", cancelled: "Annulé", draft: "Brouillon",
+  scheduled: "Programmée", running: "En cours", processing: "En traitement", published: "Publiée", failed: "Échec", needs_action: "Action requise", to_verify: "À vérifier", missed: "Manquée", cancelled: "Annulée", draft: "Brouillon",
   followup: "Suite (fil ou commentaire)", refused: "Refusé par le réseau", rate: "Limite de débit", quota: "Quota atteint", network: "Erreur réseau", format: "Format invalide", unknown: "Résultat inconnu", auth: "Authentification",
 };
 /** Pastille du calendrier : selon l'état réel (state), avec la couleur qui va avec. */
@@ -49,6 +49,10 @@ export const filterCls = inputCls.replace("h-10 w-full", "h-9");
 export const eur = (n: number | null | undefined) => n == null ? "—" : `${fmt(n)} €`;
 export const today = () => new Date().toISOString().slice(0, 10);
 export const dateFr = (d: string, o: Intl.DateTimeFormatOptions = { day: "numeric", month: "short" }) => new Date(d + "T00:00:00Z").toLocaleDateString("fr-FR", { ...o, timeZone: "UTC" });
+/** Projet tel que rendu par /api/projects : l'identifiant est la référence, la clé CRM n'est qu'une compatibilité. */
+export type ProjectRef = { id: string; name: string; crm_key: string | null; color?: string | null };
+export const projectKey = (p: ProjectRef) => p.crm_key ?? p.id;
+export const keysOf = (p: ProjectRef) => [p.id, p.crm_key].filter(Boolean) as string[];
 
 export function Sheet({ title, onClose, children, wide }: { title: string; onClose: () => void; children: ReactNode; wide?: boolean }) {
   useEffect(() => { const f = (e: KeyboardEvent) => e.key === "Escape" && onClose(); addEventListener("keydown", f); return () => removeEventListener("keydown", f); }, [onClose]);
