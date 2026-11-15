@@ -3,7 +3,8 @@
 import { useState, type FormEvent } from "react";
 import { api } from "./api";
 import { Header, useData } from "./App";
-import { Button, Card, Pill, Table, inputCls, copyText, useAsk } from "./ui";
+import { Button, Card, Pill, Segmented, Table, inputCls, copyText, useAsk } from "./ui";
+import { ApprovalsView } from "./approvals";
 
 type Scope = { project_id: string; name: string; mode: "read" | "write" };
 type Key = { id: string; name: string; read_only: number; all_projects: number; created_at: number; last_used: number | null; scopes: Scope[] };
@@ -23,7 +24,7 @@ export function setupFor(agent: string, url: string, key: string) {
   return { where: "Tout client MCP « Streamable HTTP » : URL et en-tête Authorization", code: `URL : ${url}\nEn-tête : Authorization: Bearer ${key}\n\n${JSON.stringify({ mcpServers: { [id]: { type: "http", url, headers: { Authorization: `Bearer ${key}` } } } }, null, 2)}` };
 }
 
-export function AgentsView() {
+export function AgentsView({ tab = "cles", go }: { tab?: string; go?: (n: Record<string, string | undefined>) => void }) {
   const { ask, dialog } = useAsk();
   const { data: keys, reload } = useData<Key[]>("/api/agents");
   const { data: projects } = useData<ProjectLite[]>("/api/projects");
@@ -42,7 +43,10 @@ export function AgentsView() {
     <>
       {dialog}
       <Header title="Agents IA" sub="Chaque agent a sa clé, avec une portée explicite par projet. Lecture seule par défaut : il peut proposer une modification, pas l'exécuter." />
-      <div className="space-y-4">
+      <div className="mb-5 -mt-1 overflow-x-auto">
+        <Segmented label="Sections des agents" value={tab} onChange={(v) => go?.({ tab: v === "cles" ? undefined : v })} options={[["cles", "Clés et journal"], ["approbations", "Approbations"]] as const} />
+      </div>
+      {tab === "approbations" ? <ApprovalsView /> : <div className="space-y-4">
         <div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
           <Card title="Clés des agents">
             <Table rows={keys ?? []} empty="Aucune clé pour l'instant : créez-en une par agent." cols={[
@@ -87,7 +91,7 @@ export function AgentsView() {
         <p className="text-xs text-muted">
           Limite connue : un jeton placé dans un segment de chemin d'URL (ex. /api/<span className="font-mono">jeton</span>/stats) n'est pas détectable. Utilisez une connexion API JSON pour ce cas.
         </p>
-      </div>
+      </div>}
     </>
   );
 }

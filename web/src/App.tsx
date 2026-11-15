@@ -325,14 +325,14 @@ function Shell({ me, onLogout }: { me: Me; onLogout: () => void }) {
           : q.view === "pubs" ? <PubsView q={q} go={go} />
           : q.view === "rdv" ? <RdvView q={q} go={go} />
           : q.view === "settings" ? <SettingsView go={go} tab={q.tab ?? "general"} />
-          : q.view === "agents" ? <AgentsView />
+          : q.view === "agents" ? <AgentsView tab={q.tab ?? "cles"} go={go} />
           : q.view === "approvals" ? <ApprovalsView />
           : q.view === "browser" ? <BrowserView q={q} />
           : q.view === "integrations" || q.view === "modules" || q.view === "connections" ? (
             <><ModulesView open={q.open} go={go} /><div className="mt-10"><ConnectionsView embedded /></div></>
           )
           : q.view === "start" ? <Onboarding go={go} />
-          : q.view === "today" ? <TodayView go={go} />
+          : q.view === "today" ? <TodayView go={go} q={q} />
           : q.view === "reports" || q.view === "projects" || q.view === "portfolio" ? <ReportsView tab={q.view === "reports" ? q.tab ?? "portefeuille" : "portefeuille"} days={days} go={go} />
           : q.view === "report" ? <ReportsView tab="semaine" days={days} go={go} />
           : q.view === "project" && q.id ? <ProjectView key={q.id} id={q.id} days={days} go={go} tab={q.tab ?? "vue"} sub={q.sub} domain={q.site} install={q.install} me={me} onPinned={loadProjects} />

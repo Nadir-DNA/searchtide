@@ -172,6 +172,8 @@ export function today(now = new Date()): TodayItem[] {
     return !!s && (s.state === "ignored" || (s.state === "snoozed" && s.until > day) || (s.state === "done" && s.until >= day));
   };
   const items = collectItems(now);
+  const pending = (db.prepare("SELECT COUNT(*) AS n FROM approvals WHERE state = 'pending' AND expires_at > ?").get(now.getTime()) as Row).n as number;
+  if (pending) items.push({ key: "approbations:en-attente", kind: "alerte", tone: "warn", project_id: null, text: `${pending} approbation${pending > 1 ? "s" : ""} attend${pending > 1 ? "ent" : ""} votre décision`, to: { view: "agents", tab: "approbations" } });
   const live = new Set(items.map((i) => i.key));
   for (const [k, s] of states) if (s.state === "ignored" && k.startsWith("alerte:") && !live.has(k)) { db.prepare("DELETE FROM today_items WHERE key = ?").run(k); states.delete(k); }
   return items.filter((i) => !hidden(i.key))
