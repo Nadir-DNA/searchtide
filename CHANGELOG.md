@@ -2,7 +2,7 @@
 
 Toutes les versions notables sont consignées ici. Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/).
 
-## [Non publié] — SEO complet et publication, étapes 1 à 4
+## [0.6.0] — 2026-11-17 — SEO complet, publication façon Postiz, assistant, équipe
 
 ### Ajouté
 
