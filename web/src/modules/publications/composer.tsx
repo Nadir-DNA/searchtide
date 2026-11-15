@@ -5,6 +5,13 @@ import { api } from "../../api";
 import { useData } from "../../App";
 import { Button, inputCls } from "../../ui";
 import { Field, NET_LIMIT, NET_NAME, Sheet, today } from "../shared";
+import { splitThread } from "../../thread";
+
+/** Mêmes règles que le serveur (followups.ts) : réponses par API, fils, conseils de hashtags. */
+const REPLIES = new Set(["x", "linkedin", "facebook", "instagram", "reddit"]);
+const THREADS = new Set(["x"]);
+const TAGS: Record<string, { max?: number; advised: number }> = { instagram: { max: 30, advised: 5 }, x: { advised: 2 }, linkedin: { advised: 3 }, tiktok: { advised: 5 }, facebook: { advised: 3 }, youtube: { max: 60, advised: 3 }, pinterest: { advised: 5 } };
+const countTags = (t: string) => (t.match(/(^|\s)#[\p{L}\p{N}_]+/gu) ?? []).length;
 
 type Account = { id: string; project: string; network: string; label: string; status: string; mode: string };
 type Project = { id: string; name: string; crm_key: string | null };
@@ -61,6 +68,9 @@ export function MultiComposer({ onClose, onSaved }: { onClose: () => void; onSav
   const [result, setResult] = useState<Result | null>(null);
   const [files, setFiles] = useState<File[]>([]);
   const [repeat, setRepeat] = useState("");
+  const [comment, setComment] = useState<Record<string, string>>({});
+  const [thread, setThread] = useState<Record<string, string[]>>({});
+  const [tags, setTags] = useState<Record<string, Record<string, string>>>({});
   const { data: slots } = useData<{ enough: boolean; measured: number; slots: { weekday: number; hour: number; engagement: number }[] }>("/api/publications/best-slots");
 
   const projectName = (key: string) => projects?.find((p) => p.id === key || p.crm_key === key)?.name ?? key;
@@ -68,7 +78,20 @@ export function MultiComposer({ onClose, onSaved }: { onClose: () => void; onSav
   const shown = (accounts ?? []).filter((a) => !project || a.project === project);
   const selected = shown.filter((a) => picked.includes(a.id));
   const textOf = (id: string) => own[id] ?? base;
-  const items = selected.map((a) => ({ account_id: a.id, text: textOf(a.id), visible: visible[a.id] || null }));
+  const items = selected.map((a) => ({ account_id: a.id, text: textOf(a.id), visible: visible[a.id] || null,
+    ...(comment[a.id]?.trim() ? { first_comment: comment[a.id] } : {}), ...(thread[a.id]?.length ? { thread: thread[a.id] } : {}) }));
+  // Hashtags enregistrés par projet et par réseau.
+  const projectsPicked = [...new Set(selected.map((a) => a.project))].join(",");
+  useEffect(() => {
+    for (const p of projectsPicked.split(",").filter(Boolean)) if (!tags[p]) api<Record<string, string>>(`/api/hashtags?project=${encodeURIComponent(p)}`).then((t) => setTags((x) => ({ ...x, [p]: t }))).catch(() => {});
+  }, [projectsPicked]);
+  const saveTags = async (a: Account) => {
+    const found = (textOf(a.id).match(/#[\p{L}\p{N}_]+/gu) ?? []).join(" ");
+    const t = await api<Record<string, string>>("/api/hashtags", { method: "PUT", json: { project: a.project, network: a.network, tags: found } }).catch(() => null);
+    if (t) setTags({ ...tags, [a.project]: t });
+  };
+  const addTags = (a: Account) => { const t = tags[a.project]?.[a.network]; if (t) setOwn({ ...own, [a.id]: `${textOf(a.id).trimEnd()}\n\n${t}` }); };
+  const cutThread = (a: Account) => { const parts = splitThread(textOf(a.id), LIMIT[a.network]); setOwn({ ...own, [a.id]: parts[0] ?? "" }); setThread({ ...thread, [a.id]: parts.slice(1) }); };
 
   // Vérification serveur (règles exactes de chaque réseau), sans rien créer.
   const media = files.map((f) => ({ mime: f.type || "application/octet-stream", size: f.size }));
@@ -151,10 +174,26 @@ export function MultiComposer({ onClose, onSaved }: { onClose: () => void; onSav
                 <textarea aria-label={`Texte pour ${a.label}`} rows={5} value={t} onChange={(e) => setOwn({ ...own, [a.id]: e.target.value })} className={`${inputCls} h-auto py-2`} />
                 <div className="mt-1 flex flex-wrap items-center gap-3 text-xs">
                   {own[a.id] !== undefined && <button type="button" onClick={() => { const n = { ...own }; delete n[a.id]; setOwn(n); }} className="text-muted underline hover:text-ink">Reprendre le texte commun</button>}
+                  {THREADS.has(a.network) && t.length > (LIMIT[a.network] ?? Infinity) && <button type="button" onClick={() => cutThread(a)} className="font-semibold text-accent hover:underline">Découper en fil</button>}
+                  {tags[a.project]?.[a.network] && !t.includes(tags[a.project][a.network]) && <button type="button" onClick={() => addTags(a)} className="text-muted underline hover:text-ink">Ajouter {tags[a.project][a.network]}</button>}
+                  {countTags(t) > 0 && <button type="button" onClick={() => saveTags(a)} className="text-muted underline hover:text-ink">Retenir ces hashtags pour {NAME[a.network] ?? a.network}</button>}
+                  {countTags(t) > 0 && TAGS[a.network] && <span className={countTags(t) > (TAGS[a.network].max ?? Infinity) ? "font-semibold text-negative" : countTags(t) > TAGS[a.network].advised ? "text-warn" : "text-muted"}>
+                    {countTags(t)} hashtag{countTags(t) > 1 ? "s" : ""} · {TAGS[a.network].advised} conseillé{TAGS[a.network].advised > 1 ? "s" : ""}{TAGS[a.network].max ? `, ${TAGS[a.network].max} au plus` : ""}</span>}
                   {a.network === "tiktok" && <label className="flex items-center gap-2 text-muted">Confidentialité
                     <select value={visible[a.id] ?? ""} onChange={(e) => setVisible({ ...visible, [a.id]: e.target.value })} className="rounded-lg border border-control bg-raised px-2 py-1 text-ink">
                       <option value="">— choisir —</option><option value="public">Publique</option><option value="unlisted">Non répertoriée</option><option value="private">Privée</option></select></label>}
                 </div>
+                {(thread[a.id] ?? []).map((part, i) => (
+                  <div key={i} className="mt-3 border-l-2 border-rule pl-3">
+                    <div className="mb-1 flex items-center justify-between gap-2 text-xs"><span className="text-muted">Suite du fil · partie {i + 2}</span><Counter n={part.length} max={LIMIT[a.network]} /></div>
+                    <textarea aria-label={`Partie ${i + 2} du fil pour ${a.label}`} rows={3} value={part} onChange={(e) => setThread({ ...thread, [a.id]: (thread[a.id] ?? []).map((x, j) => j === i ? e.target.value : x) })} className={`${inputCls} h-auto py-2`} />
+                    <button type="button" onClick={() => setThread({ ...thread, [a.id]: (thread[a.id] ?? []).filter((_, j) => j !== i) })} className="mt-1 text-xs text-negative hover:underline">Retirer cette partie</button>
+                  </div>))}
+                {THREADS.has(a.network) && <button type="button" onClick={() => setThread({ ...thread, [a.id]: [...(thread[a.id] ?? []), ""] })} className="mt-2 text-xs text-muted underline hover:text-ink">+ Ajouter une partie au fil</button>}
+                {REPLIES.has(a.network) && (
+                  <label className="mt-3 block text-xs text-muted">Premier commentaire (facultatif, publié juste après)
+                    <textarea aria-label={`Premier commentaire pour ${a.label}`} rows={2} value={comment[a.id] ?? ""} onChange={(e) => setComment({ ...comment, [a.id]: e.target.value })} className={`${inputCls} mt-1 h-auto py-2 text-sm text-ink`} placeholder="Lien, hashtags, question pour lancer la discussion…" />
+                  </label>)}
                 {pb.length > 0 && <ul role="alert" className="mt-2 space-y-0.5 text-sm text-negative">{pb.map((x) => <li key={x}>{x}</li>)}</ul>}
               </div>
               <Preview network={a.network} label={a.label} text={t} />

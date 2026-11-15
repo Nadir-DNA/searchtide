@@ -48,6 +48,23 @@ export const linkedin: Provider = {
   exchange: async (code, redirectUri) => [await token({ grant_type: "authorization_code", code, redirect_uri: redirectUri })],
   refresh: (refreshToken) => token({ grant_type: "refresh_token", refresh_token: refreshToken }),
 
+  // Premier commentaire sous son propre post (w_member_social). Non éprouvé sur un vrai compte.
+  async reply(parentUrl, text, accessToken, accountId): Promise<PublishResult> {
+    const urn = decodeURIComponent(/\/feed\/update\/([^/?]+)/.exec(parentUrl)?.[1] ?? "");
+    if (!urn.startsWith("urn:li:")) return { ok: false, kind: "format", message: "LinkedIn : adresse du post illisible" };
+    let r: Response;
+    try {
+      r = await f(`${API}/rest/socialActions/${encodeURIComponent(urn)}/comments`, {
+        method: "POST", headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json", "LinkedIn-Version": VERSION, "X-Restli-Protocol-Version": "2.0.0" },
+        body: JSON.stringify({ actor: `urn:li:person:${accountId}`, object: urn, message: { text } }),
+      });
+    } catch (e) { return { ok: false, kind: "to_verify", message: `Réponse de LinkedIn inconnue : ${(e as Error).message}` }; }
+    if (r.ok) return { ok: true, url: parentUrl };
+    if (r.status === 401 || r.status === 403) return { ok: false, kind: "auth", message: "LinkedIn refuse le commentaire : reconnectez le compte" };
+    if (r.status === 429) return { ok: false, kind: "rate", message: "Limite de débit LinkedIn atteinte" };
+    if (r.status >= 500) return { ok: false, kind: "to_verify", message: `Erreur LinkedIn ${r.status} : vérifiez sur le réseau` };
+    return { ok: false, kind: "format", message: `LinkedIn a refusé le commentaire (${r.status})` };
+  },
   async publish({ text }, accessToken, accountId): Promise<PublishResult> {
     let r: Response;
     try {

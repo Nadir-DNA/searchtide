@@ -98,6 +98,11 @@ export function deleteAccount(id: string) {
   return true;
 }
 
+/** Vérifications ajoutées par d'autres modules (premier commentaire, fil, hashtags…). */
+type PublicationCheck = (p: Row, account: Row | undefined) => string[];
+const checks: PublicationCheck[] = [];
+export const addPublicationCheck = (fn: PublicationCheck) => { checks.push(fn); };
+
 /** Règles officielles de la phase 1 (texte) ; les médias viendront avec le stockage vérifié. */
 export function validatePublication(p: Row, account: Row | undefined): string[] {
   const issues: string[] = [];
@@ -137,6 +142,7 @@ export function validatePublication(p: Row, account: Row | undefined): string[] 
     issues.push(...(real.check?.({ text, title: p.title ? String(p.title) : undefined, visibility: p.visible ? String(p.visible) : undefined, media }) ?? []));
     if (real.needsPublicMedia && media.length && !publicMediaReady()) issues.push(`${real.label} télécharge les médias depuis votre instance : définissez PUBLIC_URL en https`);
   }
+  for (const fn of checks) issues.push(...fn(p, account));
   return issues;
 }
 

@@ -74,6 +74,16 @@ export const facebook: Provider = {
     return list.map((p): Tokens => ({ accessToken: p.access_token, accountId: String(p.id), name: String(p.name) }));
   },
 
+  // Premier commentaire au nom de la Page.
+  async reply(parentUrl, text, token) {
+    const id = /facebook\.com\/(?:[^/]+\/videos\/)?(\d+(?:_\d+)?)/.exec(parentUrl)?.[1];
+    if (!id) return fail("format", "Facebook : adresse de la publication illisible");
+    let r: Response;
+    try { r = await post(`${GRAPH}/${id}/comments`, new URLSearchParams({ access_token: token, message: text })); } catch (e) { return unknown("Facebook", e); }
+    const j = await json(r);
+    return r.ok && j.id ? { ok: true, url: `https://www.facebook.com/${j.id}` } : metaError("Facebook", r.status, j, true);
+  },
+
   async publish({ text, media }, token, page) {
     try {
       const video = media.find((m) => m.kind === "video");
@@ -132,6 +142,17 @@ export const instagram: Provider = {
     return { followers: n(j.followers_count), posts: n(j.media_count) };
   },
   // Publications : les 100 dernières du compte, retrouvées par leur adresse publique (gardée comme preuve).
+  // Premier commentaire : la publication est retrouvée par son adresse parmi les 50 dernières.
+  async reply(parentUrl, text, token, ig) {
+    const norm = (u: string) => u.replace(/[?#].*$/, "").replace(/\/$/, "");
+    const list = await json(await f(`${GRAPH}/${ig}/media?${new URLSearchParams({ fields: "id,permalink", limit: "50", access_token: token })}`));
+    const media = (list.data ?? []).find((m: any) => m.permalink && norm(String(m.permalink)) === norm(parentUrl));
+    if (!media) return fail("format", "Instagram : publication introuvable pour le commentaire");
+    let r: Response;
+    try { r = await post(`${GRAPH}/${media.id}/comments`, new URLSearchParams({ access_token: token, message: text })); } catch (e) { return unknown("Instagram", e); }
+    const j = await json(r);
+    return r.ok && j.id ? { ok: true, url: parentUrl } : metaError("Instagram", r.status, j, true);
+  },
   async postStats(urls, token, ig) {
     const norm = (u: string) => u.replace(/[?#].*$/, "").replace(/\/$/, "");
     const wanted = new Map(urls.map((u) => [norm(u), u]));

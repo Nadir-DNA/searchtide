@@ -287,6 +287,7 @@ function PubSheet({ pub, onClose, onSaved }: { pub: Partial<Pub>; onClose: () =>
             )}
           </div>
         )}
+        {id && <FollowupsBox id={id} state={state} pub={pub} />}
         {attempts.length > 0 && (
           <div>
             <p className="text-sm">Tentatives</p>
@@ -297,6 +298,51 @@ function PubSheet({ pub, onClose, onSaved }: { pub: Partial<Pub>; onClose: () =>
         )}
       </form>
     </Sheet>
+  );
+}
+
+type Followup = { idx: number; kind: string; text: string; state: string; url: string | null; detail: string | null };
+const FSTATE: Record<string, [string, string]> = { pending: ["En attente", "text-muted"], running: ["En cours", "text-muted"], sent: ["Envoyée", "text-positive"], failed: ["Échec", "text-negative"], to_verify: ["À vérifier", "text-warn"] };
+
+/** Premier commentaire et fil : modifiables tant que la publication n'est pas partie, puis suivis partie par partie. */
+function FollowupsBox({ id, state, pub }: { id: string; state: string; pub: Partial<Pub> & { first_comment?: string | null; thread?: string | null } }) {
+  const { data, reload } = useData<Followup[]>(`/api/publications/${id}/followups`);
+  const [comment, setComment] = useState(pub.first_comment ?? "");
+  const [parts, setParts] = useState<string[]>(() => { try { return pub.thread ? JSON.parse(pub.thread) : []; } catch { return []; } });
+  const [msg, setMsg] = useState("");
+  const editable = ["draft", "failed", "missed", "needs_action", "cancelled"].includes(state);
+  const save = async () => {
+    setMsg("");
+    try { await api(`/api/publications/${id}/followups`, { method: "PUT", json: { first_comment: comment, thread: parts } }); setMsg("Suites enregistrées"); }
+    catch (e) { setMsg((e as Error).message); }
+  };
+  const act = async (idx: number, body: Record<string, string> = {}) => { await api(`/api/publications/${id}/followups/${idx}`, { method: "POST", json: body }).catch((e) => setMsg((e as Error).message)); reload(); };
+  if (!editable && !data?.length) return null;
+  return (
+    <div className="rounded-xl border border-border bg-raised p-3 text-sm">
+      <p>Suites <span className="text-xs text-muted">premier commentaire et fil, envoyés après la publication</span></p>
+      {editable ? (
+        <div className="mt-2 space-y-2">
+          {parts.map((t, i) => (
+            <div key={i} className="flex gap-2"><textarea aria-label={`Partie ${i + 2} du fil`} rows={2} value={t} onChange={(e) => setParts(parts.map((x, j) => j === i ? e.target.value : x))} className={`${inputCls} h-auto py-2`} />
+              <button type="button" onClick={() => setParts(parts.filter((_, j) => j !== i))} className="text-xs text-negative">Retirer</button></div>))}
+          <button type="button" onClick={() => setParts([...parts, ""])} className="text-xs text-muted underline">+ Partie de fil (X)</button>
+          <textarea aria-label="Premier commentaire" rows={2} value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Premier commentaire (facultatif)" className={`${inputCls} h-auto py-2`} />
+          <Button type="button" variant="secondary" onClick={save}>Enregistrer les suites</Button>
+        </div>
+      ) : (
+        <ul className="mt-2 space-y-1">{(data ?? []).map((f) => (
+          <li key={f.idx} className="flex flex-wrap items-baseline gap-2">
+            <span className={FSTATE[f.state]?.[1]}>● {FSTATE[f.state]?.[0] ?? f.state}</span>
+            <span className="min-w-0 flex-1 truncate">{f.kind === "thread" ? `Partie ${f.idx + 1}` : "Premier commentaire"} · {f.text}</span>
+            {f.url && <a href={f.url} target="_blank" rel="noreferrer" className="text-xs underline">voir</a>}
+            {f.state === "failed" && <button type="button" onClick={() => act(f.idx)} className="text-xs underline">Réessayer</button>}
+            {f.state === "to_verify" && <><button type="button" onClick={() => act(f.idx, { outcome: "sent" })} className="text-xs underline">Elle est en ligne</button><button type="button" onClick={() => act(f.idx, { outcome: "pending" })} className="text-xs underline">Renvoyer</button></>}
+            {f.detail && <span className="w-full text-xs text-muted">{f.detail}</span>}
+          </li>))}</ul>
+      )}
+      {msg && <p role="status" className="mt-2 text-xs">{msg}</p>}
+    </div>
   );
 }
 

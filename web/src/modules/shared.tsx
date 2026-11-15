@@ -21,7 +21,7 @@ export const PUB_STATE: Record<string, [string, string]> = {
 /** Libellés des tentatives (journal de la file) : jamais d'état brut affiché. */
 export const ATTEMPT_LABEL: Record<string, string> = {
   scheduled: "Programmé", running: "En cours", processing: "En traitement", published: "Publié", failed: "Échec", needs_action: "Action requise", to_verify: "À vérifier", missed: "Manqué", cancelled: "Annulé", draft: "Brouillon",
-  refused: "Refusé par le réseau", rate: "Limite de débit", quota: "Quota atteint", network: "Erreur réseau", format: "Format invalide", unknown: "Résultat inconnu", auth: "Authentification",
+  followup: "Suite (fil ou commentaire)", refused: "Refusé par le réseau", rate: "Limite de débit", quota: "Quota atteint", network: "Erreur réseau", format: "Format invalide", unknown: "Résultat inconnu", auth: "Authentification",
 };
 /** Pastille du calendrier : selon l'état réel (state), avec la couleur qui va avec. */
 export const PUB_CHIP: Record<string, string> = {

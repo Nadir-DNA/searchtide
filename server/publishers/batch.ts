@@ -8,9 +8,10 @@ import { migrate } from "../migrations.ts";
 import { isAdmin } from "../admin.ts";
 import { savePublication } from "../business.ts";
 import { queuePublication, validatePublication } from "./queue.ts";
+import { setFollowups } from "./followups.ts";
 
 type Row = Record<string, any>;
-export type BatchItem = { account_id: string; text: string; title?: string; visible?: string | null };
+export type BatchItem = { account_id: string; text: string; title?: string; visible?: string | null; first_comment?: string; thread?: string[] };
 export type BatchInput = { title: string; day: string; items: BatchItem[]; when?: "now" | "at" | null; at?: string };
 
 migrate("2026-11-15-publication-groupe", "ALTER TABLE publications ADD COLUMN group_id TEXT");
@@ -22,7 +23,7 @@ export function checkBatch(input: Pick<BatchInput, "title" | "items"> & { media?
   const media = Array.isArray(input.media) ? input.media.slice(0, 20).map((m) => ({ mime: String(m.mime), size: Number(m.size) || 0 })) : [];
   return (input.items ?? []).map((it) => {
     const account = accountOf(String(it.account_id));
-    const draft = { title: it.title ?? input.title, text: it.text, network: account?.network, project: account?.project, visible: it.visible ?? null, media };
+    const draft = { title: it.title ?? input.title, text: it.text, network: account?.network, project: account?.project, visible: it.visible ?? null, media, first_comment: it.first_comment ?? null, thread: it.thread ?? null };
     return { account_id: it.account_id, network: account?.network ?? null, issues: validatePublication(draft, account) };
   });
 }
@@ -43,6 +44,7 @@ export async function createBatch(input: BatchInput, now = Date.now()) {
     const account = accountOf(String(it.account_id))!;
     const p = savePublication(null, { title: it.title ?? title, day: input.day, project: account.project, network: account.network, text: it.text, account_id: account.id, visible: it.visible ?? null }) as Row;
     db.prepare("UPDATE publications SET group_id = ? WHERE id = ?").run(group, p.id);
+    if (it.first_comment || it.thread?.length) setFollowups(p.id, { first_comment: it.first_comment, thread: it.thread });
     let state = "draft", error: string | undefined;
     if (input.when) {
       try {

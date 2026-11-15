@@ -45,10 +45,10 @@ async function upload(m: Media, t: string): Promise<{ id: string; processing: bo
   return { id, processing: !!state && state !== "succeeded" };
 }
 
-async function tweet(text: string, mediaIds: string[], t: string): Promise<PublishResult> {
+async function tweet(text: string, mediaIds: string[], t: string, replyTo?: string): Promise<PublishResult> {
   let r: Response;
   try {
-    r = await f(`${API}/tweets`, { method: "POST", headers: { ...bearer(t), "Content-Type": "application/json" }, body: JSON.stringify({ text, ...(mediaIds.length ? { media: { media_ids: mediaIds } } : {}) }) });
+    r = await f(`${API}/tweets`, { method: "POST", headers: { ...bearer(t), "Content-Type": "application/json" }, body: JSON.stringify({ text, ...(mediaIds.length ? { media: { media_ids: mediaIds } } : {}), ...(replyTo ? { reply: { in_reply_to_tweet_id: replyTo } } : {}) }) });
   } catch (e) { return unknown("X", e); }
   const j = await json(r);
   if (r.ok && j.data?.id) return { ok: true, url: `https://x.com/i/status/${j.data.id}` };
@@ -106,6 +106,13 @@ export const x: Provider = {
       }
     } catch (e) { return fail("network", `X : envoi du média impossible (${(e as Error).message})`); }
     return waiting.length ? pending("X traite la vidéo", { text, ids, waiting }) : tweet(text, ids, t);
+  },
+
+  // Fil et premier commentaire : une réponse à son propre post.
+  threads: true,
+  async reply(parentUrl, text, t) {
+    const id = /\/status\/(\d+)/.exec(parentUrl)?.[1];
+    return id ? tweet(text, [], t, id) : fail("format", "X : adresse du post illisible");
   },
 
   async poll(data, t) {

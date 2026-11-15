@@ -112,3 +112,13 @@ test("Google Business Profile : actualité avec lien d'action et photo publique 
     { timeSeries: { datedValues: [{ value: "10" }, { value: "5" }, {}] } }, { timeSeries: { datedValues: [{ value: "2" }] } }] }] })]]);
   assert.deepEqual(await gbp.stats!("T", "accounts/1/locations/9"), { views: 17 });
 });
+
+// ── Réponses (D6) ──
+import { x } from "./x.ts";
+import { facebook } from "./meta.ts";
+test("X : réponse à son propre post (fil, premier commentaire) ; Facebook : commentaire de la Page", async () => {
+  const calls = net([[/POST .*\/2\/tweets$/, () => ok({ data: { id: "78" } }, 201)], [/POST .*graph\.facebook\.com.*\/123_456\/comments$/, () => ok({ id: "c9" })]]);
+  assert.deepEqual(await x.reply!("https://x.com/i/status/77", "Suite", "T", "u1"), { ok: true, url: "https://x.com/i/status/78" });
+  assert.deepEqual(JSON.parse(calls[0].body), { text: "Suite", reply: { in_reply_to_tweet_id: "77" } });
+  assert.deepEqual(await facebook.reply!("https://www.facebook.com/123_456", "Merci", "T", "p"), { ok: true, url: "https://www.facebook.com/c9" });
+});
