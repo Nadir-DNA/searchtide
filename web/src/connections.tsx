@@ -304,7 +304,7 @@ function ConnectorCard({ m, onOpen, cardRef }: { m: Manifest; onOpen: () => void
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-start gap-3">
           <span aria-hidden className="grid size-10 shrink-0 place-items-center rounded-xl bg-raised text-sm font-medium text-muted">{m.monogram}</span>
-          <h3 className="flex min-h-10 min-w-0 items-center text-base font-light break-words">{m.name}</h3>
+          <h2 className="flex min-h-10 min-w-0 items-center text-base font-light break-words">{m.name}</h2>
         </div>
         <StatusPill m={m} />
       </div>

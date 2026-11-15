@@ -94,7 +94,7 @@ export function PubsView({ q, go, project: fixed }: { q: Record<string, string>;
             <div className="grid grid-cols-7">
               {days.map((d) => (
                 <div key={d} onDoubleClick={() => setEdit({ day: d, status: "scheduled" })}
-                  className={`min-h-28 border-r border-b border-rule p-2 [&:nth-child(7n)]:border-r-0 ${d.startsWith(month) ? "" : "opacity-40"}`}>
+                  className={`min-h-28 border-r border-b border-rule p-2 [&:nth-child(7n)]:border-r-0 ${d.startsWith(month) ? "" : "bg-ground"}`}>
                   <div className={`num mb-1 text-xs ${d === today() ? "inline-grid size-6 place-items-center rounded-full bg-accent text-on-accent" : "text-muted"}`}>{Number(d.slice(8))}</div>
                   <div className="space-y-1">
                     {byDay[d]?.map((p) => (
@@ -398,7 +398,7 @@ type Account = { id: string; project: string; network: string; label: string; st
 /** Réseaux dont chaque compte vise une cible à régler (même règle côté serveur). */
 const TARGET: Record<string, { label: string; help: string }> = { reddit: { label: "Subreddit", help: "Nom du subreddit sans « r/ » (ex. entrepreneur). Lisez ses règles : beaucoup refusent les liens ou l'autopromotion." } };
 
-/** Comptes de publication de la phase 1 (fournisseur factice) : aucun réseau réel n'est joint. */
+/** Comptes de publication de la phase 1 (fournisseur de test) : aucun réseau réel n'est joint. */
 type Network = { id: string; label: string; configured: boolean };
 
 /** Comptes de réseaux : ceux du projet choisi (ou de tous), connexion d'un réseau directement pour ce projet. */
@@ -457,13 +457,13 @@ function AccountsCard({ project, projects }: { project?: ProjectRef; projects: P
           {networks && !networks.some((n) => n.configured) && <span className="text-sm text-muted">Aucun réseau configuré : Plus → Connexions donne la marche à suivre pour chacun.</span>}
         </div>
       </div>
-      <p className="mb-2 text-xs text-muted">Sans application développeur : ajoutez un compte « Navigateur » ou « Agent IA » (publication par votre session ou votre agent), ou un compte de test.</p>
+      <p className="mb-2 text-xs text-muted">Sans application développeur : ajoutez un compte « Navigateur » ou « Ordinateur de l'agent » (publication par votre session ou votre agent), ou un compte de test.</p>
       <form onSubmit={add} className="mb-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_1fr_1.4fr_auto]">
         {project ? <input type="hidden" name="project" value={projectKey(project)} />
           : <select name="project" required aria-label="Projet du compte" className={inputCls}><option value="">Projet…</option>{projects.map((p) => <option key={p.id} value={projectKey(p)}>{p.name}</option>)}</select>}
         <select name="network" required aria-label="Réseau du compte" className={inputCls}>{NETWORKS.filter((n) => NET_NAME[n]).map((n) => <option key={n} value={n}>{NET_NAME[n]}</option>)}</select>
         <input name="label" required aria-label="Nom du compte" placeholder="Nom du compte" className={inputCls} />
-        <select name="mode" aria-label="Mode du compte" className={inputCls}><option value="api">API factice</option><option value="web">Navigateur</option><option value="agent">Agent IA (votre ordinateur)</option></select>
+        <select name="mode" aria-label="Mode du compte" className={inputCls}><option value="api">Compte de test</option><option value="web">Navigateur</option><option value="agent">Publication par l'ordinateur de l'agent</option></select>
         <input name="web_url" aria-label="Adresse de connexion" placeholder="https://… (navigateur)" className={inputCls} />
         <Button>Ajouter</Button>
       </form>
@@ -475,7 +475,7 @@ function AccountsCard({ project, projects }: { project?: ProjectRef; projects: P
         ...(project ? [] : [{ label: "Projet", render: (a: Account) => nameOf(a.project) }]),
         { label: "Cible", render: (a) => TARGET[a.network] ? (
           <button type="button" onClick={() => setTarget(a)} className={a.target ? "text-ink underline" : "font-semibold text-accent hover:underline"}>{a.target ? `r/${a.target}` : `Choisir le ${TARGET[a.network].label.toLowerCase()}`}</button>) : <span className="text-muted">—</span> },
-        { label: "Transport", render: (a) => a.mode === "web" ? "Navigateur" : a.mode === "agent" ? "Agent IA" : a.connection_id ? "API" : "API factice" },
+        { label: "Mode de publication", render: (a) => a.mode === "web" ? "Navigateur" : a.mode === "agent" ? "Ordinateur de l'agent" : a.connection_id ? "API" : "Compte de test" },
         { label: "Repli navigateur", render: (a) => a.mode === "web" || a.mode === "agent" || !recipes?.some((r) => r.network === a.network) ? <span className="text-muted">—</span> : (
           <label className="flex items-center gap-2"><input type="checkbox" checked={!!a.browser_fallback} onChange={() => toggleFallback(a)} className="size-4 accent-[var(--color-accent)]" aria-label="Repli navigateur" />
             <span className="text-xs text-muted">{a.browser_fallback ? "activé" : "désactivé"}</span></label>) },
