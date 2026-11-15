@@ -25,8 +25,8 @@ async function open(page: Page, cat = catalog()) {
   await page.locator('input[name="password"]').fill("e2e-mot-de-passe");
   await page.keyboard.press("Enter");
   await page.waitForLoadState("networkidle");
-  await page.goto("/?view=connections");
-  await expect(page.getByRole("heading", { name: "Connexions", level: 1 })).toBeVisible();
+  await page.goto("/?view=integrations");
+  await expect(page.getByRole("heading", { name: "Intégrations", level: 1 })).toBeVisible();
 }
 const noHScroll = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth && document.body.scrollWidth <= window.innerWidth);
 
@@ -46,7 +46,7 @@ test("CA23 : catalogue lisible à 375 px, sans défilement horizontal, statuts a
 test("CA23 : filtres par catégorie en boutons à bascule (aria-pressed)", async ({ page }) => {
   await open(page);
   const seo = page.getByRole("button", { name: "SEO", exact: true });
-  await expect(page.getByRole("button", { name: "Tous", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("group", { name: "Filtrer par catégorie" }).getByRole("button", { name: "Tous", exact: true })).toHaveAttribute("aria-pressed", "true");
   await seo.click();
   await expect(seo).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("button", { name: /^Google/ })).toBeVisible();
@@ -136,8 +136,8 @@ test("catalogue réel à 375 px : les 7 connecteurs et 2 cartes intégrées, auc
   await page.locator('input[name="password"]').fill("e2e-mot-de-passe");
   await page.keyboard.press("Enter");
   await page.waitForLoadState("networkidle");
-  await page.goto("/?view=connections");
-  await expect(page.getByRole("heading", { name: "Connexions", level: 1 })).toBeVisible();
+  await page.goto("/?view=integrations");
+  await expect(page.getByRole("heading", { name: "Intégrations", level: 1 })).toBeVisible();
   for (const n of ["Stripe", "Google", "Postgres (lecture seule)", "E-mail (SMTP)", "ntfy", "PageSpeed", "API JSON"]) await expect(page.getByRole("button", { name: new RegExp(`^${n.replace(/[()]/g, "\\$&")} :`) })).toBeVisible();
   for (const n of ["Searchtide analytics", "Saisie manuelle"]) await expect(page.getByRole("heading", { name: n })).toBeVisible();
   await expect(page.getByText("Non connecté", { exact: true }).first()).toBeVisible();
@@ -149,7 +149,7 @@ test("catalogue réel à 375 px : les 7 connecteurs et 2 cartes intégrées, auc
   await expect(page.getByRole("button", { name: /^Google :/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /^PageSpeed :/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /^Stripe :/ })).toHaveCount(0);
-  await page.getByRole("button", { name: "Tous", exact: true }).click();
+  await page.getByRole("group", { name: "Filtrer par catégorie" }).getByRole("button", { name: "Tous", exact: true }).click();
   // ntfy : le sujet est généré dans le navigateur
   await page.getByRole("button", { name: /^ntfy :/ }).click();
   const dialog = page.getByRole("dialog", { name: "ntfy" });
@@ -176,7 +176,7 @@ test.describe("ordinateur 1280 px", () => {
     await page.locator('input[name="password"]').fill("e2e-mot-de-passe");
     await page.keyboard.press("Enter");
     await page.waitForLoadState("networkidle");
-    await page.goto("/?view=connections");
+    await page.goto("/?view=integrations");
     await expect(page.getByRole("button", { name: /^Stripe :/ })).toBeVisible();
     const tops = await page.locator("button[aria-label*='Connecter'], button[aria-label*='Gérer']").evaluateAll((cards) =>
       cards.map((c) => ({ card: Math.round(c.getBoundingClientRect().top), mono: Math.round(c.querySelector("span[aria-hidden]")!.getBoundingClientRect().top) })));
