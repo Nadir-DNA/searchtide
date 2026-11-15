@@ -17,6 +17,7 @@ import { lastDays, overview, searchStats, strikingDistance, trafficStats, type R
 import { registerKeywords } from "./keywords.ts";
 import { registerPageCheck } from "./pagecheck.ts";
 import { registerAudit } from "./audit.ts";
+import { registerCms } from "./cms.ts";
 import { registerIndexing, registerIndexingJobs } from "./indexing.ts";
 import { registerBatch } from "./publishers/batch.ts";
 import { registerSocialStats } from "./publishers/stats.ts";
@@ -505,6 +506,7 @@ app.get("/api/sites/:id/search", (c) => {
 registerKeywords(app, getSite, rangeOf);
 registerPageCheck(app, getSite);
 registerAudit(app, getSite);
+registerCms(app);
 registerIndexing(app, getSite);
 registerIndexingJobs();
 app.post("/api/sites/:id/sync", async (c) => {

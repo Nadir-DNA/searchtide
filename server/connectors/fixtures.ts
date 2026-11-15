@@ -36,6 +36,17 @@ export const FIXTURES: Record<string, Fixture> = {
     cfg: { config: { relay_url: "https://connect.exemple.test", email: "demo@exemple.test" }, secrets: { refresh_token: "1//0g-fixture-refresh-token-0123456789" } },
     respond: (url) => url.includes("/v1/google/refresh") ? json({ access_token: "ya29.FIXTUREaccess", expires_in: 3599 }) : json({ summary: "demo@exemple.test", timeZone: "Europe/Paris" }),
   },
+  wordpress: {
+    cfg: { config: { url: "https://blog.exemple.test", user: "redaction" }, secrets: { app_password: "abcd efgh ijkl mnop qrst uvwx" } },
+    respond: (url, init) => {
+      if (url.includes("/users/me")) return json({ id: 1, name: "Rédaction", capabilities: { publish_posts: true } });
+      if (url.includes("/posts?slug=")) return json(url.includes("slug=guide") ? [{ id: 42, link: "https://blog.exemple.test/guide/", title: { rendered: "Ancien titre" } }] : []);
+      if (url.includes("/pages?slug=")) return json([]);
+      if (/\/posts\/\d+$/.test(url) && init?.method === "POST") return json({ id: 42 });
+      if (url.endsWith("/posts") && init?.method === "POST") return json({ id: 99, status: JSON.parse(String(init.body)).status, link: "https://blog.exemple.test/?p=99" }, 201);
+      return json({ code: "rest_no_route" }, 404);
+    },
+  },
   ntfy: {
     cfg: { config: { server: "https://ntfy.exemple.test" }, secrets: { topic: "searchtide-0123456789abcdef", token: "tk_FIXTUREtoken0123456789" } },
     respond: () => json({ id: "msg1", event: "message" }),

@@ -277,12 +277,48 @@ export function AuditCard({ site, demo }: { site: Site; demo: boolean }) {
   );
 }
 
+
+export function ArticleCard({ site, demo }: { site: Site; demo: boolean }) {
+  const [cms, setCms] = useState<{ wordpress: { url: string } | null } | null>(null);
+  const [title, setTitle] = useState("");
+  const [content, setContent] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string; link?: string } | null>(null);
+  useEffect(() => { void api<{ wordpress: { url: string } | null }>(`/api/sites/${site.id}/cms`).then(setCms).catch(() => setCms({ wordpress: null })); }, [site.id]);
+  if (!cms || demo) return null;
+  if (!cms.wordpress) return <Card title="Publier un article"><p className="text-sm text-muted">Reliez votre WordPress dans Connexions (mot de passe d'application) pour publier vos articles et appliquer les corrections de titre proposées ici.</p></Card>;
+  const send = async (status: "draft" | "publish") => {
+    setBusy(true); setMsg(null);
+    try {
+      const r = await api<{ status: string; link: string; edit: string }>(`/api/sites/${site.id}/cms/articles`, { method: "POST", json: { title, content, status } });
+      setMsg({ ok: true, text: r.status === "publish" ? "Article publié" : "Brouillon créé dans WordPress", link: r.status === "publish" ? r.link : r.edit });
+      if (r.status === "publish") { setTitle(""); setContent(""); }
+    } catch (e) { setMsg({ ok: false, text: (e as Error).message }); }
+    setBusy(false);
+  };
+  return (
+    <Card title="Publier un article" action={<span className="text-xs text-muted">WordPress · {cms.wordpress.url.replace(/^https:\/\//, "")}</span>}>
+      <div className="space-y-3">
+        <Field label="Titre"><input value={title} onChange={(e) => setTitle(e.target.value)} className={inputCls} /></Field>
+        <Field label="Contenu (texte ou Markdown léger : # titres, - listes, **gras**, [liens](https://…))"><textarea rows={10} value={content} onChange={(e) => setContent(e.target.value)} className={`${inputCls} h-auto py-2 font-mono text-xs`} /></Field>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="secondary" disabled={busy || !title.trim() || !content.trim()} onClick={() => send("draft")}>Créer un brouillon</Button>
+          <Button disabled={busy || !title.trim() || !content.trim()} onClick={() => send("publish")}>Publier</Button>
+        </div>
+        {msg && <p role="status" className={`text-sm ${msg.ok ? "text-positive" : "text-negative"}`}>{msg.text}{msg.link && <> · <a href={msg.link} target="_blank" rel="noreferrer" className="underline">Ouvrir</a></>}</p>}
+        <p className="text-xs text-muted">Vos agents IA peuvent aussi préparer des brouillons (outil MCP cms_draft) : vous relisez et publiez.</p>
+      </div>
+    </Card>
+  );
+}
+
 export function SeoToolsView({ site, demo = false }: { site: Site; demo?: boolean }) {
   return (
     <div className="space-y-4">
       <AuditCard site={site} demo={demo} />
       <PageChecker site={site} />
       <IndexingCard site={site} demo={demo} />
+      <ArticleCard site={site} demo={demo} />
       <div className="grid gap-4 xl:grid-cols-2">
         <RobotsGenerator domain={site.domain} />
         <SchemaGenerator domain={site.domain} />

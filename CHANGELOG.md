@@ -2,7 +2,7 @@
 
 Toutes les versions notables sont consignées ici. Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/).
 
-## [Non publié] — SEO complet et publication, étape 1
+## [Non publié] — SEO complet et publication, étapes 1 et 2
 
 ### Ajouté
 
@@ -11,7 +11,12 @@ Toutes les versions notables sont consignées ici. Format inspiré de [Keep a Ch
 - **Indexation** : état de chaque page chez Google (API d'inspection d'URL, par lots) et signalement IndexNow des pages nouvelles ou modifiées (Bing, Yandex…), tâche quotidienne.
 - **Publier sur plusieurs comptes** : une version par réseau, compteur, aperçu, médias joints à chaque compte, règles de chaque réseau vérifiées avant l'envoi (médias compris).
 - **Statistiques des réseaux** : abonnés par compte (X, YouTube, Facebook, Instagram, TikTok avec `TIKTOK_STATS=1`) et chiffres des publications (X, YouTube, Facebook, Instagram, TikTok), relevés chaque jour ; abonnés et engagement sur le mur et la page projet. LinkedIn : non fourni pour un profil personnel, l'écran le dit.
-- Outils MCP : `keywords_tracked`, `keyword_track`, `seo_insights`, `page_check`, `indexing_status`, `indexing_submit`, `social_stats` (portée par projet).
+- **Repli par le navigateur intégré** : si l'API ne peut pas publier (jeton refusé, quota, limite), la publication part par le navigateur avec la session du compte, sur les comptes où le repli est activé (X, LinkedIn, Facebook ; recettes non éprouvées sur de vrais comptes). Jamais après un doute.
+- **Audit technique du site** : jusqu'à 200 pages parcourues, 16 problèmes reconnus, classés par trafic Google ; audit hebdomadaire.
+- **Plan d'action SEO** dans « À traiter » : pages en erreur, baisse de clics, titre à réécrire, pages non indexées.
+- **WordPress** : publier un article (brouillon par défaut) et réécrire le titre d'une page signalée, depuis Searchtide ; les agents IA ne créent que des brouillons.
+- **Automatisations** : publications récurrentes, publication depuis un flux RSS, meilleurs créneaux, webhooks sortants signés.
+- Outils MCP : `keywords_tracked`, `keyword_track`, `seo_insights`, `page_check`, `indexing_status`, `indexing_submit`, `social_stats`, `seo_audit_run`, `seo_audit_issues`, `cms_draft` (portée par projet).
 
 ## [0.5.0] — 2026-11-13
 

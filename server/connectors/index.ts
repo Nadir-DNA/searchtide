@@ -11,6 +11,7 @@ import "./postgres.ts";
 import "./supabase.ts";
 import "./pagespeed.ts";
 import "./jsonapi.ts";
+import "./wordpress.ts";
 
 export { register, get, all, publicManifest, runTest, runCollect, realCtx } from "./registry.ts";
 export * from "./types.ts";

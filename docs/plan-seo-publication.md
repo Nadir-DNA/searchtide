@@ -122,6 +122,9 @@ Une seule connexion facultative « Données SEO » (fournisseur payé à l'usage
 - Compléments : médias joints à chaque compte depuis le compositeur ; statistiques des publications Instagram (retrouvées par leur adresse) ; TikTok activable avec `TIKTOK_STATS=1` après ajout des autorisations `user.info.stats` et `video.list` à l'application TikTok.
 - Limite restante : LinkedIn ne fournit ni abonnés ni statistiques de posts pour un profil personnel avec l'autorisation de publication (il faudrait l'API Community Management, réservée aux pages d'entreprise et soumise à validation).
 
+- **Étape 2 livrée** : D12 (repli navigateur), A1 (audit technique), B1 (plan d'action), B4 (WordPress : articles et titres), D4 (récurrences), D5 (RSS), D8 (meilleurs créneaux), D10 (webhooks). D9 était déjà couvert par le « Lien de suivi » de chaque publication (paramètres UTM et visites amenées).
+- Limites de l'étape 2 : recettes navigateur non éprouvées sur de vrais comptes (LinkedIn et Facebook finissent en « À vérifier » faute de preuve automatique ; Instagram, TikTok et YouTube n'ont pas de recette) ; WordPress modifie le titre de l'article, pas le titre SEO d'une extension (Yoast, Rank Math) ; Shopify, Webflow et Ghost restent à faire.
+
 ## Ordre de livraison proposé
 
 Tout peut sortir dans une seule mise à jour, mais livrer par étapes réduit le risque. Ordre conseillé, du plus utile et gratuit vers le plus coûteux :

@@ -1,6 +1,7 @@
 import { checkPage, hostAllowed, pageUrlFor } from "./pagecheck.ts";
 import { indexingStatus, submitIndexnow } from "./indexing.ts";
 import { auditReport, runAudit } from "./audit.ts";
+import { registerCmsTools } from "./cms.ts";
 import { registerSocialTools } from "./publishers/stats.ts";
 import { keywordSuggestions, seoInsights, trackKeyword, trackedKeywords } from "./keywords.ts";
 import { McpServer, WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/server";
@@ -77,7 +78,7 @@ const SCOPED_READ = new Set([
   "milestones_list", "kpi_catalog", "crm_list_contacts", "crm_get_contact", "pubs_list", "modules_list", "dashboard_catalog", "dashboard_list", "dashboard_get",
 ]);
 const SCOPED_WRITE = new Set([
-  "sync_search_console", "keyword_track", "indexing_submit", "seo_audit_run", "kpi_add", "milestone_save", "indicator_record", "crm_save_contact", "crm_log", "pubs_save", "today_update",
+  "sync_search_console", "keyword_track", "indexing_submit", "seo_audit_run", "cms_draft", "kpi_add", "milestone_save", "indicator_record", "crm_save_contact", "crm_log", "pubs_save", "today_update",
   "module_enable_for_project", "module_disable_for_project",
 ]);
 
@@ -235,7 +236,7 @@ function googleTools(server: McpServer, readOnly: boolean) {
 
 /** Outils des modules livrés ; un module privé apporte les siens par Module.mcp. */
 const BUILTIN_TOOLS: Record<string, (server: McpServer, readOnly: boolean, agent: string) => void> = {
-  analytics: (s, ro) => { analyticsTools(s); seoTools(s); auditTools(s, ro); if (!ro) indexingWriteTools(s); },
+  analytics: (s, ro) => { analyticsTools(s); seoTools(s); auditTools(s, ro); if (!ro) { indexingWriteTools(s); registerCmsTools(s); } },
   google: googleTools,
   rdv: (s, ro) => rdvTools(s, ro),
   crm: (s, ro) => registerBusinessTools(only(s, (n) => n.startsWith("crm_")), ro),

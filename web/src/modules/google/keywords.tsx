@@ -2,7 +2,7 @@
 import { useState, type FormEvent } from "react";
 import { api, type Site } from "../../api";
 import { useData } from "../../App";
-import { Button, Card, EmptyBox, fmt, inputCls } from "../../ui";
+import { Button, Card, EmptyBox, fmt, inputCls, useAsk } from "../../ui";
 
 type Tracked = {
   query: string; clicks: number; impressions: number; position: number | null; page: string | null;
@@ -37,6 +37,15 @@ function PositionLine({ series }: { series: { position: number }[] }) {
 export function KeywordsPanel({ site, days, demo }: { site: Site; days: number; demo: boolean }) {
   const { data, reload } = useData<{ tracked: Tracked[]; suggestions: Suggestion[] }>(`/api/sites/${site.id}/keywords?days=${days}`);
   const { data: ins } = useData<Insights>(`/api/sites/${site.id}/seo-insights?days=${days}`);
+  const { data: cms } = useData<{ wordpress: { url: string } | null }>(`/api/sites/${site.id}/cms`);
+  const { ask, dialog } = useAsk();
+  const [fixed, setFixed] = useState<Record<string, string>>({});
+  const rewrite = async (page: string) => {
+    const title = await ask({ title: "Nouveau titre de la page", message: `${path(page)} — un titre de 30 à 60 caractères qui reprend la recherche et donne envie de cliquer. Il sera modifié dans WordPress.`, inputLabel: "Titre", confirmLabel: "Appliquer" });
+    if (!title) return;
+    try { await api(`/api/sites/${site.id}/cms/fix-title`, { method: "POST", json: { url: page, title } }); setFixed({ ...fixed, [page]: "Titre modifié dans WordPress" }); }
+    catch (e) { setFixed({ ...fixed, [page]: (e as Error).message }); }
+  };
   const [query, setQuery] = useState("");
   const [error, setError] = useState("");
   const track = async (q: string, tracked = true) => {
@@ -101,6 +110,7 @@ export function KeywordsPanel({ site, days, demo }: { site: Site; days: number; 
         )}
       </Card>
 
+      {dialog}
       <Card title="Diagnostics">
         {!ins ? <p className="text-sm text-muted">Chargement…</p> : (
           <div className="grid gap-6 lg:grid-cols-3">
@@ -117,7 +127,9 @@ export function KeywordsPanel({ site, days, demo }: { site: Site; days: number; 
               <p className="mb-2 text-xs text-muted">Bien placées mais peu cliquées : taux de clic sous la moitié de la moyenne estimée pour leur position.</p>
               {ins.lowCtr.length ? <ul className="divide-y divide-rule">{ins.lowCtr.map((x) => (
                 <li key={x.page} className="py-2 text-sm"><div className="truncate">{path(x.page)}</div>
-                  <div className="num text-xs text-muted">position {fmt(x.position, 1)} · {fmt(x.ctr, 1)} % de clics (moyenne estimée ~{fmt(x.expected, 1)} %) · {fmt(x.impressions)} impressions</div></li>
+                  <div className="num text-xs text-muted">position {fmt(x.position, 1)} · {fmt(x.ctr, 1)} % de clics (moyenne estimée ~{fmt(x.expected, 1)} %) · {fmt(x.impressions)} impressions</div>
+                  {!demo && cms?.wordpress && (fixed[x.page] ? <div role="status" className="mt-1 text-xs">{fixed[x.page]}</div>
+                    : <button type="button" onClick={() => rewrite(x.page)} className="mt-1 text-xs font-semibold text-accent hover:underline">Réécrire le titre</button>)}</li>
               ))}</ul> : <p className="text-sm text-muted">Rien d'anormal.</p>}
             </section>
             <section aria-labelledby="diag-cannibal">
