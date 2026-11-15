@@ -10,6 +10,7 @@ import { CrmView } from "../modules/crm";
 import { KpiCatalogPanel } from "../sources";
 import { Button, Card, Delta, EmptyBox, KpiCard, Segmented } from "../ui";
 import { val } from "../projects";
+import { VisibilityView } from "../visibility";
 
 type Go = (n: Record<string, string | undefined>) => void;
 type Project = { id: string; name: string; sites: string[]; crm_key: string | null; indicators: { id: string; label: string; unit: string | null; source: string; mode: string; value: number | null; previous: number | null; last_error: string | null }[] };
@@ -19,7 +20,7 @@ const TAB_SOURCES: Record<string, string[]> = { revenus: ["stripe"], produit: ["
 export function useProjectTabs(projectId: string, hasSites: boolean): [string, string][] {
   const { modules, active } = useModules();
   const own = modules.filter((m) => !m.core && m.scope === "projet" && active(m.id, projectId)).flatMap((m) => m.tabs ?? []);
-  return [["vue", "Vue"], ...(hasSites ? [["trafic", "Trafic"] as [string, string]] : []), ...own.map((t) => [t.id, t.label] as [string, string]), ["reglages", "Réglages"]];
+  return [["vue", "Vue"], ...(hasSites ? [["trafic", "Trafic"] as [string, string]] : []), ...own.map((t) => [t.id, t.label] as [string, string]), ["ia", "Visibilité IA"], ["reglages", "Réglages"]];
 }
 
 export function ProjectTabBar({ project, tab, go }: { project: Project; tab: string; go: Go }) {
@@ -47,6 +48,7 @@ export function ProjectTabBody({ project, tab, days, go, me, onChanged }: { proj
       {!own.length && <EmptyBox>Ajoutez un domaine au projet dans « Réglages ».</EmptyBox>}
     </div>
   );
+  if (tab === "ia") return <VisibilityView projectId={project.id} />;
   if (tab === "contacts") return <CrmView tab="" go={go} q={{ project: project.crm_key ?? "" }} />;
   const inds = project.indicators.filter((i) => TAB_SOURCES[tab]?.includes(i.source));
   return inds.length ? (
