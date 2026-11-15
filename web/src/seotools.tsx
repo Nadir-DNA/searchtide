@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "re
 import { api, type Site } from "./api";
 import { Button, Card, copyText, fmt, inputCls } from "./ui";
 import { BriefsCard } from "./briefs";
+import { CompetitorsCard } from "./competitors";
 
 type Check = { id: string; label: string; status: "ok" | "warn" | "bad" | "info"; value: string; advice?: string };
 type Result = { url: string; score: { ok: number; warn: number; bad: number }; checks: Check[] };
@@ -318,6 +319,7 @@ export function SeoToolsView({ site, demo = false }: { site: Site; demo?: boolea
     <div className="space-y-4">
       <AuditCard site={site} demo={demo} />
       <PageChecker site={site} />
+      <CompetitorsCard site={site} demo={demo} />
       <IndexingCard site={site} demo={demo} />
       <BriefsCard site={site} demo={demo} />
       <ArticleCard site={site} demo={demo} />

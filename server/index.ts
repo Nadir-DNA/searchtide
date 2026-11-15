@@ -26,6 +26,7 @@ import { registerFollowups } from "./publishers/followups.ts";
 import { registerRules } from "./publishers/rules.ts";
 import { registerAssistant } from "./assistant.ts";
 import { registerBriefs } from "./briefs.ts";
+import { registerCompetitors } from "./competitors.ts";
 import { registerVisibility } from "./visibility.ts";
 import { registerClientReport } from "./client-report.ts";
 import { loginMember, logoutMember, memberFromCookie, registerTeam } from "./team.ts";
@@ -545,6 +546,7 @@ registerPageCheck(app, getSite);
 registerAudit(app, getSite);
 registerCms(app);
 registerBriefs(app, getSite);
+registerCompetitors(app, getSite);
 registerIndexing(app, getSite);
 registerIndexingJobs();
 app.post("/api/sites/:id/sync", async (c) => {

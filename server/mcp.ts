@@ -3,6 +3,7 @@ import { indexingStatus, submitIndexnow } from "./indexing.ts";
 import { auditReport, runAudit } from "./audit.ts";
 import { registerCmsTools } from "./cms.ts";
 import { registerBriefTools } from "./briefs.ts";
+import { registerCompetitorTools } from "./competitors.ts";
 import { registerVisibilityTools } from "./visibility.ts";
 import { registerSocialTools } from "./publishers/stats.ts";
 import { registerRuleTools } from "./publishers/rules.ts";
@@ -79,7 +80,7 @@ const mapResult = (r: any, fn: (d: any) => any) => {
  * Lecture : la cible doit être dans la portée. Écriture : la cible doit être dans la portée en écriture.
  */
 const SCOPED_READ = new Set([
-  "list_sites", "traffic_stats", "search_stats", "seo_opportunities", "keywords_tracked", "brief_ideas", "seo_insights", "page_check", "indexing_status", "social_stats", "pub_rules", "ai_visibility", "pubs_to_publish", "seo_audit_issues", "projects_kpis", "portfolio_overview", "alerts", "today",
+  "list_sites", "traffic_stats", "search_stats", "seo_opportunities", "keywords_tracked", "brief_ideas", "seo_insights", "page_check", "competitor_compare", "indexing_status", "social_stats", "pub_rules", "ai_visibility", "pubs_to_publish", "seo_audit_issues", "projects_kpis", "portfolio_overview", "alerts", "today",
   "milestones_list", "kpi_catalog", "crm_list_contacts", "crm_get_contact", "pubs_list", "modules_list", "dashboard_catalog", "dashboard_list", "dashboard_get",
 ]);
 const SCOPED_WRITE = new Set([
@@ -241,7 +242,7 @@ function googleTools(server: McpServer, readOnly: boolean) {
 
 /** Outils des modules livrés ; un module privé apporte les siens par Module.mcp. */
 const BUILTIN_TOOLS: Record<string, (server: McpServer, readOnly: boolean, agent: string) => void> = {
-  analytics: (s, ro) => { analyticsTools(s); seoTools(s); auditTools(s, ro); if (!ro) { indexingWriteTools(s); registerCmsTools(s); } },
+  analytics: (s, ro) => { analyticsTools(s); seoTools(s); registerCompetitorTools(s, site); auditTools(s, ro); if (!ro) { indexingWriteTools(s); registerCmsTools(s); } },
   google: (s, ro) => { googleTools(s, ro); registerBriefTools(s, ro, site); },
   rdv: (s, ro) => rdvTools(s, ro),
   crm: (s, ro) => registerBusinessTools(only(s, (n) => n.startsWith("crm_")), ro),
