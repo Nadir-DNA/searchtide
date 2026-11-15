@@ -25,9 +25,9 @@ test("barre du haut : chaque projet est un onglet, un projet épinglé passe en 
   const p = await (await page.request.post("/api/projects", { data: { name } })).json();
   await page.goto("/?view=today");
   const tabs = page.getByRole("navigation", { name: "Projets" });
-  await expect(tabs.getByRole("button", { name: "Tous les projets" })).toBeVisible();
+  await expect(tabs.getByRole("button", { name: "Accueil" })).toBeVisible();
   await expect(tabs.getByRole("button", { name })).toBeVisible();
-  // Épinglé : l'onglet passe juste après « Tous les projets »
+  // Épinglé : l'onglet passe juste après « Accueil »
   await page.request.patch(`/api/projects/${p.id}`, { data: { pinned: true } });
   await page.goto("/?view=today");
   await expect(tabs.getByRole("button").nth(1)).toContainText(name);

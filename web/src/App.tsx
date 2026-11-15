@@ -231,7 +231,7 @@ function Shell({ me, onLogout }: { me: Me; onLogout: () => void }) {
         <div className="mx-auto flex max-w-[1600px] items-center gap-3 px-4 md:gap-5 md:px-8">
           <button type="button" onClick={() => nav(home)} className="flex h-14 shrink-0 items-center gap-2.5" aria-label="Searchtide, accueil"><Mark className="size-7" /><span className="hidden text-base font-semibold tracking-tight sm:inline">Searchtide</span></button>
           <nav aria-label="Projets" className="no-scrollbar -mx-1 flex min-w-0 flex-1 items-center gap-1 overflow-x-auto px-1 py-1.5">
-            <button type="button" onClick={() => nav(home)} aria-current={onHome ? "page" : undefined} className={tabCls(onHome)}>Tous les projets<span className="num text-xs text-muted">{projects.length}</span></button>
+            <button type="button" onClick={() => nav(home)} aria-current={onHome ? "page" : undefined} className={tabCls(onHome)}>Accueil<span className="num text-xs text-muted">{projects.length}</span></button>
             {ordered.map((p) => {
               const active = q.view === "project" && q.id === p.id;
               return <button key={p.id} type="button" onClick={() => nav({ ...home, view: "project", id: p.id })} aria-current={active ? "page" : undefined} className={tabCls(active)}><span className={`led ${led(p.id)}`} aria-hidden />{p.name}</button>;
@@ -339,13 +339,13 @@ function Shell({ me, onLogout }: { me: Me; onLogout: () => void }) {
 
       <nav aria-label="Navigation mobile" className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-border bg-surface pb-[env(safe-area-inset-bottom)] md:hidden">
         {([
-          ["Mur", Icon.grid, onHome, () => nav(home), 0],
-          ["À traiter", Icon.check, q.view === "today", to("today"), todayCount],
-          ["Contacts", Icon.users, q.view === "crm", to("crm"), 0],
-          ["Publier", Icon.calendar, q.view === "pubs", to("pubs"), 0],
-          ["Plus", Icon.gear, false, () => setMenu(true), 0],
-        ] as const).filter(([label]) => !me.demo || label === "Mur" || label === "À traiter" || label === "Plus").map(([label, icon, active, onClick, badge]) => (
-          <button key={label} type="button" onClick={onClick} aria-current={active ? "page" : undefined}
+          ["home", "Accueil", Icon.grid, onHome, () => nav(home), 0],
+          ["today", "À traiter", Icon.check, q.view === "today", to("today"), todayCount],
+          ["crm", "Contacts", Icon.users, q.view === "crm", to("crm"), 0],
+          ["pubs", "Publications", Icon.calendar, q.view === "pubs", to("pubs"), 0],
+          ["menu", "Menu", Icon.gear, false, () => setMenu(true), 0],
+        ] as const).filter(([key]) => key === "home" || key === "today" || key === "menu" || (key === "crm" ? !me.demo && crmOn : !me.demo && pubsOn)).map(([key, label, icon, active, onClick, badge]) => (
+          <button key={key} type="button" onClick={onClick} aria-current={active ? "page" : undefined}
             className={`relative flex min-h-14 flex-col items-center justify-center gap-0.5 text-[11px] ${active ? "font-semibold text-accent" : "text-muted"}`}>
             <Svg>{icon}</Svg>{label}
             {badge ? <span className="num absolute top-1.5 right-[calc(50%-20px)] rounded-full bg-accent px-1.5 text-[10px] font-bold text-on-accent">{badge}</span> : null}

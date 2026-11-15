@@ -59,7 +59,7 @@ export function TrafficView({ site, days, onSetup }: { site: Site; days: number;
         <Card title="Appareils" action={<Segmented label="Détail" value={tech} onChange={setTech} options={[["devices", "Type"], ["browsers", "Navigateur"]] as const} />}>
           <ShareList label={tech === "devices" ? "Appareil" : "Navigateur"} rows={t[tech]} empty="Aucune donnée." exportName={`searchtide-${site.domain}-${tech}`} />
         </Card>
-        <Card title="Campagnes"><ShareList label="utm_campaign" rows={t.campaigns} empty="Aucune visite avec un paramètre utm_campaign sur cette période." exportName={`searchtide-${site.domain}-campagnes`} /></Card>
+        <Card title="Campagnes"><ShareList label="Campagne" rows={t.campaigns} empty="Aucune visite de campagne sur cette période." exportName={`searchtide-${site.domain}-campagnes`} /></Card>
       </div>
     </div>
   );
