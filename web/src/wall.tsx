@@ -58,7 +58,7 @@ export function WallView({ days, go }: { days: number; go: Go }) {
   // Totaux : seulement les mesures que ce portefeuille possède, jamais un faux zéro ni des devises additionnées.
   const totals = useMemo(() => {
     const cols = data?.columns ?? [];
-    return (["visitors", "clicks", "impressions", "revenue", "mrr", "leads", "pipeline", "published"] as const).flatMap((key) => {
+    return (["visitors", "clicks", "impressions", "revenue", "mrr", "leads", "followers", "pipeline", "published"] as const).flatMap((key) => {
       const col = cols.find((c) => c.key === key);
       const vals = projects.map((p) => p.measures[key] ?? { value: null, previous: null, unit: null });
       if (!col || vals.every((m) => m.value == null)) return [];

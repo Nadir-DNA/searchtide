@@ -32,6 +32,7 @@ function tiktokError(status: number, e: any): PublishResult {
 export const tiktok: Provider = {
   id: "tiktok", label: "TikTok", env: ["TIKTOK_CLIENT_KEY", "TIKTOK_CLIENT_SECRET"],
   limits: { text: 2200, media: 1 },
+  statsUnavailable: "TikTok demande une autorisation supplémentaire (user.info.stats) que la connexion actuelle ne comprend pas",
   configured: () => !!env().id && !!env().secret,
   check: ({ media, visibility }) => [
     ...(media.length !== 1 || !media[0].mime.startsWith("video/") ? ["TikTok : une seule vidéo (les photos viendront plus tard)"] : []),

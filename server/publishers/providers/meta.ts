@@ -4,7 +4,7 @@
 // https://github.com/gitroomhq/postiz-app — réécrit sans NestJS ni Temporal ; publication en deux temps par `poll` ;
 // un media_publish incertain renvoie to_verify (Instagram peut publier malgré une erreur).
 import { registerProvider, type Media, type Provider, type PublishResult, type Tokens } from "../provider.ts";
-import { before, blob, f, fail, final, json, pending, unknown } from "./http.ts";
+import { before, blob, f, fail, final, json, n, pending, unknown } from "./http.ts";
 
 export const GRAPH = "https://graph.facebook.com/v25.0";
 const VIDEO = "https://graph-video.facebook.com/v25.0";
@@ -49,6 +49,25 @@ export const facebook: Provider = {
   configured: () => !!env().id && !!env().secret,
   check: ({ media }) => media.some((m) => m.mime.startsWith("video/")) && media.length > 1 ? ["Facebook : une vidéo seule, ou des images"] : [],
   authUrl: authUrl(["pages_show_list", "pages_manage_posts", "pages_read_engagement"]),
+  // Statistiques (pages_read_engagement, déjà demandé) : abonnés de la Page, réactions, commentaires et partages par publication.
+  async stats(token, page) {
+    const r = await f(`${GRAPH}/${page}?${new URLSearchParams({ fields: "followers_count,fan_count", access_token: token })}`);
+    const j = await json(r);
+    if (!r.ok) throw new Error(`Facebook : statistiques refusées (${r.status})`);
+    return { followers: n(j.followers_count ?? j.fan_count) };
+  },
+  async postStats(urls, token) {
+    const out: Record<string, { likes?: number; comments?: number; shares?: number }> = {};
+    for (const u of urls.slice(0, 100)) {
+      const id = /facebook\.com\/(?:[^/?#]+\/videos\/)?(\d+(?:_\d+)?)\/?(?:[?#].*)?$/.exec(u)?.[1];
+      if (!id) continue;
+      const r = await f(`${GRAPH}/${id}?${new URLSearchParams({ fields: "reactions.summary(true).limit(0),comments.summary(true).limit(0),shares", access_token: token })}`);
+      if (!r.ok) continue;   // publication supprimée ou non lisible : on garde les derniers chiffres connus
+      const j = await json(r);
+      out[u] = { likes: n(j.reactions?.summary?.total_count), comments: n(j.comments?.summary?.total_count), shares: n(j.shares?.count) };
+    }
+    return out;
+  },
   async exchange(code, redirectUri) {
     const list = await pages(await userToken(code, redirectUri), "id,name,access_token");
     if (!list.length) throw new Error("Aucune Page Facebook administrée par ce compte");
@@ -105,6 +124,13 @@ export const instagram: Provider = {
   configured: () => !!env().id && !!env().secret,
   check: ({ media }) => media.length ? [] : ["Instagram : au moins une image ou une vidéo"],
   authUrl: authUrl(["instagram_basic", "instagram_content_publish", "pages_show_list", "pages_read_engagement", "business_management"]),
+  // Statistiques du compte (instagram_basic) ; celles des publications demandent l'identifiant du média, non gardé ici.
+  async stats(token, ig) {
+    const r = await f(`${GRAPH}/${ig}?${new URLSearchParams({ fields: "followers_count,media_count", access_token: token })}`);
+    const j = await json(r);
+    if (!r.ok) throw new Error(`Instagram : statistiques refusées (${r.status})`);
+    return { followers: n(j.followers_count), posts: n(j.media_count) };
+  },
   async exchange(code, redirectUri) {
     const list = (await pages(await userToken(code, redirectUri), "id,name,access_token,instagram_business_account{id,username}")).filter((p) => p.instagram_business_account?.id);
     if (!list.length) throw new Error("Aucun compte Instagram professionnel relié à une Page de ce compte");

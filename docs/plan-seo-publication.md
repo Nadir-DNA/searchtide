@@ -116,6 +116,11 @@ Une seule connexion facultative « Données SEO » (fournisseur payé à l'usage
 - Récupérer les résultats de Google sans fournisseur.
 - Le like automatique.
 
+## Avancement
+
+- **Étape 1 livrée** (branche `claude/youthful-lovelace-rotjbr`) : A2, A3, A4, A5, D2, D3. Les appels aux API de Google, IndexNow et des réseaux sont testés avec des réponses simulées ; à valider sur de vrais comptes.
+- Écarts : D2 ne joint pas encore les médias depuis le compositeur (ils s'ajoutent ensuite dans chaque publication) ; D3 ne couvre pas LinkedIn (profil personnel) ni TikTok (autorisation `user.info.stats` non demandée), ni les publications Instagram (identifiant du média non gardé).
+
 ## Ordre de livraison proposé
 
 Tout peut sortir dans une seule mise à jour, mais livrer par étapes réduit le risque. Ordre conseillé, du plus utile et gratuit vers le plus coûteux :

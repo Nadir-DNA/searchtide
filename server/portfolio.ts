@@ -12,6 +12,7 @@ import { listProjects, rangeOf } from "./projects.ts";
 import { visibleProjectIds } from "./agents.ts";
 import { connections } from "./connections.ts";
 import "./business.ts"; // tables des contacts et des publications, lues ci-dessous
+import { socialMeasures } from "./publishers/stats.ts";
 import { computeHealth, crmApplicable, getWeights, registerHealth, type Weights } from "./health.ts";
 
 type Row = Record<string, any>;
@@ -56,6 +57,8 @@ export const MEASURES: Record<string, { label: string; kind: "count" | "money" |
   pipeline: { label: "Montant en négociation", kind: "money" },
   followups: { label: "Relances à faire", kind: "count", lowerIsBetter: true },
   published: { label: "Publications publiées", kind: "count" },
+  followers: { label: "Abonnés (réseaux)", kind: "count" },
+  engagement: { label: "Engagement (réseaux)", kind: "count" },
 };
 type Measure = { value: number | null; previous: number | null; unit: string | null; manual?: boolean };
 const SUMMED = new Set(["count", "money"]);
@@ -218,6 +221,7 @@ export function portfolio(r: Range, weights: Weights = getWeights(), onlyIds: Se
           followups: { value: crm?.todo ?? 0, previous: null, unit: null },
         } : {}),
         ...(pubsCount(x as { id: string; crm_key: string | null }, r, p) ?? {}),
+        ...(x.id ? (() => { try { return socialMeasures(x as { id: string; crm_key: string | null }, r, p); } catch { return {}; } })() : {}),
         ...(revenueMeasure ? { revenue: revenueMeasure } : {}),
         ...(contactsMeasure ? { leads: contactsMeasure } : {}),
       } as Record<string, Measure>,

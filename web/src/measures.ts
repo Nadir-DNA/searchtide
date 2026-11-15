@@ -24,4 +24,4 @@ export const SOURCE_HINT: Record<string, { label: string; action: string; to: Re
 
 /** Ordre dans lequel les mesures disponibles sont proposées en grand (une seule) puis en grille. */
 export const HEADLINE = ["revenue", "mrr", "visitors", "clicks", "leads"] as const;
-export const GRID = ["visitors", "clicks", "impressions", "position", "revenue", "mrr", "leads", "pipeline", "followups", "ai_visitors", "published", "pageviews"] as const;
+export const GRID = ["visitors", "clicks", "impressions", "position", "revenue", "mrr", "leads", "pipeline", "followups", "followers", "engagement", "ai_visitors", "published", "pageviews"] as const;

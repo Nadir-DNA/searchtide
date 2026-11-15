@@ -3,7 +3,7 @@
 // Écrit pour Searchtide sur le modèle des fournisseurs Postiz (youtube.provider.ts), Copyright (C) 2025 Nevo David,
 // https://github.com/gitroomhq/postiz-app ; portées réduites à l'envoi et à la lecture de la chaîne.
 import { registerProvider, type Provider, type Tokens } from "../provider.ts";
-import { before, challenge, f, fail, final, json, unknown } from "./http.ts";
+import { before, challenge, chunks, f, fail, final, json, n, unknown } from "./http.ts";
 
 const SCOPES = ["https://www.googleapis.com/auth/youtube.upload", "https://www.googleapis.com/auth/youtube.readonly"];
 const env = () => ({ id: process.env.YOUTUBE_CLIENT_ID ?? "", secret: process.env.YOUTUBE_CLIENT_SECRET ?? "" });
@@ -40,6 +40,24 @@ export const youtube: Provider = {
     return items.map((c): Tokens => ({ ...t, accountId: String(c.id), name: String(c.snippet?.title ?? "YouTube") }));
   },
   refresh: (refreshToken) => token({ grant_type: "refresh_token", refresh_token: refreshToken }),
+  // Statistiques de la chaîne et des vidéos (youtube.readonly, déjà demandé). Abonnés masqués par la chaîne : non fourni.
+  async stats(t, id) {
+    const r = await f(`https://www.googleapis.com/youtube/v3/channels?part=statistics&id=${encodeURIComponent(id)}`, { headers: { Authorization: `Bearer ${t}` } });
+    const j = await json(r);
+    if (!r.ok) throw new Error(`YouTube : statistiques refusées (${r.status})`);
+    const s = j.items?.[0]?.statistics ?? {};
+    return { followers: s.hiddenSubscriberCount ? undefined : n(s.subscriberCount), posts: n(s.videoCount), views: n(s.viewCount) };
+  },
+  async postStats(urls, t) {
+    const ids = new Map(urls.flatMap((u) => { const m = /[?&]v=([\w-]{6,})/.exec(u); return m ? [[m[1], u] as [string, string]] : []; }));
+    const out: Record<string, { views?: number; likes?: number; comments?: number }> = {};
+    for (const part of chunks([...ids.keys()], 50)) {
+      const r = await f(`https://www.googleapis.com/youtube/v3/videos?part=statistics&id=${part.join(",")}`, { headers: { Authorization: `Bearer ${t}` } });
+      if (!r.ok) throw new Error(`YouTube : statistiques des vidéos refusées (${r.status})`);
+      for (const v of (await json(r)).items ?? []) out[ids.get(String(v.id))!] = { views: n(v.statistics?.viewCount), likes: n(v.statistics?.likeCount), comments: n(v.statistics?.commentCount) };
+    }
+    return out;
+  },
 
   async publish({ text, title, visibility, media }, t) {
     const video = media[0];

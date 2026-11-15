@@ -5,6 +5,7 @@ import { ErrorLine, Header, KpiSkeleton, useData } from "../../App";
 import { Button, Card, EmptyBox, Pill, Segmented, Table, fmt, inputCls, copyText, useAsk } from "../../ui";
 import { ATTEMPT_LABEL, PUB_CHIP, PUB_STATE } from "../shared";
 import { MultiComposer } from "./composer";
+import { SocialStatsCard } from "./stats";
 import { type Contact, type Pub, type Summary, type Go, STAGES, type Stage, stageName, KINDS, PUB_STATUS, NETWORKS, filterCls, eur, today, dateFr, Sheet, Field } from "../shared";
 
 export function PubsCard({ go, title = "Publications de la semaine" }: { go: Go; title?: string }) {
@@ -90,6 +91,7 @@ export function PubsView({ q, go }: { q: Record<string, string>; go: Go }) {
             ) : <EmptyBox>Rien de prévu ce mois-ci. <button type="button" onClick={() => setEdit({ day: today(), status: "scheduled" })} className="text-ink underline">Planifier une publication</button></EmptyBox>}
           </Card>
           <p className="mt-3 hidden text-xs text-muted md:block">Double-cliquez sur un jour pour y ajouter une publication.</p>
+          <div className="mt-4"><SocialStatsCard project={q.project} /></div>
           <div className="mt-4"><AccountsCard /></div>
         </>
       )}

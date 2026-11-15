@@ -12,6 +12,11 @@ export const definitive = (r: PublishResult) => !r.ok && r.kind !== "pending" &&
 export type Tokens = { accessToken: string; refreshToken?: string; expiresAt?: number; accountId: string; name: string };
 export type Refreshed = { accessToken: string; refreshToken?: string; expiresAt?: number };
 
+/** Chiffres d'un compte, tels que le réseau les publie. Absent = non fourni (jamais 0 par défaut). */
+export type AccountStats = { followers?: number; posts?: number; views?: number };
+/** Chiffres d'une publication. */
+export type PostStats = { impressions?: number; likes?: number; comments?: number; shares?: number; views?: number };
+
 export type Media = { id: string; mime: string; size: number; kind: "image" | "video"; bytes(): Buffer; publicUrl(): string };
 export type PostInput = { text: string; title?: string; visibility?: string; media: Media[] };
 
@@ -36,6 +41,12 @@ export interface Provider {
   publish(input: PostInput, accessToken: string, accountId: string): Promise<PublishResult>;
   /** Suite d'un `pending` : lecture d'état, puis geste final quand le réseau est prêt. */
   poll?(data: Record<string, unknown>, accessToken: string, accountId: string): Promise<PublishResult>;
+  /** Statistiques du compte, avec les autorisations déjà accordées. Absent quand le réseau ne les fournit pas. */
+  stats?(accessToken: string, accountId: string): Promise<AccountStats>;
+  /** Statistiques des publications, par adresse publiée (celle gardée comme preuve). */
+  postStats?(urls: string[], accessToken: string, accountId: string): Promise<Record<string, PostStats>>;
+  /** Pourquoi les statistiques ne sont pas disponibles, quand `stats` est absent. */
+  statsUnavailable?: string;
 }
 
 const registry = new Map<string, Provider>();

@@ -6,6 +6,10 @@ import type { FailureKind, PublishResult } from "../provider.ts";
 export const TIMEOUT = 60_000;
 export const f = (url: string, init: RequestInit = {}) => fetch(url, { ...init, signal: AbortSignal.timeout(TIMEOUT) });
 export const json = async (r: Response) => await r.json().catch(() => ({})) as any;
+/** Nombre publié par un réseau, ou undefined s'il manque (jamais 0 par défaut). */
+export const n = (v: unknown) => { const x = Number(v); return v == null || v === "" || !Number.isFinite(x) ? undefined : x; };
+/** Découpe une liste en paquets (les API acceptent 50 ou 100 identifiants par appel). */
+export const chunks = <T>(list: T[], size: number) => Array.from({ length: Math.ceil(list.length / size) }, (_, i) => list.slice(i * size, (i + 1) * size));
 export const challenge = (verifier: string) => createHash("sha256").update(verifier).digest("base64url");
 export const blob = (b: Buffer, mime: string) => new Blob([new Uint8Array(b)], { type: mime });
 

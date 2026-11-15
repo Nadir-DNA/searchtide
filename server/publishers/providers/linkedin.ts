@@ -40,6 +40,7 @@ export const linkedin: Provider = {
   label: "LinkedIn",
   env: ["LINKEDIN_CLIENT_ID", "LINKEDIN_CLIENT_SECRET"],
   limits: { text: 3000, media: 0 },
+  statsUnavailable: "LinkedIn ne fournit pas les abonnés ni les statistiques des posts d'un profil personnel avec l'autorisation de publication",
   configured: () => !!env().id && !!env().secret,
   authUrl: (redirectUri, state) => `https://www.linkedin.com/oauth/v2/authorization?${new URLSearchParams({
     response_type: "code", client_id: env().id, redirect_uri: redirectUri, state, scope: SCOPES.join(" "),

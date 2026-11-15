@@ -3,7 +3,7 @@
 // Envoi par morceaux d'après Postiz (x.provider.ts), Copyright (C) 2025 Nevo David, https://github.com/gitroomhq/postiz-app ;
 // réécrit en OAuth 2.0 sans dépendance ; un post incertain renvoie to_verify.
 import { registerProvider, type Media, type Provider, type PublishResult, type Tokens } from "../provider.ts";
-import { before, blob, challenge, f, fail, final, json, pending, unknown } from "./http.ts";
+import { before, blob, challenge, chunks, f, fail, final, json, n, pending, unknown } from "./http.ts";
 
 const API = "https://api.x.com/2";
 const CHUNK = 1024 * 1024;
@@ -73,6 +73,28 @@ export const x: Provider = {
     return [{ ...t, accountId: String(me.id), name: `@${me.username ?? me.name}` } satisfies Tokens];
   },
   refresh: (refreshToken) => token({ grant_type: "refresh_token", refresh_token: refreshToken }),
+  // Statistiques : abonnés et nombre de posts (users.read), puis vues, j'aime, reposts et réponses par post (tweet.read).
+  async stats(t, id) {
+    const r = await f(`${API}/users/${id}?user.fields=public_metrics`, { headers: bearer(t) });
+    const j = await json(r);
+    if (!r.ok) throw new Error(`X : statistiques refusées (${r.status})`);
+    const m = j.data?.public_metrics ?? {};
+    return { followers: n(m.followers_count), posts: n(m.tweet_count) };
+  },
+  async postStats(urls, t) {
+    const ids = new Map(urls.flatMap((u) => { const m = /\/status\/(\d+)/.exec(u); return m ? [[m[1], u] as [string, string]] : []; }));
+    const out: Record<string, { impressions?: number; likes?: number; comments?: number; shares?: number }> = {};
+    for (const part of chunks([...ids.keys()], 100)) {
+      const r = await f(`${API}/tweets?${new URLSearchParams({ ids: part.join(","), "tweet.fields": "public_metrics" })}`, { headers: bearer(t) });
+      if (!r.ok) throw new Error(`X : statistiques des posts refusées (${r.status})`);
+      for (const d of (await json(r)).data ?? []) {
+        const m = d.public_metrics ?? {};
+        out[ids.get(String(d.id))!] = { impressions: n(m.impression_count), likes: n(m.like_count), comments: n(m.reply_count),
+          shares: m.retweet_count == null && m.quote_count == null ? undefined : (n(m.retweet_count) ?? 0) + (n(m.quote_count) ?? 0) };
+      }
+    }
+    return out;
+  },
 
   async publish({ text, media }, t) {
     const ids: string[] = [], waiting: string[] = [];
