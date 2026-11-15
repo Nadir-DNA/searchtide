@@ -163,14 +163,13 @@ export function SetupView({ site, me, onChange, go }: { site: Site; me: Me; onCh
   const { ask, dialog } = useAsk();
   const [props, setProps] = useState<string[] | null>(null);
   const [error, setError] = useState("");
-  const [tool, setTool] = useState<"html" | "next" | "wordpress" | "shopify" | "gtm">("html");
+  const [tool, setTool] = useState<"html" | "next" | "wordpress" | "shopify">("html");
   const src = `${location.origin}/script.js`;
   const snippet = {
     html: `<script defer src="${src}" data-site="${site.domain}"></script>`,
     next: `import Script from "next/script";\n\n<Script defer src="${src}" data-site="${site.domain}" strategy="afterInteractive" />`,
     wordpress: `// functions.php du thème enfant\nadd_action("wp_head", function () {\n  echo '<script defer src="${src}" data-site="${site.domain}"></script>';\n});`,
-    shopify: `{% comment %} theme.liquid, avant </head> {% endcomment %}\n<script defer src="${src}" data-site="${site.domain}"></script>`,
-    gtm: `Balise HTML personnalisée :\n<script defer src="${src}" data-site="${site.domain}"></script>`,
+    shopify: `Thème Shopify → theme.liquid, avant </head> :\n<script defer src="${src}" data-site="${site.domain}"></script>`,
   }[tool];
   useEffect(() => { if (me.gsc && !me.demo) api<string[]>("/api/gsc/properties").then(setProps).catch((e) => setError(e.message)); }, [me]);
   async function link(gsc_property: string) {
@@ -193,7 +192,7 @@ export function SetupView({ site, me, onChange, go }: { site: Site; me: Me; onCh
       {dialog}
       <VisitStatus site={site} />
       <SettingCard title="Script de suivi" sub={<>À coller dans le &lt;head&gt; de chaque page. Sans cookie : aucune bannière de consentement n'est nécessaire.</>}>
-        <Segmented label="Outil" value={tool} onChange={setTool} options={[["html", "HTML"], ["next", "Next.js"], ["wordpress", "WordPress"], ["shopify", "Shopify"], ["gtm", "GTM"]] as const} />
+        <Segmented label="Outil" value={tool} onChange={setTool} options={[["html", "HTML"], ["next", "Next.js"], ["wordpress", "WordPress"], ["shopify", "Shopify"]] as const} />
         <div className="mt-3"><Copyable text={snippet} /></div>
         <p className="mt-3 text-xs text-muted">Pour ne pas compter vos propres visites, ouvrez une fois <a className="text-ink underline" href={`https://${site.domain}/?searchtide=ignore`} target="_blank" rel="noreferrer">{site.domain}/?searchtide=ignore</a> sur chacun de vos appareils (<code className="font-mono">?searchtide=track</code> pour annuler).</p>
         <p className="mt-3 text-xs text-muted">Les visites automatisées (curl, Lighthouse, aperçus de liens) ne sont pas comptées : utilisez un navigateur normal pour vérifier.</p>

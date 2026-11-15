@@ -6,8 +6,8 @@ import { useDrawerKeys } from "./useDrawerKeys";
 type Go = (n: Record<string, string | undefined>) => void;
 type Entry = { key: string; label: string; hint: string; run: () => void };
 
-export function CommandPalette({ demo = false, sites, projects, go, onClose }: {
-  demo?: boolean; sites: string[]; projects: { id: string; name: string }[]; go: Go; onClose: () => void;
+export function CommandPalette({ demo = false, sites, projects, pages = [], go, onClose }: {
+  demo?: boolean; sites: string[]; projects: { id: string; name: string }[]; pages?: { id: string; name: string }[]; go: Go; onClose: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const previous = useRef<HTMLElement | null>(null);
@@ -18,10 +18,12 @@ export function CommandPalette({ demo = false, sites, projects, go, onClose }: {
   useEffect(() => () => previous.current?.focus?.(), []);
 
   const entries: Entry[] = [
-    { key: "wall", label: "Mur de projets", hint: "Vue", run: () => go({ site: undefined, view: undefined, id: undefined, tab: undefined }) },
-    { key: "today", label: "À traiter (Aujourd'hui)", hint: "Vue", run: () => go({ site: undefined, view: "today", id: undefined, tab: undefined }) },
-    { key: "pages", label: "Tableaux de bord", hint: "Vue", run: () => go({ site: undefined, view: "page", id: undefined }) },
-    { key: "projects", label: "Projets", hint: "Vue", run: () => go({ site: undefined, view: "projects", id: undefined }) },
+    { key: "home", label: "Accueil", hint: "Vue", run: () => go({ site: undefined, view: undefined, id: undefined, tab: undefined }) },
+    { key: "today", label: "À traiter", hint: "Vue", run: () => go({ site: undefined, view: "today", id: undefined, tab: undefined }) },
+    { key: "reports", label: "Rapports", hint: "Vue", run: () => go({ site: undefined, view: "reports", id: undefined, tab: undefined }) },
+    ...(demo ? [] : [{ key: "pubs", label: "Publications", hint: "Vue", run: () => go({ site: undefined, view: "pubs", id: undefined, tab: undefined }) }]),
+    ...(demo ? [] : [{ key: "crm", label: "Contacts", hint: "Vue", run: () => go({ site: undefined, view: "crm", id: undefined, tab: undefined }) }]),
+    ...pages.map((p) => ({ key: `page:${p.id}`, label: p.name, hint: "Page d'accueil", run: () => go({ site: undefined, view: "page", id: p.id }) })),
     ...(demo ? [] : [{ key: "connections", label: "Intégrations", hint: "Vue", run: () => go({ site: undefined, view: "integrations", id: undefined }) }]),
     { key: "settings", label: "Réglages", hint: "Vue", run: () => go({ site: undefined, view: "settings", id: undefined }) },
     ...sites.map((domain) => ({ key: `site:${domain}`, label: domain, hint: "Site", run: () => go({ site: domain, view: undefined, id: undefined, tab: undefined }) })),

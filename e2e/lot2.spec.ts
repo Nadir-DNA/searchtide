@@ -33,7 +33,7 @@ test("CA B3 : la période choisie est retenue d'une visite à l'autre", async ({
 
 test("CA B4 : Auto suit le système, Sombre reste le défaut", async ({ page }) => {
   await login(page);
-  const more = () => page.getByRole("button", { name: "Plus", exact: true }).click();
+  const more = () => page.getByRole("button", { name: "Outils", exact: true }).click();
   await more();
   await page.getByRole("group", { name: "Thème" }).getByRole("button", { name: "Auto" }).click();
   await expect.poll(() => page.evaluate(() => document.documentElement.dataset.theme)).toBe("light");
@@ -51,8 +51,9 @@ test("CA A2 : cinq onglets d'installation, sans Astro ni PHP", async ({ page }) 
   await page.request.post("/api/sites", { data: { domain } });
   await page.goto(`/?site=${domain}&tab=setup`);
   const tools = page.getByRole("group", { name: "Outil" });
-  await expect(tools.getByRole("button")).toHaveText(["HTML", "Next.js", "WordPress", "Shopify", "GTM"]);
+  await expect(tools.getByRole("button")).toHaveText(["HTML", "Next.js", "WordPress", "Shopify"]);
   await expect(page.getByText(`data-site="${domain}"`)).toBeVisible();
   await expect(tools.getByRole("button", { name: "Astro" })).toHaveCount(0);
   await expect(tools.getByRole("button", { name: "PHP" })).toHaveCount(0);
+  await expect(tools.getByRole("button", { name: "GTM" })).toHaveCount(0);
 });

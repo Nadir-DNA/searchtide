@@ -23,11 +23,11 @@ test("1.8 : plus aucun prompt() ni confirm() natif dans web/src", () => {
   }
 });
 
-test("A2 : les onglets d'installation se limitent à HTML, Next.js, WordPress, Shopify et GTM", () => {
+test("A2 : les onglets d'installation se limitent à HTML, Next.js, WordPress et Shopify", () => {
   const text = readFileSync(join(ROOT, "modules/analytics/index.tsx"), "utf8");
   const block = text.match(/options=\{\[\["html"[\s\S]*?\] as const\}/)?.[0] ?? "";
-  for (const name of ["html", "next", "wordpress", "shopify", "gtm"]) assert.match(block, new RegExp(`"${name}"`));
-  for (const absent of ["astro", "php"]) assert.doesNotMatch(block, new RegExp(`"${absent}"`), `${absent} retiré (13.4)`);
+  for (const name of ["html", "next", "wordpress", "shopify"]) assert.match(block, new RegExp(`"${name}"`));
+  for (const absent of ["astro", "php", "gtm"]) assert.doesNotMatch(block, new RegExp(`"${absent}"`), `${absent} retiré (13.4)`);
 });
 
 test("1.1/D3 : /api/sites/:id/setup-status expose la dernière visite et les refus, 404 sinon", async () => {
