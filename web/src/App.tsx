@@ -36,7 +36,7 @@ import { Button, Card, Delta, EmptyBox, Icon, KpiCard, Mark, Segmented, ShareLis
 
 const PERIODS = [["7", "7 j"], ["28", "28 j"], ["90", "3 mois"], ["365", "12 mois"]] as const;
 
-type Me = { gsc: boolean; demo: boolean };
+type Me = { gsc: boolean; demo: boolean; role?: "owner" | "admin" | "membre" | null; name?: string | null };
 
 // Navigation par l'URL : ?site=exemple.com&tab=search&days=28
 function useRoute() {
@@ -72,7 +72,8 @@ function useTheme() {
 
 export function App() {
   const [me, setMe] = useState<Me | null | false>(null);
-  useEffect(() => { api<Me>("/api/me").then(setMe).catch(() => setMe(false)); }, []);
+  // Un membre d'équipe voit l'interface en lecture seule, comme la démonstration.
+  useEffect(() => { api<Me>("/api/me").then((m) => setMe({ ...m, demo: m.demo || m.role === "membre" })).catch(() => setMe(false)); }, []);
   useEffect(() => { const f = () => setMe(false); addEventListener("st-auth-expired", f); return () => removeEventListener("st-auth-expired", f); }, []);
   if (me === null) return null;
   return me ? <Shell me={me} onLogout={() => setMe(false)} /> : <Login />;
@@ -81,12 +82,13 @@ export function App() {
 function Login() {
   const [error, setError] = useState("");
   const [config, setConfig] = useState<{ totp: boolean; passwordGenerated: boolean } | null>(null);
+  const [team, setTeam] = useState(false);
   useEffect(() => { api<{ totp: boolean; passwordGenerated: boolean }>("/api/auth-config").then(setConfig).catch(() => {}); }, []);
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
     try {
-      await api("/api/login", { method: "POST", json: { password: f.get("password"), code: f.get("code") ?? "" } });
+      await api("/api/login", { method: "POST", json: team ? { email: f.get("email"), password: f.get("password") } : { password: f.get("password"), code: f.get("code") ?? "" } });
       resetAuthExpired();
       location.reload();
     }
@@ -97,7 +99,7 @@ function Login() {
       <form onSubmit={submit} className="w-full max-w-sm rounded-2xl border border-border bg-surface p-8">
         <div className="mb-8 flex items-center gap-2.5"><Mark className="size-8" /><span className="text-lg font-medium tracking-tight">Searchtide</span></div>
         <h1 className="text-[28px] font-light">Connexion</h1>
-        {config?.passwordGenerated ? (
+        {team ? <p className="mt-1 mb-6 text-sm text-muted">Compte d'équipe : l'adresse et le mot de passe donnés par l'administrateur.</p> : config?.passwordGenerated ? (
           <p className="mt-1 mb-6 text-sm text-muted">
             Votre mot de passe a été généré au premier démarrage : il est affiché dans les journaux
             (<code className="font-mono">docker logs &lt;nom-du-conteneur&gt;</code>) et enregistré dans
@@ -107,16 +109,20 @@ function Login() {
         ) : (
           <p className="mt-1 mb-6 text-sm text-muted">Le mot de passe est celui défini par <code className="font-mono">ADMIN_PASSWORD</code> sur votre instance.</p>
         )}
+        {team && <label className="mb-4 block text-sm">Adresse e-mail
+          <input name="email" type="email" autoFocus required autoComplete="username" className={`${inputCls} mt-2`} />
+        </label>}
         <label className="block text-sm">Mot de passe
-          <input name="password" type="password" autoFocus required autoComplete="current-password" className={`${inputCls} mt-2`} />
+          <input name="password" type="password" autoFocus={!team} required autoComplete="current-password" className={`${inputCls} mt-2`} />
         </label>
-        {config?.totp && (
+        {config?.totp && !team && (
           <label className="mt-4 block text-sm">Code de l'application d'authentification
             <input name="code" inputMode="text" pattern="[0-9A-Za-z ]{6,20}" autoComplete="one-time-code" required placeholder="123 456 ou code de secours" className={`${inputCls} mt-2`} />
           </label>
         )}
         {error && <p role="alert" className="mt-2 text-sm text-negative">{error}</p>}
         <Button className="mt-5 w-full">Se connecter</Button>
+        <button type="button" onClick={() => { setTeam(!team); setError(""); }} className="mt-4 w-full text-center text-sm text-muted underline hover:text-ink">{team ? "Mot de passe de l'instance" : "Compte d'équipe (adresse e-mail)"}</button>
       </form>
     </main>
   );
@@ -258,7 +264,8 @@ function Shell({ me, onLogout }: { me: Me; onLogout: () => void }) {
                 <a href="https://github.com/Nadir-DNA/searchtide" target="_blank" rel="noreferrer" className="flex min-h-10 items-center gap-3 rounded-lg px-2 text-sm text-muted hover:bg-raised hover:text-ink"><Svg>{Icon.book}</Svg>Documentation</a>
                 <button type="button" onClick={logout} className="flex min-h-10 w-full items-center gap-3 rounded-lg px-2 text-left text-sm text-muted hover:bg-raised hover:text-ink"><Svg>{Icon.out}</Svg>Déconnexion</button>
               </div>} />}
-            {me.demo && <div className="flex items-center gap-3 py-1 text-sm text-muted">Démo en lecture seule{themeSwitch}</div>}
+            {me.demo && <div className="flex items-center gap-3 py-1 text-sm text-muted">{me.role === "membre" ? `${me.name ?? "Membre"} · lecture seule` : "Démo en lecture seule"}{themeSwitch}
+              {me.role === "membre" && <button type="button" onClick={logout} className="underline hover:text-ink">Déconnexion</button>}</div>}
           </div>
         </div>
       </header>

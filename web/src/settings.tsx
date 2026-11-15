@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { api } from "./api";
 import { ErrorLine, Header, KpiSkeleton, useData } from "./App";
 import { Button, Card, EmptyBox, Pill, inputCls, Status } from "./ui";
+import { TeamCard } from "./team";
 
 type Ops = {
   ntfy: string | null; ntfyVia: "connexion" | "env" | null; mail: boolean;
@@ -256,6 +257,7 @@ export function SettingsView({ go }: { go?: (n: Record<string, string | undefine
       <Header title="Réglages" sub="Surveillance, sauvegardes, notifications et sécurité" />
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <div className="min-w-0 lg:col-span-2"><HealthWeights /></div>
+        <div className="min-w-0 lg:col-span-2"><TeamCard /></div>
         <Card title="Surveillance" action={<span className="text-xs text-muted">Toutes les 5 min, depuis Cloudflare</span>}>
           {o.veille ? (
             <ul className="divide-y divide-rule">

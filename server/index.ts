@@ -27,6 +27,7 @@ import { registerRules } from "./publishers/rules.ts";
 import { registerAssistant } from "./assistant.ts";
 import { registerBriefs } from "./briefs.ts";
 import { registerVisibility } from "./visibility.ts";
+import { loginMember, logoutMember, memberFromCookie, registerTeam } from "./team.ts";
 import { convertGoogleEnv, gscConfigured, listProperties, setSiteGscProperty, syncAll, syncSite } from "./gsc.ts";
 import { handleMcp, mcpAccess } from "./mcp.ts";
 import { registerBusiness } from "./business.ts";
@@ -83,6 +84,13 @@ const API_KEY = process.env.API_KEY ?? "";
 const setSessionCookie = (c: Context) => setSignedCookie(c, "st_session", sessionValue(ADMIN_PASSWORD), SECRET, {
   httpOnly: true, sameSite: "Lax", secure: (c.req.header("x-forwarded-proto") ?? new URL(c.req.url).protocol.replace(":", "")) === "https", maxAge: 30 * 86400, path: "/",
 });
+const setMemberCookie = (c: Context, value: string) => setSignedCookie(c, "st_member", value, SECRET, {
+  httpOnly: true, sameSite: "Lax", secure: (c.req.header("x-forwarded-proto") ?? new URL(c.req.url).protocol.replace(":", "")) === "https", maxAge: 30 * 86400, path: "/",
+});
+/** Compte d'équipe connecté (plan A10), ou null. */
+const memberOf = async (c: Context) => memberFromCookie(await getSignedCookie(c, SECRET, "st_member"));
+/** Session qui a tous les droits : propriétaire (ADMIN_PASSWORD) ou membre d'équipe « admin ». */
+const fullSession = async (c: Context) => validSession(await getSignedCookie(c, SECRET, "st_session"), ADMIN_PASSWORD) || (await memberOf(c))?.role === "admin";
 // Clé en lecture seule pour les agents : statistiques et outils MCP sans écriture
 const API_KEY_READ = process.env.API_KEY_READ ?? "";
 // Double authentification : secret TOTP (base32), créé par `npm run 2fa`
@@ -175,7 +183,15 @@ app.post("/api/login", async (c) => {
   if (!TOTP_SECRET && twofaConfigured() && !settingsSecret()) {
     return c.json({ error: "2FA configurée mais illisible : restaurez SECRET ou suivez la procédure de SECURITY.md" }, 503);
   }
-  const { password, code } = await c.req.json().catch(() => ({ password: "", code: "" }));
+  const { password, code, email } = await c.req.json().catch(() => ({ password: "", code: "", email: "" }));
+  // Compte d'équipe : adresse + mot de passe (pas de second facteur pour l'instant).
+  if (typeof email === "string" && email.trim()) {
+    const value = loginMember(email, String(password ?? ""));
+    if (!value) { fail("login", ip); return c.json({ error: "Adresse ou mot de passe incorrect" }, 401); }
+    resetIp("login", ip);
+    await setMemberCookie(c, value);
+    return c.json({ ok: true });
+  }
   const okPassword = !!ADMIN_PASSWORD && typeof password === "string" && same(password, ADMIN_PASSWORD);
   // TOTP_SECRET de l'environnement garde la priorité (compatibilité npm run 2fa) ; sinon réglage chiffré + codes de secours.
   // S3 : le second facteur n'est vérifié qu'après un mot de passe correct — un code de secours n'est jamais consommé à tort.
@@ -195,7 +211,9 @@ app.post("/api/login", async (c) => {
   await setSessionCookie(c);
   return c.json({ ok: true });
 });
-app.post("/api/logout", (c) => {
+app.post("/api/logout", async (c) => {
+  const member = await memberOf(c);
+  if (member) { logoutMember(member.id); deleteCookie(c, "st_member", { path: "/" }); return c.json({ ok: true }); }
   // SEC-03 : déconnexion de tous les appareils (outil à administrateur unique).
   bumpEpoch();
   deleteCookie(c, "st_session", { path: "/" });
@@ -204,7 +222,7 @@ app.post("/api/logout", (c) => {
 
 // SEC-06 : les clés lisent en REST une liste blanche ; ces routes sont réservées à l'administrateur.
 const READ_PREFIXES = ["/api/freshness", "/api/me", "/api/overview", "/api/sites", "/api/projects", "/api/indicators", "/api/portfolio", "/api/today", "/api/milestones", "/api/annotations", "/api/dashboards", "/api/jobs"];
-const ADMIN_PREFIXES = ["/api/ops", "/api/agents", "/api/connections", "/api/contacts", "/api/business", "/api/outreach", "/api/rdv", "/api/publications", "/api/pub-accounts", "/api/media", "/api/modules", "/api/diagnostic", "/api/2fa", "/api/browser"];
+const ADMIN_PREFIXES = ["/api/team", "/api/ops", "/api/agents", "/api/connections", "/api/contacts", "/api/business", "/api/outreach", "/api/rdv", "/api/publications", "/api/pub-accounts", "/api/media", "/api/modules", "/api/diagnostic", "/api/2fa", "/api/browser"];
 const under = (path: string, prefix: string) => path === prefix || path.startsWith(prefix + "/");
 const isAdminOnlyPath = (path: string) => ADMIN_PREFIXES.some((p) => under(path, p)) || /^\/api\/sites\/[^/]+\/(purge|events\/count)$/.test(path);
 const isReadPath = (path: string) => READ_PREFIXES.some((p) => under(path, p));
@@ -275,6 +293,16 @@ async function auth(c: Context, next: Next) {
     return c.json({ error: "Clé en lecture seule" }, 403);
   }
   if (validSession(await getSignedCookie(c, SECRET, "st_session"), ADMIN_PASSWORD)) { markAdmin(c); return next(); }
+  const member = await memberOf(c);
+  if (member?.role === "admin") { markAdmin(c); (c as any).set("member", member); return next(); }
+  if (member) {
+    // Membre : lecture seule, comme la clé en lecture seule (tableaux de bord, projets, sites, À traiter).
+    markClient(c); (c as any).set("member", member);
+    if (isAdminOnlyPath(c.req.path)) return c.json({ error: "Réservé à l'administrateur" }, 403);
+    if (c.req.method === "GET" && isReadPath(c.req.path)) return next();
+    if (c.req.path === "/mcp") return next();
+    return c.json({ error: "Compte en lecture seule" }, 403);
+  }
   if (DEMO && c.req.method === "GET") {
     if (isAdminOnlyPath(c.req.path)) return c.json({ error: "Réservé à l'administrateur" }, 403);
     if (isReadPath(c.req.path)) return next();
@@ -288,7 +316,7 @@ async function auth(c: Context, next: Next) {
   }
   return c.json({ error: "Non authentifié" }, 401);
 }
-const viewerMask = async (c: Context, next: Next) => runAsViewer(!validSession(await getSignedCookie(c, SECRET, "st_session"), ADMIN_PASSWORD), next);
+const viewerMask = async (c: Context, next: Next) => runAsViewer(!(await fullSession(c)), next);
 app.use("/api/*", viewerMask);
 app.use("/api/*", auth);
 app.use("/mcp", viewerMask);
@@ -300,7 +328,7 @@ app.all("/mcp", async (c) => {
   if (agent) return handleMcp(c.req.raw, { readOnly: agent.readOnly, agent: agent.name, scope: ((r) => r ? { read: r, write: writableProjectIds(agent)! } : null)(visibleProjectIds(agent)) });
   // Sans en-tête : session administrateur (cookie) ou démonstration anonyme. Un jeton non reconnu n'atteint
   // jamais ce point en POST (401 plus haut) ; s'il arrive par GET SSE, il obtient un serveur en lecture seule.
-  const admin = !bearer && validSession(await getSignedCookie(c, SECRET, "st_session"), ADMIN_PASSWORD);
+  const admin = !bearer && await fullSession(c);
   return handleMcp(c.req.raw, mcpAccess(bearer, { admin, apiKey: !!API_KEY && same(bearer, API_KEY), apiKeyRead: !!API_KEY_READ && same(bearer, API_KEY_READ) }));
 });
 
@@ -427,7 +455,10 @@ app.post("/api/2fa/disable", async (c) => {
 });
 
 app.get("/api/freshness", (c) => c.json(freshness()));
-app.get("/api/me", (c) => c.json({ ok: true, gsc: gscConfigured() && isEnabled("google"), demo: DEMO }));
+app.get("/api/me", (c) => {
+  const m = (c as any).get("member") as { name: string; role: string } | undefined;
+  return c.json({ ok: true, gsc: gscConfigured() && isEnabled("google"), demo: DEMO, role: m ? m.role : isAdmin(c) ? "owner" : null, name: m?.name ?? null });
+});
 app.get("/api/overview", (c) => {
   const agent = (c as any).get("agent");
   return c.json(overview(rangeOf(c), agent ? visibleDomains(agent) : null));
@@ -532,6 +563,7 @@ registerFollowups(app);
 registerRules(app);
 registerAssistant(app);
 registerVisibility(app);
+registerTeam(app);
 registerPublishers(app);
 registerMedia(app);
 registerReport(app);
