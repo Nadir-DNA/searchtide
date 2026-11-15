@@ -15,7 +15,9 @@ import { gscPropertyFor } from "./gsc.ts";
 import { activeModules, enabledFor, isEnabled } from "./modules/state.ts";
 import { getModule } from "./modules/index.ts";
 import { freshness } from "./freshness.ts";
-import { keywordDrops } from "./keywords.ts";
+import { keywordDrops, seoInsights } from "./keywords.ts";
+import { auditReport } from "./audit.ts";
+import { indexingStatus } from "./indexing.ts";
 
 type Row = Record<string, any>;
 migrate("2026-11-10-aujourdhui", "CREATE TABLE today_items (key TEXT PRIMARY KEY, project_id TEXT, state TEXT NOT NULL, until TEXT, updated_at INTEGER NOT NULL)");
@@ -61,6 +63,39 @@ function keywordAlerts(p: Row): TodayItem[] {
   });
 }
 
+/**
+ * Plan d'action SEO (B1) : ce qui rapporte le plus d'abord. Pages en erreur (audit), pages qui perdent des clics,
+ * titres à réécrire (taux de clic bas pour la position), pages non indexées. Quatre actions au plus par projet.
+ */
+export function seoActions(p: Row): TodayItem[] {
+  const out: TodayItem[] = [];
+  const path = (u: string) => u.replace(/^https?:\/\/[^/]+/, "") || "/";
+  for (const d of JSON.parse(p.sites) as string[]) {
+    const s = db.prepare("SELECT id FROM sites WHERE domain = ?").get(d) as Row | undefined;
+    if (!s) continue;
+    try {
+      const errors = auditReport(s.id).groups.filter((g) => g.severity === "bad");
+      for (const g of errors) out.push({ key: itemKey("seo", "audit", p.id, d, g.type), kind: "action", tone: "warn", project_id: p.id, metric: "Clics Google",
+        text: `${p.name} · ${d} : ${g.label.toLowerCase()} (${plural(g.count, "page")})`, to: { site: d, tab: "outils" } });
+    } catch { /* pas encore d'audit */ }
+    if (gscPropertyFor(d, p.id)) {
+      const ins = seoInsights(s.id, lastDays(28));
+      const lose = ins.losing[0];
+      if (lose) out.push({ key: itemKey("seo", "baisse", p.id, d, lose.page), kind: "action", tone: "warn", project_id: p.id, metric: "Clics Google",
+        text: `${p.name} · ${path(lose.page)} perd ${nf(lose.lost)} clics : comprendre la baisse`, to: { view: "project", id: p.id, tab: "recherche" } });
+      const ctr = ins.lowCtr[0];
+      if (ctr) out.push({ key: itemKey("seo", "titre", p.id, d, ctr.page), kind: "action", tone: "info", project_id: p.id, metric: "Clics Google",
+        text: `${p.name} · réécrire le titre de ${path(ctr.page)} (position ${nf(ctr.position, 1)}, ${nf(ctr.ctr, 1)} % de clics)`, to: { view: "project", id: p.id, tab: "recherche" } });
+    }
+    try {
+      const idx = indexingStatus(s.id);
+      if (idx.notIndexed) out.push({ key: itemKey("seo", "index", p.id, d), kind: "action", tone: "info", project_id: p.id, metric: "Clics Google",
+        text: `${p.name} · ${plural(idx.notIndexed, "page")} non indexée${idx.notIndexed > 1 ? "s" : ""} par Google`, to: { site: d, tab: "outils" } });
+    } catch { /* indexation jamais lue */ }
+  }
+  return out.slice(0, 4);
+}
+
 function collectItems(now: Date): TodayItem[] {
   const today = localDay(now);
   const projects = db.prepare("SELECT id, name, sites, crm_key FROM projects ORDER BY position, name").all() as Row[];
@@ -72,6 +107,7 @@ function collectItems(now: Date): TodayItem[] {
     for (const a of builtinActions(m.id, p, today)) items.push({ ...a, kind: "action", tone: "info" });
     if (m.id === "google") items.push(...keywordAlerts(p));
   }
+  for (const p of projects) items.push(...seoActions(p));
   // Relances des contacts rattachés à aucun projet connu
   if (isEnabled("crm")) {
     const keys = projects.filter((p) => p.crm_key && enabledFor(p.id, "crm")).map((p) => p.crm_key);
