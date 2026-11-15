@@ -25,6 +25,7 @@ import { registerAutomation } from "./publishers/automation.ts";
 import { registerFollowups } from "./publishers/followups.ts";
 import { registerRules } from "./publishers/rules.ts";
 import { registerAssistant } from "./assistant.ts";
+import { registerBriefs } from "./briefs.ts";
 import { convertGoogleEnv, gscConfigured, listProperties, setSiteGscProperty, syncAll, syncSite } from "./gsc.ts";
 import { handleMcp, mcpAccess } from "./mcp.ts";
 import { registerBusiness } from "./business.ts";
@@ -510,6 +511,7 @@ registerKeywords(app, getSite, rangeOf);
 registerPageCheck(app, getSite);
 registerAudit(app, getSite);
 registerCms(app);
+registerBriefs(app, getSite);
 registerIndexing(app, getSite);
 registerIndexingJobs();
 app.post("/api/sites/:id/sync", async (c) => {

@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { api, type Site } from "./api";
 import { Button, Card, copyText, fmt, inputCls } from "./ui";
+import { BriefsCard } from "./briefs";
 
 type Check = { id: string; label: string; status: "ok" | "warn" | "bad" | "info"; value: string; advice?: string };
 type Result = { url: string; score: { ok: number; warn: number; bad: number }; checks: Check[] };
@@ -318,6 +319,7 @@ export function SeoToolsView({ site, demo = false }: { site: Site; demo?: boolea
       <AuditCard site={site} demo={demo} />
       <PageChecker site={site} />
       <IndexingCard site={site} demo={demo} />
+      <BriefsCard site={site} demo={demo} />
       <ArticleCard site={site} demo={demo} />
       <div className="grid gap-4 xl:grid-cols-2">
         <RobotsGenerator domain={site.domain} />

@@ -138,3 +138,24 @@ export function registerAssistant(app: Hono) {
     }
   });
 }
+
+/** Texte seul (brief → article, question de visibilité), sans outils. `f` remplaçable dans les tests. */
+export async function complete(conn: AiConn, system: string, prompt: string, o: { fetch?: Fetch; maxTokens?: number } = {}): Promise<string> {
+  const f = o.fetch ?? realCtx().fetch;
+  if (conn.provider === "anthropic") {
+    const r = await anthropicClient(conn.cfg, { fetch: f }).beta.messages.create({
+      model: conn.model, max_tokens: o.maxTokens ?? 16000, system, messages: [{ role: "user", content: prompt }],
+      ...(conn.model.startsWith("claude-opus-5") || conn.model.startsWith("claude-fable-5") ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const } : {}),
+    });
+    if (r.stop_reason === "refusal") throw new Error("Le modèle a refusé cette demande");
+    return r.content.filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === "text").map((b) => b.text).join("\n").trim();
+  }
+  const provider = conn.provider as keyof typeof AI_PROVIDERS;
+  const res = await f(`${aiBase(conn.cfg)}/chat/completions`, {
+    method: "POST", headers: { "Content-Type": "application/json", ...(provider !== "ollama" ? { Authorization: `Bearer ${conn.cfg.secrets.api_key}` } : {}) },
+    body: JSON.stringify({ model: conn.model, messages: [{ role: "system", content: system }, { role: "user", content: prompt }] }), signal: AbortSignal.timeout(300_000),
+  });
+  const j = await res.json().catch(() => ({})) as Row;
+  if (!res.ok) throw new Error(`${AI_PROVIDERS[provider].label} répond ${res.status}${j.error?.message ? ` : ${String(j.error.message).slice(0, 200)}` : ""}`);
+  return String(j.choices?.[0]?.message?.content ?? "").trim();
+}
