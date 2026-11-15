@@ -314,19 +314,36 @@ export function ArticleCard({ site, demo }: { site: Site; demo: boolean }) {
   );
 }
 
-export function SeoToolsView({ site, demo = false }: { site: Site; demo?: boolean }) {
+export function SeoAuditView({ site, demo = false }: { site: Site; demo?: boolean }) {
   return (
     <div className="space-y-4">
       <AuditCard site={site} demo={demo} />
       <PageChecker site={site} />
-      <CompetitorsCard site={site} demo={demo} />
       <IndexingCard site={site} demo={demo} />
-      <BriefsCard site={site} demo={demo} />
-      <ArticleCard site={site} demo={demo} />
       <div className="grid gap-4 xl:grid-cols-2">
         <RobotsGenerator domain={site.domain} />
         <SchemaGenerator domain={site.domain} />
       </div>
+    </div>
+  );
+}
+
+export function SeoContentView({ site, demo = false }: { site: Site; demo?: boolean }) {
+  return (
+    <div className="space-y-4">
+      <CompetitorsCard site={site} demo={demo} />
+      <BriefsCard site={site} demo={demo} />
+      <ArticleCard site={site} demo={demo} />
+    </div>
+  );
+}
+
+/** Ancien écran unique, conservé pour la vue Site des domaines sans projet. */
+export function SeoToolsView({ site, demo = false }: { site: Site; demo?: boolean }) {
+  return (
+    <div className="space-y-4">
+      <SeoAuditView site={site} demo={demo} />
+      <SeoContentView site={site} demo={demo} />
     </div>
   );
 }

@@ -25,7 +25,7 @@ test("CA 1.4 : activer la 2FA, se reconnecter avec un code de secours, puis la d
   const disableCode = backups[1];
 
   // La connexion suivante exige un code ; le code de secours est accepté une fois.
-  await page.getByRole("button", { name: "Plus", exact: true }).click();
+  await page.getByRole("button", { name: "Outils", exact: true }).click();
   await page.getByRole("button", { name: "Déconnexion" }).click();
   await expect(page.getByRole("heading", { name: "Connexion" })).toBeVisible();
   await page.locator('input[name="password"]').fill(PASSWORD);

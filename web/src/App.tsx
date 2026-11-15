@@ -10,7 +10,8 @@ import { SKIP_KEY } from "./onboarding-key";
 import { useModules } from "./modules";
 import { AssistantPanel } from "./assistant";
 const TodayView = lazy(() => import("./today").then((m) => ({ default: m.TodayView })));
-const WallView = lazy(() => import("./wall").then((m) => ({ default: m.WallView })));
+import { HomeView } from "./home";
+import { ReportsView } from "./reports";
 import type { Dashboards } from "./dashboard";
 
 const Onboarding = lazy(() => import("./onboarding").then((m) => ({ default: m.Onboarding })));
@@ -18,14 +19,11 @@ const ConnectionsView = lazy(() => import("./connections").then((m) => ({ defaul
 const CrmView = lazy(() => import("./modules/crm").then((m) => ({ default: m.CrmView })));
 const RdvView = lazy(() => import("./modules/rdv").then((m) => ({ default: m.RdvView })));
 const PubsView = lazy(() => import("./modules/publications").then((m) => ({ default: m.PubsView })));
-const ReportView = lazy(() => import("./modules/notifications/ReportView").then((m) => ({ default: m.ReportView })));
 const ProjectView = lazy(() => import("./projects").then((m) => ({ default: m.ProjectView })));
 const ManageProject = lazy(() => import("./projects").then((m) => ({ default: m.ManageProject })));
-const PortfolioView = lazy(() => import("./portefeuille").then((m) => ({ default: m.PortfolioView })));
 const AgentsView = lazy(() => import("./agents").then((m) => ({ default: m.AgentsView })));
 const ApprovalsView = lazy(() => import("./approvals").then((m) => ({ default: m.ApprovalsView })));
 const BrowserView = lazy(() => import("./browser").then((m) => ({ default: m.BrowserView })));
-const DashboardView = lazy(() => import("./dashboard").then((m) => ({ default: m.DashboardView })));
 const SettingsView = lazy(() => import("./settings").then((m) => ({ default: m.SettingsView })));
 const ModulesView = lazy(() => import("./modules/ModulesView").then((m) => ({ default: m.ModulesView })));
 const SetupView = lazy(() => import("./modules/analytics").then((m) => ({ default: m.SetupView })));
@@ -173,6 +171,15 @@ function Shell({ me, onLogout }: { me: Me; onLogout: () => void }) {
   useEffect(() => {
     if (q.connexion) { history.replaceState(null, "", "/?view=connections"); }
   }, [q.connexion]);
+  // Une vue Site qui appartient à un projet devient un raccourci vers les onglets du projet.
+  useEffect(() => {
+    if (!q.site || q.view === "project" || !projects.length) return;
+    const owner = projects.find((p) => p.sites.includes(q.site!));
+    if (!owner) return;
+    const tab = q.tab === "search" ? "seo" : q.tab === "outils" ? "seo" : "trafic";
+    const sub = q.tab === "search" ? "google" : q.tab === "outils" ? "audit" : undefined;
+    go({ view: "project", id: owner.id, tab, sub, site: q.site });
+  }, [q.site, q.tab, q.view, projects]); // eslint-disable-line react-hooks/exhaustive-deps
   // Réinitialise les filtres propres à chaque vue
   const home = { site: undefined, tab: undefined, view: undefined, id: undefined, q: undefined, project: undefined, source: undefined, month: undefined };
 
@@ -186,7 +193,7 @@ function Shell({ me, onLogout }: { me: Me; onLogout: () => void }) {
     return !mine.length ? "led-off" : mine.some((f) => f.state === "error") ? "led-bad" : mine.some((f) => f.state !== "ok") ? "led-warn" : "led-ok";
   };
   const ordered = [...projects].sort((x, y) => Number(!!y.pinned) - Number(!!x.pinned));
-  const onHome = !q.site && (!q.view || q.view === "projects" || q.view === "portfolio");
+  const onHome = !q.site && (!q.view || q.view === "page");
   const askPage = async () => {
     const name = await ask({ title: "Nouvelle page", inputLabel: "Nom de la page" });
     if (name) { const d = await api<{ id: string }>("/api/dashboards", { method: "POST", json: { name } }); loadDash(); nav({ ...home, view: "page", id: d.id }); }
@@ -203,18 +210,18 @@ function Shell({ me, onLogout }: { me: Me; onLogout: () => void }) {
   const moreItems: NavEntry[] = me.demo ? [] : [
     { key: "m:modules", label: "Intégrations", active: q.view === "integrations" || q.view === "modules" || q.view === "connections", onClick: to("integrations") },
     { key: "m:agents", label: "Agents IA", active: q.view === "agents", onClick: to("agents") },
-    { key: "m:approvals", label: "Approbations", active: q.view === "approvals", onClick: to("approvals") },
     { key: "m:browser", label: "Navigateur intégré", active: q.view === "browser", onClick: to("browser") },
     { key: "m:start", label: "Démarrage", active: q.view === "start", onClick: to("start") },
   ];
   const todayCount = todayItems?.length ?? 0;
   const sections: { key: string; label: string; icon: ReactNode; active: boolean; badge?: number; onClick: () => void }[] = [
+    { key: "home", label: "Accueil", icon: Icon.grid, active: onHome, onClick: () => nav(home) },
     { key: "today", label: "À traiter", icon: Icon.check, active: q.view === "today", badge: todayCount, onClick: to("today") },
     ...(!me.demo && crmOn ? [{ key: "crm", label: "Contacts", icon: Icon.users, active: q.view === "crm", onClick: to("crm") }] : []),
     ...(!me.demo && pubsOn ? [{ key: "pubs", label: "Publications", icon: Icon.calendar, active: q.view === "pubs", onClick: to("pubs") }] : []),
     ...(!me.demo && rdvOn ? [{ key: "rdv", label: "Rendez-vous", icon: Icon.calendar, active: q.view === "rdv", onClick: to("rdv") }] : []),
+    { key: "reports", label: "Rapports", icon: Icon.book, active: q.view === "reports", onClick: to("reports") },
   ];
-  const rdvItems: NavEntry[] = sections.filter((x) => x.key === "rdv").map((x) => ({ key: `r:${x.key}`, label: x.label, active: x.active, onClick: x.onClick }));
   const logout = () => api("/api/logout", { method: "POST" }).then(onLogout);
   const themeSwitch = <Segmented label="Thème" value={theme} onChange={setTheme} options={[["dark", "Sombre"], ["light", "Clair"], ["auto", "Auto"]] as const} />;
   const tabCls = (active: boolean) => `inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl px-3.5 text-sm whitespace-nowrap transition-colors ${active ? "border border-control bg-raised font-semibold text-ink" : "border border-transparent text-muted hover:text-ink"}`;
@@ -223,7 +230,7 @@ function Shell({ me, onLogout }: { me: Me; onLogout: () => void }) {
   return (
     <div className="min-h-screen">
       {dialog}
-      {palette && <CommandPalette demo={me.demo} sites={sites?.map((s) => s.domain) ?? []} projects={projects.map((p) => ({ id: p.id, name: p.name }))} go={go} onClose={() => setPalette(false)} />}
+      {palette && <CommandPalette demo={me.demo} sites={sites?.map((s) => s.domain) ?? []} projects={projects.map((p) => ({ id: p.id, name: p.name }))} pages={dash?.dashboards ?? []} go={go} onClose={() => setPalette(false)} />}
       {help && <ShortcutHelp onClose={() => setHelp(false)} />}
       <a href="#contenu" className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:rounded-lg focus:bg-surface focus:px-4 focus:py-2 focus:outline-2 focus:outline-accent">Aller au contenu</a>
 
@@ -254,11 +261,9 @@ function Shell({ me, onLogout }: { me: Me; onLogout: () => void }) {
                 {x.label}{x.badge ? <span className="num rounded-full bg-accent px-1.5 text-xs font-bold text-on-accent" title="Actions à traiter">{x.badge}</span> : null}
               </button>
             ))}
-            <NavMenu label="Sites" active={!!q.site || q.view === "add"} items={siteItems} empty="Aucun site suivi" className={secCls(!!q.site || q.view === "add")} />
-            <NavMenu label="Pages" active={q.view === "page"} items={pageItems} empty="Aucune page" className={secCls(q.view === "page")} />
           </nav>
           <div className="flex items-center">
-            {!me.demo && <NavMenu label="Plus" active={["integrations", "modules", "connections", "agents", "approvals", "browser", "start"].includes(q.view ?? "")} items={moreItems} className={secCls(false)} align="right"
+            {!me.demo && <NavMenu label="Outils" active={["integrations", "modules", "connections", "agents", "browser", "start"].includes(q.view ?? "")} items={moreItems} className={secCls(false)} align="right"
               footer={<div className="space-y-1 border-t border-border p-2">
                 <div className="flex items-center justify-between gap-3 px-1 text-sm text-muted">Thème{themeSwitch}</div>
                 <a href="https://github.com/Nadir-DNA/searchtide" target="_blank" rel="noreferrer" className="flex min-h-10 items-center gap-3 rounded-lg px-2 text-sm text-muted hover:bg-raised hover:text-ink"><Svg>{Icon.book}</Svg>Documentation</a>
@@ -278,11 +283,18 @@ function Shell({ me, onLogout }: { me: Me; onLogout: () => void }) {
             <button onClick={() => setMenu(false)} className="h-11 px-2 text-sm">Fermer</button>
           </div>
           <div className="space-y-5 px-4 pb-24">
-            {([["Rubriques", rdvItems], ["Sites", siteItems], ["Pages", pageItems], ["Plus", moreItems]] as const).filter(([, list]) => list.length).map(([title, list]) => (
-              <section key={title}><h2 className="label-caps mb-1">{title}</h2>
-                {list.map((it) => <button key={it.key} type="button" onClick={it.onClick} aria-current={it.active ? "page" : undefined} className={`flex min-h-12 w-full items-center justify-between gap-3 border-b border-rule text-left text-[15px] ${it.active ? "font-semibold text-ink" : "text-muted"}`}><span className="flex items-center gap-2">{it.icon && <Svg>{Icon.plus}</Svg>}{it.label}</span>{it.hint && <span className="num text-xs">{it.hint}</span>}</button>)}
-              </section>
-            ))}
+            <section><h2 className="label-caps mb-1">Navigation</h2>
+              {sections.map((it) => <button key={it.key} type="button" onClick={() => { setMenu(false); it.onClick(); }} aria-current={it.active ? "page" : undefined}
+                className={`flex min-h-12 w-full items-center justify-between gap-3 border-b border-rule text-left text-[15px] ${it.active ? "font-semibold text-ink" : "text-muted"}`}>
+                <span className="flex items-center gap-2">{it.label}</span>{it.badge ? <span className="num rounded-full bg-accent px-1.5 text-xs font-bold text-on-accent">{it.badge}</span> : null}
+              </button>)}
+            </section>
+            {!me.demo && <section><h2 className="label-caps mb-1">Outils</h2>
+              {moreItems.map((it) => <button key={it.key} type="button" onClick={() => { setMenu(false); it.onClick(); }} aria-current={it.active ? "page" : undefined}
+                className={`flex min-h-12 w-full items-center justify-between gap-3 border-b border-rule text-left text-[15px] ${it.active ? "font-semibold text-ink" : "text-muted"}`}>
+                <span className="flex items-center gap-2">{it.label}</span>
+              </button>)}
+            </section>}
             <div className="flex items-center justify-between text-sm text-muted">Thème{themeSwitch}</div>
             <a href="https://github.com/Nadir-DNA/searchtide" target="_blank" rel="noreferrer" className="flex min-h-12 items-center gap-3 text-sm text-muted"><Svg>{Icon.book}</Svg>Documentation</a>
             {!me.demo && <button type="button" onClick={logout} className="flex min-h-12 items-center gap-3 text-sm text-muted"><Svg>{Icon.out}</Svg>Déconnexion</button>}
@@ -312,7 +324,6 @@ function Shell({ me, onLogout }: { me: Me; onLogout: () => void }) {
           : q.view === "crm" ? <CrmView tab={q.tab ?? ""} go={go} q={q} />
           : q.view === "pubs" ? <PubsView q={q} go={go} />
           : q.view === "rdv" ? <RdvView q={q} go={go} />
-          : q.view === "report" ? <ReportView />
           : q.view === "settings" ? <SettingsView go={go} tab={q.tab ?? "general"} />
           : q.view === "agents" ? <AgentsView />
           : q.view === "approvals" ? <ApprovalsView />
@@ -322,18 +333,16 @@ function Shell({ me, onLogout }: { me: Me; onLogout: () => void }) {
           )
           : q.view === "start" ? <Onboarding go={go} />
           : q.view === "today" ? <TodayView go={go} />
-          : q.view === "projects" || q.view === "portfolio" ? <PortfolioView days={days} go={go} />
-          : q.view === "project" && q.id ? <ProjectView key={q.id} id={q.id} days={days} go={go} tab={q.tab ?? "vue"} me={me} onPinned={loadProjects} />
+          : q.view === "reports" || q.view === "projects" || q.view === "portfolio" ? <ReportsView tab={q.view === "reports" ? q.tab ?? "portefeuille" : "portefeuille"} days={days} go={go} />
+          : q.view === "report" ? <ReportsView tab="semaine" days={days} go={go} />
+          : q.view === "project" && q.id ? <ProjectView key={q.id} id={q.id} days={days} go={go} tab={q.tab ?? "vue"} sub={q.sub} domain={q.site} me={me} onPinned={loadProjects} />
           : q.view === "newproject" ? <ManageProject project={null} onClose={() => go(home)} onSaved={(p) => { loadProjects(); if (p) go({ ...home, view: "project", id: p.id }); }} />
           : q.view === "add" ? <AddSite onAdded={(s) => { load(); go({ site: s.domain, tab: "setup", view: undefined }); }} />
           : site ? <SiteView key={site.id} site={site} me={me} days={days} tab={q.tab ?? "traffic"} go={go} onChange={load} />
-          : q.view === "page" ? (me.demo ? <Overview days={days} demo={me.demo} go={go} /> : !dash ? <KpiSkeleton /> : (() => {
-            const d = dash.dashboards.find((x) => x.id === q.id) || dash.dashboards[0];
-            return <DashboardView key={d.id} dash={d} catalog={dash.catalog} sizes={dash.sizes} days={days} go={go} onChanged={loadDash} />;
-          })())
+          : q.view === "page" ? (me.demo ? <Overview days={days} demo={me.demo} go={go} /> : <HomeView dash={dash} days={days} go={go} demo={false} sites={sites ?? []} projects={projects} selected={q.id ?? ""} onNewPage={askPage} />)
           : !sites.length && !projects.length && !me.demo && !localStorage.getItem(SKIP_KEY) ? <Onboarding go={go} />
           : me.demo ? <Overview days={days} demo={me.demo} go={go} />
-          : <WallView days={days} go={go} />}
+          : <HomeView dash={dash} days={days} go={go} demo={false} sites={sites ?? []} projects={projects} selected="mur" onNewPage={askPage} />}
         </Suspense>
         </ErrorBoundary>
       </main>
