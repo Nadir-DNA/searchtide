@@ -4,6 +4,7 @@ import { api } from "../../api";
 import { ErrorLine, Header, KpiSkeleton, useData } from "../../App";
 import { Button, Card, EmptyBox, Pill, Segmented, Table, fmt, inputCls, copyText, useAsk } from "../../ui";
 import { ATTEMPT_LABEL, PUB_CHIP, PUB_STATE } from "../shared";
+import { MultiComposer } from "./composer";
 import { type Contact, type Pub, type Summary, type Go, STAGES, type Stage, stageName, KINDS, PUB_STATUS, NETWORKS, filterCls, eur, today, dateFr, Sheet, Field } from "../shared";
 
 export function PubsCard({ go, title = "Publications de la semaine" }: { go: Go; title?: string }) {
@@ -40,6 +41,7 @@ export function PubsView({ q, go }: { q: Record<string, string>; go: Go }) {
   const days = Array.from({ length: 42 }, (_, i) => new Date(start.getTime() + i * 86400000).toISOString().slice(0, 10));
   const { data, error, reload } = useData<Pub[]>(`/api/publications?from=${days[0]}&to=${days[41]}${q.project ? `&project=${q.project}` : ""}`);
   const [edit, setEdit] = useState<Partial<Pub> | null>(null);
+  const [multi, setMulti] = useState(false);
   const shift = (n: number) => { const d = new Date(first); d.setUTCMonth(d.getUTCMonth() + n); go({ month: d.toISOString().slice(0, 7) }); };
   const byDay = useMemo(() => (data ?? []).reduce<Record<string, Pub[]>>((m, p) => ((m[p.day] ??= []).push(p), m), {}), [data]);
   const counts = { published: data?.filter((p) => p.day.startsWith(month) && p.status === "published").length ?? 0, planned: data?.filter((p) => p.day.startsWith(month) && p.status !== "published").length ?? 0 };
@@ -49,8 +51,10 @@ export function PubsView({ q, go }: { q: Record<string, string>; go: Go }) {
         <Button variant="secondary" onClick={() => shift(-1)} aria-label="Mois précédent">←</Button>
         <Button variant="secondary" onClick={() => go({ month: undefined })}>Aujourd'hui</Button>
         <Button variant="secondary" onClick={() => shift(1)} aria-label="Mois suivant">→</Button>
+        <Button variant="secondary" onClick={() => setMulti(true)}>Plusieurs comptes</Button>
         <Button onClick={() => setEdit({ day: today(), status: "scheduled" })}>Nouvelle publication</Button>
       </Header>
+      {multi && <MultiComposer onClose={() => setMulti(false)} onSaved={reload} />}
       {error ? <ErrorLine error={error} retry={reload} /> : !data ? <KpiSkeleton /> : (
         <>
           <div className="hidden overflow-hidden rounded-2xl border border-border bg-surface md:block">

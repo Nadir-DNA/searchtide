@@ -17,6 +17,7 @@ import { lastDays, overview, searchStats, strikingDistance, trafficStats, type R
 import { registerKeywords } from "./keywords.ts";
 import { registerPageCheck } from "./pagecheck.ts";
 import { registerIndexing, registerIndexingJobs } from "./indexing.ts";
+import { registerBatch } from "./publishers/batch.ts";
 import { convertGoogleEnv, gscConfigured, listProperties, setSiteGscProperty, syncAll, syncSite } from "./gsc.ts";
 import { handleMcp, mcpAccess } from "./mcp.ts";
 import { registerBusiness } from "./business.ts";
@@ -511,6 +512,7 @@ app.get("/api/gsc/properties", async (c) => {
 });
 
 registerBusiness(app);
+registerBatch(app);
 registerPublishers(app);
 registerMedia(app);
 registerReport(app);
