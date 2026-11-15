@@ -340,7 +340,7 @@ type Projet = { id: string; name: string };
 type Reseau = { id: string; label: string; configured: boolean; env: string[]; callback?: string; guide?: { url: string; steps: string[]; review?: string } | null };
 
 /** Publication sur les réseaux : chaque compte se branche par OAuth (jeton au coffre), puis l'écran le montre connecté. */
-function PublicationConnect() {
+export function PublicationConnect() {
   const [reseaux, setReseaux] = useState<Reseau[]>([]);
   const [comptes, setComptes] = useState<PubAccount[]>([]);
   const [projets, setProjets] = useState<Projet[]>([]);
@@ -449,7 +449,7 @@ function PublicationConnect() {
   );
 }
 
-function StripeConnect({ onUseKey }: { onUseKey: () => void }) {
+export function StripeConnect({ onUseKey }: { onUseKey: () => void }) {
   const [st, setSt] = useState<RelayStatus | null>(null);
   const [consent, setConsent] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -497,7 +497,7 @@ function StripeConnect({ onUseKey }: { onUseKey: () => void }) {
   );
 }
 
-export function ConnectionsView() {
+export function ConnectionsView({ embedded = false }: { embedded?: boolean } = {}) {
   const { catalog, error, reload: load } = useCatalog();
   const [filter, setFilter] = useState<(typeof FILTERS)[number][0]>("all");
   const [openId, setOpenId] = useState<string | null>(null);
@@ -515,16 +515,18 @@ export function ConnectionsView() {
 
   return (
     <>
-      {catalog?.admin && !catalog.demo && (
+      {!embedded && catalog?.admin && !catalog.demo && (
         <>
           <StripeConnect onUseKey={() => open("stripe")} />
           <PublicationConnect />
         </>
       )}
-      <header className="pt-4 pb-6 md:min-h-20 md:pt-6">
-        <h1 className="text-2xl leading-9 font-light md:text-[30px] md:leading-10">Connexions</h1>
-        <p className="mt-1 max-w-2xl text-sm text-muted">Branchez vos services ici. Les clés sont chiffrées sur votre instance et ne sont jamais réaffichées.</p>
-      </header>
+      {embedded ? <h2 className="mb-4 text-lg font-light">Toutes les connexions</h2> : (
+        <header className="pt-4 pb-6 md:min-h-20 md:pt-6">
+          <h1 className="text-2xl leading-9 font-light md:text-[30px] md:leading-10">Connexions</h1>
+          <p className="mt-1 max-w-2xl text-sm text-muted">Branchez vos services ici. Les clés sont chiffrées sur votre instance et ne sont jamais réaffichées.</p>
+        </header>
+      )}
 
       {error && <p role="alert" className="mb-4 text-sm text-negative">{error}</p>}
       {catalog && !catalog.vault.ok && <p role="alert" className="mb-5 rounded-xl bg-negative-bg px-4 py-3 text-sm text-negative">{catalog.vault.message}</p>}

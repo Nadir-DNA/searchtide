@@ -22,7 +22,7 @@ export function CommandPalette({ demo = false, sites, projects, go, onClose }: {
     { key: "today", label: "À traiter (Aujourd'hui)", hint: "Vue", run: () => go({ site: undefined, view: "today", id: undefined, tab: undefined }) },
     { key: "pages", label: "Tableaux de bord", hint: "Vue", run: () => go({ site: undefined, view: "page", id: undefined }) },
     { key: "projects", label: "Projets", hint: "Vue", run: () => go({ site: undefined, view: "projects", id: undefined }) },
-    ...(demo ? [] : [{ key: "connections", label: "Connexions", hint: "Vue", run: () => go({ site: undefined, view: "connections", id: undefined }) }]),
+    ...(demo ? [] : [{ key: "connections", label: "Intégrations", hint: "Vue", run: () => go({ site: undefined, view: "integrations", id: undefined }) }]),
     { key: "settings", label: "Réglages", hint: "Vue", run: () => go({ site: undefined, view: "settings", id: undefined }) },
     ...sites.map((domain) => ({ key: `site:${domain}`, label: domain, hint: "Site", run: () => go({ site: domain, view: undefined, id: undefined, tab: undefined }) })),
     ...projects.map((p) => ({ key: `project:${p.id}`, label: p.name, hint: "Projet", run: () => go({ site: undefined, view: "project", id: p.id }) })),

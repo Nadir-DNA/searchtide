@@ -201,7 +201,7 @@ function Shell({ me, onLogout }: { me: Me; onLogout: () => void }) {
     ...(me.demo ? [] : [{ key: "p:new", label: "Nouvelle page", icon: true, active: false, onClick: askPage }]),
   ];
   const moreItems: NavEntry[] = me.demo ? [] : [
-    { key: "m:modules", label: "Modules et connexions", active: q.view === "modules" || q.view === "connections", onClick: to("modules") },
+    { key: "m:modules", label: "Intégrations", active: q.view === "integrations" || q.view === "modules" || q.view === "connections", onClick: to("integrations") },
     { key: "m:agents", label: "Agents IA", active: q.view === "agents", onClick: to("agents") },
     { key: "m:approvals", label: "Approbations", active: q.view === "approvals", onClick: to("approvals") },
     { key: "m:browser", label: "Navigateur intégré", active: q.view === "browser", onClick: to("browser") },
@@ -258,7 +258,7 @@ function Shell({ me, onLogout }: { me: Me; onLogout: () => void }) {
             <NavMenu label="Pages" active={q.view === "page"} items={pageItems} empty="Aucune page" className={secCls(q.view === "page")} />
           </nav>
           <div className="flex items-center">
-            {!me.demo && <NavMenu label="Plus" active={["modules", "connections", "agents", "approvals", "browser", "start"].includes(q.view ?? "")} items={moreItems} className={secCls(false)} align="right"
+            {!me.demo && <NavMenu label="Plus" active={["integrations", "modules", "connections", "agents", "approvals", "browser", "start"].includes(q.view ?? "")} items={moreItems} className={secCls(false)} align="right"
               footer={<div className="space-y-1 border-t border-border p-2">
                 <div className="flex items-center justify-between gap-3 px-1 text-sm text-muted">Thème{themeSwitch}</div>
                 <a href="https://github.com/Nadir-DNA/searchtide" target="_blank" rel="noreferrer" className="flex min-h-10 items-center gap-3 rounded-lg px-2 text-sm text-muted hover:bg-raised hover:text-ink"><Svg>{Icon.book}</Svg>Documentation</a>
@@ -317,8 +317,9 @@ function Shell({ me, onLogout }: { me: Me; onLogout: () => void }) {
           : q.view === "agents" ? <AgentsView />
           : q.view === "approvals" ? <ApprovalsView />
           : q.view === "browser" ? <BrowserView q={q} />
-          : q.view === "modules" ? <ModulesView open={q.open} go={go} />
-          : q.view === "connections" ? <ConnectionsView />
+          : q.view === "integrations" || q.view === "modules" || q.view === "connections" ? (
+            <><ModulesView open={q.open} go={go} /><div className="mt-10"><ConnectionsView embedded /></div></>
+          )
           : q.view === "start" ? <Onboarding go={go} />
           : q.view === "today" ? <TodayView go={go} />
           : q.view === "projects" || q.view === "portfolio" ? <PortfolioView days={days} go={go} />
