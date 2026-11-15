@@ -216,6 +216,35 @@ type Fresh = { key: string; label: string; state: "ok" | "stale" | "error" | "ne
 const FRESH_TONE = { ok: "positive", stale: "neutral", error: "negative", never: "negative" } as const;
 const FRESH_LABEL = { ok: "À jour", stale: "Périmé", error: "En erreur", never: "Jamais reçu" } as const;
 
+function OrphansCard() {
+  const { data: orphans, reload } = useData<{ value: string; n: number }[]>("/api/diagnostic/orphans");
+  const { data: projects } = useData<{ id: string; name: string }[]>("/api/projects?days=1");
+  const [choose, setChoose] = useState<Record<string, string>>({});
+  const [msg, setMsg] = useState("");
+  if (!orphans?.length) return null;
+  return (
+    <Card title="Contacts et publications sans projet">
+      <p className="mb-3 text-sm text-muted">Ces valeurs ne désignent aucun projet. Rattachez-les pour les retrouver dans le bon projet.</p>
+      <ul className="divide-y divide-rule">
+        {orphans.map((o) => (
+          <li key={o.value} className="flex flex-wrap items-center gap-2 py-2 text-sm">
+            <span className="min-w-0 flex-1">{o.value} <span className="text-xs text-muted">· {o.n}</span></span>
+            <select aria-label={`Projet pour ${o.value}`} value={choose[o.value] ?? ""} onChange={(e) => setChoose({ ...choose, [o.value]: e.target.value })} className={`${inputCls} w-auto`}>
+              <option value="">Projet…</option>{(projects ?? []).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+            <Button variant="secondary" disabled={!choose[o.value]} onClick={async () => {
+              setMsg("");
+              try { await api("/api/diagnostic/orphans", { method: "POST", json: { from: o.value, project_id: choose[o.value] } }); setMsg("Rattaché."); reload(); }
+              catch (e) { setMsg((e as Error).message); }
+            }}>Rattacher</Button>
+          </li>
+        ))}
+      </ul>
+      {msg && <p role="status" className="mt-2 text-sm text-muted">{msg}</p>}
+    </Card>
+  );
+}
+
 function FreshnessCard() {
   const { data } = useData<Fresh[]>("/api/freshness");
   const bad = (data ?? []).filter((f) => f.state !== "ok");
@@ -334,6 +363,7 @@ export function SettingsView({ go, tab = "general" }: { go?: (n: Record<string, 
           <p className="mt-3 text-xs text-muted">Le fuseau vient de <code className="font-mono">DAY_TZ</code> et n'est pas modifiable ici : le changer recouperait les journées déjà enregistrées. Un redémarrage est nécessaire après modification.</p>
         </Card>}
         {tab === "diagnostic" && <>
+        <OrphansCard />
         <FreshnessCard />
         <DiagnosticCard />
         <div className="min-w-0 lg:col-span-2"><JobsCard /></div>

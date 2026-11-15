@@ -22,7 +22,7 @@ test("B3 : compte navigateur, publication immédiate, preuve lue sur la page de 
     await page.getByRole("button", { name: "Nouvelle publication" }).click();
     const dialog = page.getByRole("dialog");
     await dialog.getByLabel("Titre (pour vous) *").fill("Publication navigateur");
-    await dialog.getByRole("combobox", { name: "Projet", exact: true }).selectOption(key);
+    await dialog.getByRole("combobox", { name: "Projet", exact: true }).selectOption(project.id);
     await dialog.getByRole("checkbox", { name: /Compte navigateur/ }).check();
     await dialog.getByLabel(/^Texte pour Compte navigateur/).fill("Bonjour depuis le navigateur");
     await dialog.getByRole("button", { name: "Maintenant", exact: true }).click();

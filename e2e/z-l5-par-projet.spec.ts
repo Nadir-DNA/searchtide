@@ -31,7 +31,7 @@ test("chaque projet a son calendrier et ses comptes", async ({ page }) => {
   // Nouvelle publication depuis le projet : projet prérempli, seuls ses comptes proposés.
   await page.getByRole("button", { name: "Nouvelle publication" }).click();
   const dialog = page.getByRole("dialog");
-  await expect(dialog.getByRole("combobox", { name: "Projet", exact: true })).toHaveValue(`alpha-${u}`);
+  await expect(dialog.getByRole("combobox", { name: "Projet", exact: true })).toHaveValue(a.id);
   await expect(dialog.getByRole("checkbox", { name: new RegExp(`Compte Alpha ${u}`) })).toBeVisible();
   await expect(dialog.getByRole("checkbox", { name: new RegExp(`Compte Beta ${u}`) })).toHaveCount(0);
   await dialog.getByRole("button", { name: "Fermer" }).click();

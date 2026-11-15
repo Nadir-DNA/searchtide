@@ -330,15 +330,13 @@ function ProjectCrm({ project, go }: { project: Project; go: Go }) {
   const [counts, setCounts] = useState<Record<string, number> | null>(null);
   const [pubs, setPubs] = useState<{ id: string; day: string; title: string; status: string; network: string | null }[] | null>(null);
   useEffect(() => {
-    if (!project.crm_key) return;
-    const k = encodeURIComponent(project.crm_key);
+    const k = encodeURIComponent(project.id);
     Promise.all(STAGES.map(([st]) => api<{ total: number }>(`/api/contacts?project=${k}&stage=${st}&limit=1`).then((r) => [st, r.total] as const))).then((r) => setCounts(Object.fromEntries(r)));
     const t = new Date().toISOString().slice(0, 10), end = new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10);
     api<typeof pubs>(`/api/publications?project=${k}&from=${t}&to=${end}`).then(setPubs);
-  }, [project.crm_key]);
-  if (!project.crm_key) return <Card title="Contacts et publications"><EmptyBox>Indiquez la clé de projet (ex. « monprojet ») dans « Gérer le projet » pour relier ses contacts et publications.</EmptyBox></Card>;
+  }, [project.id]);
   return (
-    <Card title="Contacts et publications" action={<Button variant="secondary" onClick={() => go({ view: "crm", id: undefined, project: project.crm_key! })}>Ouvrir les contacts</Button>}>
+    <Card title="Contacts et publications" action={<Button variant="secondary" onClick={() => go({ view: "crm", id: undefined, project: project.id })}>Ouvrir les contacts</Button>}>
       <div className="grid grid-cols-3 gap-3">
         {STAGES.map(([st, label]) => <div key={st}><div className="text-xs text-muted">{label}</div><div className="num text-xl font-light">{counts ? fmt(counts[st]) : "—"}</div></div>)}
       </div>

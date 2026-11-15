@@ -51,7 +51,8 @@ export const today = () => new Date().toISOString().slice(0, 10);
 export const dateFr = (d: string, o: Intl.DateTimeFormatOptions = { day: "numeric", month: "short" }) => new Date(d + "T00:00:00Z").toLocaleDateString("fr-FR", { ...o, timeZone: "UTC" });
 /** Projet tel que rendu par /api/projects : l'identifiant est la référence, la clé CRM n'est qu'une compatibilité. */
 export type ProjectRef = { id: string; name: string; crm_key: string | null; color?: string | null };
-export const projectKey = (p: ProjectRef) => p.crm_key ?? p.id;
+/** Un projet se désigne par son identifiant ; la clé CRM ne sert plus qu'à relire d'anciennes données. */
+export const projectKey = (p: ProjectRef) => p.id;
 export const keysOf = (p: ProjectRef) => [p.id, p.crm_key].filter(Boolean) as string[];
 
 export function Sheet({ title, onClose, children, wide }: { title: string; onClose: () => void; children: ReactNode; wide?: boolean }) {

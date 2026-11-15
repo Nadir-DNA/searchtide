@@ -53,7 +53,7 @@ export function ProjectTabBody({ project, tab, days, go, me, onChanged }: { proj
   );
   if (tab === "ia") return <VisibilityView projectId={project.id} />;
   if (tab === "publications") return <PubsView q={Object.fromEntries(new URLSearchParams(location.search))} go={go} project={project} />;
-  if (tab === "contacts") return <CrmView tab="" go={go} q={{ project: project.crm_key ?? "" }} />;
+  if (tab === "contacts") return <CrmView tab="" go={go} q={{ project: project.id }} />;
   const inds = project.indicators.filter((i) => TAB_SOURCES[tab]?.includes(i.source));
   return inds.length ? (
     <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">

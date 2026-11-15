@@ -65,6 +65,7 @@ function details(ids: Set<string>) {
   for (const r of db.prepare("SELECT id, crm_key, sites FROM projects").all() as Record<string, any>[]) {
     if (!ids.has(r.id)) continue;
     if (r.crm_key) crmKeys.add(String(r.crm_key));
+    crmKeys.add(String(r.id));
     try { for (const d of JSON.parse(r.sites || "[]") as string[]) domains.add(d); } catch { /* sites illisibles */ }
   }
   return { ids, domains, crmKeys };
