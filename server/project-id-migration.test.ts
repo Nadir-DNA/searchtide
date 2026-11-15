@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { db } from "./db.ts";
 import { createContact, savePublication, migrateProjectIds } from "./business.ts";
+import { migrateAccountProjects } from "./publishers/queue.ts";
 
 // C3 : la migration réécrit les anciennes clés et les noms de projet vers l'identifiant,
 // garde les valeurs inconnues telles quelles et ne touche pas à celles déjà correctes.
@@ -26,4 +27,9 @@ test("migration projet : clé CRM, nom, identifiant et texte libre", () => {
   // Rejouer la migration ne change plus rien.
   migrateProjectIds();
   assert.equal((db.prepare("SELECT COUNT(*) AS n FROM contacts WHERE project IN ('fieat', 'Fieat')").get() as { n: number }).n, 0);
+
+  // Les comptes de publication suivent la même règle.
+  db.prepare("INSERT INTO pub_accounts (id, project, network, label, created_at) VALUES ('acc1', 'fieat', 'x', 'Compte', 1)").run();
+  migrateAccountProjects();
+  assert.equal((db.prepare("SELECT project FROM pub_accounts WHERE id = 'acc1'").get() as { project: string }).project, "p_fieat");
 });
