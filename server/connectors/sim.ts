@@ -5,7 +5,7 @@ import type { Ctx } from "./types.ts";
 
 const provider = (url: string) =>
   url.includes("api.stripe.com") ? "stripe" : url.includes("pagespeedonline") ? "pagespeed" : /googleapis\.com|searchconsole\./.test(url) ? "google"
-  : url.includes("api.exemple.test") ? "jsonapi" : url.includes("ntfy") ? "ntfy" : url.includes("blog.exemple.test") ? "wordpress" : null;
+  : url.includes("api.exemple.test") ? "jsonapi" : url.includes("ntfy") ? "ntfy" : url.includes("blog.exemple.test") ? "wordpress" : url.includes("api.anthropic.com") ? "ai" : null;
 
 export const simCtx = (over: Partial<Ctx> = {}): Ctx => realCtx({
   now: () => new Date("2026-11-09T10:00:00Z"),

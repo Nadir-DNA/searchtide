@@ -23,12 +23,13 @@
     "backup:verify": "node scripts/backup-verify.mjs"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.8.0",
     "@hono/node-server": "^2.1.6",
     "@modelcontextprotocol/server": "^2.4.0",
-    "playwright-core": "^1.65.0",
     "hono": "^4.13.17",
     "nodemailer": "^10.4.0",
     "pg": "^8.23.1",
+    "playwright-core": "^1.65.0",
     "qrcode": "^1.5.4",
     "zod": "^4.6.7"
   },

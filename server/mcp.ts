@@ -278,3 +278,32 @@ export function mcpAccess(bearer: string, p: { admin: boolean; apiKey: boolean; 
   if (p.apiKeyRead) return { readOnly: true, agent: "Clé lecture seule" };
   return { readOnly: true, agent: bearer ? "Lecture seule (jeton non reconnu)" : "Démonstration (lecture seule)" };
 }
+
+/** Outil MCP rendu appelable directement (assistant intégré) : nom, description, schéma JSON, exécution. */
+export type CatalogTool = { name: string; description: string; schema: Record<string, unknown>; run(args: Record<string, unknown>): Promise<string> };
+
+/**
+ * Catalogue des outils en lecture seule, tels qu'un agent les voit, pour l'assistant de l'application (plan B2).
+ * Même serveur que MCP (mêmes outils, même journal sous le nom donné), mais aucun outil d'écriture.
+ */
+export function readOnlyCatalog(agent = "Assistant"): CatalogTool[] {
+  const tools: CatalogTool[] = [];
+  const server = new McpServer({ name: "searchtide", version: "0.5.0" }, { instructions: INSTRUCTIONS });
+  const register = server.registerTool.bind(server) as (...a: any[]) => any;
+  (server as any).registerTool = (name: string, config: { description?: string; inputSchema?: z.ZodType }, cb: (...a: any[]) => any) => {
+    const schema = config.inputSchema ? z.toJSONSchema(config.inputSchema, { io: "input" }) as Record<string, unknown> : { type: "object", properties: {} };
+    delete (schema as any).$schema;
+    tools.push({
+      name, description: config.description ?? name, schema,
+      async run(args) {
+        const parsed = config.inputSchema ? config.inputSchema.parse(args ?? {}) : undefined;
+        const r = config.inputSchema ? await cb(parsed, {}) : await cb({});
+        return (r?.content ?? []).map((c: any) => c.text ?? "").join("\n");
+      },
+    });
+    return register(name, config, cb);
+  };
+  instrument(server, agent);
+  for (const m of activeModules()) (m.mcp ?? ((s: McpServer, o: { readOnly: boolean; agent: string }) => BUILTIN_TOOLS[m.id]?.(s, o.readOnly, o.agent)))(server, { readOnly: true, agent });
+  return tools;
+}

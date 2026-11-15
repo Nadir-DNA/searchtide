@@ -47,6 +47,10 @@ export const FIXTURES: Record<string, Fixture> = {
       return json({ code: "rest_no_route" }, 404);
     },
   },
+  ai: {
+    cfg: { config: { provider: "anthropic", model: "" }, secrets: { api_key: "sk-ant-FIXTUREabcdefghij0123456789" } },
+    respond: (url) => url.includes("/v1/models/claude-opus-5-5") ? json({ type: "model", id: "claude-opus-5-5", display_name: "Claude Opus 5.5", created_at: "2026-10-01T00:00:00Z" }) : json({ type: "error", error: { type: "not_found_error", message: "inconnu" } }, 404),
+  },
   ntfy: {
     cfg: { config: { server: "https://ntfy.exemple.test" }, secrets: { topic: "searchtide-0123456789abcdef", token: "tk_FIXTUREtoken0123456789" } },
     respond: () => json({ id: "msg1", event: "message" }),

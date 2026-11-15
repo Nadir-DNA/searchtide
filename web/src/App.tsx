@@ -8,6 +8,7 @@ import { BarChart, Donut, fillDays } from "./chart";
 import { type Project } from "./projects";
 import { SKIP_KEY } from "./onboarding-key";
 import { useModules } from "./modules";
+import { AssistantPanel } from "./assistant";
 const TodayView = lazy(() => import("./today").then((m) => ({ default: m.TodayView })));
 const WallView = lazy(() => import("./wall").then((m) => ({ default: m.WallView })));
 import type { Dashboards } from "./dashboard";
@@ -127,6 +128,7 @@ function Shell({ me, onLogout }: { me: Me; onLogout: () => void }) {
   const { data: todayItems, reload: reloadToday } = useData<{ key: string }[]>("/api/today");
   useEffect(() => { const f = () => reloadToday(); addEventListener("st-today-changed", f); return () => removeEventListener("st-today-changed", f); }, [reloadToday]);
   const [palette, setPalette] = useState(false);
+  const [asking, setAsking] = useState(false);
   const [help, setHelp] = useState(false);
   // B9 : les raccourcis ne s'activent jamais dans un champ de saisie.
   useEffect(() => {
@@ -234,6 +236,8 @@ function Shell({ me, onLogout }: { me: Me; onLogout: () => void }) {
             Aller à…<kbd className="num rounded-md border border-control px-1.5 font-mono text-xs">Ctrl K</kbd>
           </button>
           <button type="button" onClick={() => setPalette(true)} aria-label="Rechercher" className="flex size-11 shrink-0 items-center justify-center rounded-xl text-muted hover:text-ink md:hidden"><svg viewBox="0 0 16 16" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden><circle cx="7" cy="7" r="4.5" /><path d="M10.5 10.5 14 14" /></svg></button>
+          {!me.demo && <button type="button" onClick={() => setAsking(true)} className="flex h-11 shrink-0 items-center gap-2 rounded-xl px-3 text-sm font-semibold text-accent hover:bg-raised" aria-label="Demander à l'assistant">
+            <svg viewBox="0 0 16 16" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z" /></svg><span className="hidden md:inline">Demander</span></button>}
           <button type="button" onClick={to("settings")} aria-label="Réglages" aria-current={q.view === "settings" || q.view === "report" ? "page" : undefined}
             className={`flex size-11 shrink-0 items-center justify-center rounded-xl hover:text-ink ${q.view === "settings" || q.view === "report" ? "bg-raised text-ink" : "text-muted"}`}><Svg>{Icon.gear}</Svg></button>
         </div>
@@ -259,6 +263,7 @@ function Shell({ me, onLogout }: { me: Me; onLogout: () => void }) {
         </div>
       </header>
 
+      {asking && <AssistantPanel onClose={() => setAsking(false)} project={q.view === "project" ? q.id : undefined} />}
       {menu && (
         <div className="fixed inset-0 z-40 flex flex-col overflow-y-auto bg-ground md:hidden" role="dialog" aria-modal="true" aria-label="Menu">
           <div className="flex h-14 shrink-0 items-center justify-between px-4">
