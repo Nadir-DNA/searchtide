@@ -229,6 +229,16 @@ function PubSheet({ pub, onClose, onSaved }: { pub: Partial<Pub>; onClose: () =>
             </div>
           </div>
         )}
+        {state === "needs_action" && mine.find((a) => a.id === account)?.mode === "agent" && (
+          <div role="status" className="rounded-xl border border-border bg-raised p-3 text-sm">
+            <p>À publier par votre agent IA (outil MCP <code>pubs_to_publish</code>, par exemple Claude dans Chrome sur votre ordinateur) ou à la main. Une fois le post en ligne, son adresse fait la preuve.</p>
+            <Button type="button" variant="secondary" className="mt-2" disabled={busy} onClick={async () => {
+              const u = await ask({ title: "Adresse du post publié", message: "Collez l'adresse https du post sur le réseau.", inputLabel: "Adresse du post", confirmLabel: "Marquer publiée" });
+              if (!u) return;
+              try { const p = await api<Pub>(`/api/publications/${id}/agent-published`, { method: "POST", json: { url: u } }); setState(p.state ?? ""); setEvidence(p.evidence_url ?? ""); onSaved(); } catch (err) { setError((err as Error).message); }
+            }}>C'est publié</Button>
+          </div>
+        )}
         {state === "scheduled" && <p className="text-xs text-muted">Publication programmée : le contenu est figé. Annulez-la pour le modifier, puis reprogrammez.</p>}
         <Field label="Titre *"><input name="title" required defaultValue={pub.title} className={inputCls} autoFocus /></Field>
         <div className="grid gap-4 sm:grid-cols-2">
@@ -393,7 +403,7 @@ function AccountsCard() {
         <input name="project" required aria-label="Projet du compte" placeholder="Projet (clé CRM)" className={inputCls} />
         <select name="network" required aria-label="Réseau du compte" className={inputCls}>{NETWORKS.filter((n) => NET_NAME[n]).map((n) => <option key={n} value={n}>{NET_NAME[n]}</option>)}</select>
         <input name="label" required aria-label="Nom du compte" placeholder="Nom du compte" className={inputCls} />
-        <select name="mode" aria-label="Mode du compte" className={inputCls}><option value="api">API factice</option><option value="web">Navigateur</option></select>
+        <select name="mode" aria-label="Mode du compte" className={inputCls}><option value="api">API factice</option><option value="web">Navigateur</option><option value="agent">Agent IA (votre ordinateur)</option></select>
         <input name="web_url" aria-label="Adresse de connexion" placeholder="https://… (navigateur)" className={inputCls} />
         <Button>Ajouter</Button>
       </form>
@@ -405,8 +415,8 @@ function AccountsCard() {
         { label: "Projet", render: (a) => a.project },
         { label: "Cible", render: (a) => TARGET[a.network] ? (
           <button type="button" onClick={() => setTarget(a)} className={a.target ? "text-ink underline" : "font-semibold text-accent hover:underline"}>{a.target ? `r/${a.target}` : `Choisir le ${TARGET[a.network].label.toLowerCase()}`}</button>) : <span className="text-muted">—</span> },
-        { label: "Transport", render: (a) => a.mode === "web" ? "Navigateur" : a.connection_id ? "API" : "API factice" },
-        { label: "Repli navigateur", render: (a) => a.mode === "web" || !recipes?.some((r) => r.network === a.network) ? <span className="text-muted">—</span> : (
+        { label: "Transport", render: (a) => a.mode === "web" ? "Navigateur" : a.mode === "agent" ? "Agent IA" : a.connection_id ? "API" : "API factice" },
+        { label: "Repli navigateur", render: (a) => a.mode === "web" || a.mode === "agent" || !recipes?.some((r) => r.network === a.network) ? <span className="text-muted">—</span> : (
           <label className="flex items-center gap-2"><input type="checkbox" checked={!!a.browser_fallback} onChange={() => toggleFallback(a)} className="size-4 accent-[var(--color-accent)]" aria-label="Repli navigateur" />
             <span className="text-xs text-muted">{a.browser_fallback ? "activé" : "désactivé"}</span></label>) },
         { label: "État", render: (a) => <Pill tone={a.status === "connected" ? "positive" : "negative"}>{a.status === "connected" ? "Connecté" : "À reconnecter"}</Pill> },

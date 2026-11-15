@@ -74,3 +74,35 @@ test("B3 : connexion demandée = action requise sans consommer ; sans preuve ou 
     assert.equal(crash.state, "to_verify");
   } finally { await f.close(); rmSync(mediaDir, { recursive: true, force: true }); }
 });
+
+test("étapes libres : menu, fichier, Suivant, légende, Partager ; preuve par l'adresse du post ; médias et cible exigés", async () => {
+  const f = await startFixtures();
+  const { writeFileSync, mkdirSync } = await import("node:fs");
+  mkdirSync(mediaDir, { recursive: true });
+  const file = join(mediaDir, "photo.jpg"); writeFileSync(file, Buffer.from([0xff, 0xd8, 0xff]));
+  const recipe = {
+    network: "fixture-steps", version: 1, validated: "pages de test", entry: "/steps", requiresMedia: true, requiresTarget: true,
+    steps: [
+      { do: "click" as const, target: [{ role: "button" as const, name: "Nouvelle publication" }] },
+      { do: "click" as const, target: [{ text: "Menu absent" }], optional: true, timeout: 500 },
+      { do: "upload" as const, target: [{ css: "#file" }] },
+      { do: "click" as const, target: [{ role: "button" as const, name: "^Suivant$" }] },
+      { do: "fill" as const, target: [{ role: "textbox" as const, name: "Titre du post" }], value: "target" as const },
+      { do: "fill" as const, target: [{ role: "textbox" as const, name: "légende" }], value: "text" as const },
+    ],
+    submit: [{ role: "button" as const, name: "^Partager$" }],
+    proof: { fromUrl: "/comments/" },
+    stopPaths: ["/login"], note: "test",
+  };
+  try {
+    const s = setup("Légende du test");
+    const base = { agentId: "agent-web", baseUrl: f.url, fixturePort: f.port, sandbox: false, entry: "/steps", proofTimeoutMs: 5_000, recipe };
+    const noMedia = await publishWithBrowser({ ...base, publication: pub(s.pubId), account: { ...s.account, target: "test" }, approvalId: approval(s) });
+    assert.match(String(noMedia.message), /image ou une vidéo est requise/);
+    const noTarget = await publishWithBrowser({ ...base, publication: pub(s.pubId), account: s.account, approvalId: approval(s), mediaPaths: [file] });
+    assert.match(String(noTarget.message), /réglez la cible/);
+    const ok = await publishWithBrowser({ ...base, publication: pub(s.pubId), account: { ...s.account, target: "test" }, approvalId: approval(s), mediaPaths: [file] });
+    assert.equal(ok.state, "published", ok.message ?? "");
+    assert.equal(ok.proof, `${f.url}/r/test/comments/abc123/test`, "la cible du compte a été saisie, l'adresse sans paramètres sert de preuve");
+  } finally { await f.close(); rmSync(mediaDir, { recursive: true, force: true }); }
+});

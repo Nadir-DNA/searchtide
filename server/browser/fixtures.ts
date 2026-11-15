@@ -16,7 +16,23 @@ const composer = (action: string) => page("Composeur factice", `
   </form>`);
 const COMPOSER = composer("/published");
 
+/** Compositeur en plusieurs étapes (façon Instagram / Reddit) : menu, fichier, « Suivant », légende, « Partager », puis la page du post. */
+const STEPS = page("Compositeur en étapes", `
+  <h1>Accueil</h1>
+  <button type="button" id="new" onclick="document.getElementById('c').hidden=false">Nouvelle publication</button>
+  <section id="c" hidden>
+    <input type="file" aria-label="Fichier" id="file" onchange="document.getElementById('next').hidden=false">
+    <button type="button" id="next" hidden onclick="document.getElementById('cap').hidden=false">Suivant</button>
+    <div id="cap" hidden>
+      <label>Titre du post <input id="t" aria-label="Titre du post"></label>
+      <label>Légende <textarea id="x" aria-label="Écrivez une légende"></textarea></label>
+      <button type="button" onclick="location.href='/r/test/comments/abc123/' + encodeURIComponent(document.getElementById('t').value) + '?created=1'">Partager</button>
+    </div>
+  </section>`);
+
 const PAGES: Record<string, string> = {
+  "/steps": STEPS,
+  "/r/test/comments/abc123/": page("Post publié", "<h1>Votre post</h1>"),
   "/composer": COMPOSER,
   "/composer-no-proof": composer("/no-proof"),
   "/composer-crash": composer("/crash-after-click"),
@@ -52,7 +68,7 @@ export type Fixtures = { url: string; port: number; close: () => Promise<void> }
 export async function startFixtures(): Promise<Fixtures> {
   const server: Server = createServer((req, res) => {
     const path = (req.url ?? "/").split("?")[0];
-    const html = PAGES[path];
+    const html = PAGES[path] ?? (path.startsWith("/r/test/comments/abc123/") ? PAGES["/r/test/comments/abc123/"] : undefined);
     if (!html) { res.writeHead(404, { "content-type": "text/plain; charset=utf-8" }); res.end("Page de test inconnue"); return; }
     res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
     res.end(html);

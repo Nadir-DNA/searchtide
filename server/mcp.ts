@@ -6,6 +6,8 @@ import { registerBriefTools } from "./briefs.ts";
 import { registerVisibilityTools } from "./visibility.ts";
 import { registerSocialTools } from "./publishers/stats.ts";
 import { registerRuleTools } from "./publishers/rules.ts";
+import { registerAgentPublishTools } from "./publishers/agent-mode.ts";
+import { markAgentPublished } from "./publishers/queue.ts";
 import { keywordSuggestions, seoInsights, trackKeyword, trackedKeywords } from "./keywords.ts";
 import { McpServer, WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/server";
 import { z } from "zod";
@@ -77,11 +79,11 @@ const mapResult = (r: any, fn: (d: any) => any) => {
  * Lecture : la cible doit être dans la portée. Écriture : la cible doit être dans la portée en écriture.
  */
 const SCOPED_READ = new Set([
-  "list_sites", "traffic_stats", "search_stats", "seo_opportunities", "keywords_tracked", "brief_ideas", "seo_insights", "page_check", "indexing_status", "social_stats", "pub_rules", "ai_visibility", "seo_audit_issues", "projects_kpis", "portfolio_overview", "alerts", "today",
+  "list_sites", "traffic_stats", "search_stats", "seo_opportunities", "keywords_tracked", "brief_ideas", "seo_insights", "page_check", "indexing_status", "social_stats", "pub_rules", "ai_visibility", "pubs_to_publish", "seo_audit_issues", "projects_kpis", "portfolio_overview", "alerts", "today",
   "milestones_list", "kpi_catalog", "crm_list_contacts", "crm_get_contact", "pubs_list", "modules_list", "dashboard_catalog", "dashboard_list", "dashboard_get",
 ]);
 const SCOPED_WRITE = new Set([
-  "sync_search_console", "keyword_track", "indexing_submit", "seo_audit_run", "cms_draft", "brief_create", "pub_rule_propose", "kpi_add", "milestone_save", "indicator_record", "crm_save_contact", "crm_log", "pubs_save", "today_update",
+  "sync_search_console", "keyword_track", "indexing_submit", "seo_audit_run", "cms_draft", "brief_create", "pub_rule_propose", "pub_report_published", "kpi_add", "milestone_save", "indicator_record", "crm_save_contact", "crm_log", "pubs_save", "today_update",
   "module_enable_for_project", "module_disable_for_project",
 ]);
 
@@ -109,7 +111,7 @@ function scopeServer(server: McpServer, s: McpScope) {
         const row = db.prepare("SELECT domain FROM sites WHERE domain = ? OR id = ?").get(a.site, a.site) as { domain: string } | undefined;
         if (!row || !domains.has(row.domain)) deny();
       }
-      if (name === "social_stats" || name === "ai_visibility" || name === "pub_rules" || name === "pub_rule_propose") mustProject(a.project);   // sans projet, la liste couvrirait tous les comptes
+      if (name === "social_stats" || name === "ai_visibility" || name === "pubs_to_publish" || name === "pub_report_published" || name === "pub_rules" || name === "pub_rule_propose") mustProject(a.project);   // sans projet, la liste couvrirait tous les comptes
       if (name === "kpi_add" || name === "kpi_catalog" || name === "module_enable_for_project" || name === "module_disable_for_project") mustProject(a.project);
       if (name === "milestone_save") { if (!a.project) throw new Error("Précisez le projet : une clé limitée ne crée pas de jalon global"); mustProject(a.project); }
       if (name === "indicator_record") {
@@ -243,7 +245,7 @@ const BUILTIN_TOOLS: Record<string, (server: McpServer, readOnly: boolean, agent
   google: (s, ro) => { googleTools(s, ro); registerBriefTools(s, ro, site); },
   rdv: (s, ro) => rdvTools(s, ro),
   crm: (s, ro) => registerBusinessTools(only(s, (n) => n.startsWith("crm_")), ro),
-  publications: (s, ro, agent) => { registerBusinessTools(only(s, (n) => n.startsWith("pubs_")), ro); registerSocialTools(s); registerRuleTools(s, ro, agent); },
+  publications: (s, ro, agent) => { registerBusinessTools(only(s, (n) => n.startsWith("pubs_")), ro); registerSocialTools(s); registerRuleTools(s, ro, agent); registerAgentPublishTools(s, ro, agent, markAgentPublished); },
   projets: (s, ro) => { registerProjectTools(s, ro); registerPortfolioTools(s); registerKpiTools(s, ro); registerTodayTools(s, ro); registerVisibilityTools(s); },
   pages: (s, ro, agent) => registerDashboardTools(s, ro, agent),
   agents: (s) => {

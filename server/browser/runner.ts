@@ -79,18 +79,35 @@ export async function publishWithBrowser(o: {
   if (pre !== "ok") return { state: "failed", kind: "approval", message: pre === "hash" ? "Contenu modifié depuis l'approbation" : pre === "state" ? "Approbation expirée ou déjà utilisée" : "Approbation introuvable" };
 
   // `web_url` est l'adresse complète ; `entry` ne sert qu'aux tests de page locale ; sinon l'adresse de départ de la recette.
-  const url = o.entry ? `${o.baseUrl}${o.entry}` : o.baseUrl || recipe.entry;
+  const target = String(o.account.target ?? "").trim();
+  if (recipe.requiresTarget && !/^[A-Za-z0-9_]{2,40}$/.test(target)) return { state: "failed", kind: "format", message: `${recipe.network} : réglez la cible du compte (subreddit) avant de publier` };
+  const url = (o.entry ? `${o.baseUrl}${o.entry}` : o.baseUrl || recipe.entry).replace("{target}", encodeURIComponent(target));
   const media = o.mediaPaths ?? [];
-  if (media.length && !recipe.upload) return { state: "failed", kind: "format", message: `Médias non pris en charge par la publication navigateur sur ${recipe.network} : rien n'a été envoyé` };
+  const uploads = !!recipe.upload || !!recipe.steps?.some((x) => x.do === "upload");
+  if (media.length && !uploads) return { state: "failed", kind: "format", message: `Médias non pris en charge par la publication navigateur sur ${recipe.network} : rien n'a été envoyé` };
+  if (recipe.requiresMedia && !media.length) return { state: "failed", kind: "format", message: `${recipe.network} : une image ou une vidéo est requise` };
+  const valueOf = (v: "text" | "title" | "target") => v === "target" ? target : String((v === "title" ? p.title : p.text) ?? "");
   try {
     return await withPage(url, async (page) => {
       const stopped = () => recipe.stopPaths.some((s) => new URL(page.url()).pathname.startsWith(s));
       if (stopped()) return { state: "action_required", kind: "auth", message: "Connexion ou vérification demandée par le site : reconnectez la session dans « Connexions navigateur »" };
       try {
-        for (const step of recipe.open ?? []) await (await find(page, step)).click();
-        if (recipe.title) await (await find(page, recipe.title)).fill(String(p.title ?? ""));
-        await (await find(page, recipe.text)).fill(String(p.text ?? ""));
-        if (media.length) await (await find(page, recipe.upload!, "attached")).setInputFiles(media);
+        if (recipe.steps) {
+          for (const step of recipe.steps) {
+            if (step.do === "wait") { await page.waitForTimeout(step.ms); continue; }
+            if (step.do === "upload") { await (await find(page, step.target, "attached")).setInputFiles(media); continue; }
+            let el: Locator;
+            try { el = await find(page, step.target, "visible", step.do === "click" ? step.timeout ?? 15_000 : 15_000); }
+            catch (e) { if (step.optional) continue; throw e; }
+            if (step.do === "click") await el.click();
+            else { const v = valueOf(step.value); if (v || !step.optional) await el.fill(v); }
+          }
+        } else {
+          for (const step of recipe.open ?? []) await (await find(page, step)).click();
+          if (recipe.title) await (await find(page, recipe.title)).fill(String(p.title ?? ""));
+          await (await find(page, recipe.text ?? [])).fill(String(p.text ?? ""));
+          if (media.length) await (await find(page, recipe.upload!, "attached")).setInputFiles(media);
+        }
       } catch {
         return stopped() ? { state: "action_required", kind: "auth", message: "Connexion demandée par le site" }
           : { state: "failed", kind: "format", message: `Compositeur introuvable sur ${recipe.network} (recette ${recipe.version}${recipe.validated ? "" : ", non éprouvée"}) : rien n'a été envoyé` };
@@ -107,11 +124,18 @@ export async function publishWithBrowser(o: {
 
       // Après le clic : seule une preuve positive donne « publié ».
       const shot = async () => { try { return saveProof(String(p.id), await page.screenshot({ type: "jpeg", quality: 60 })); } catch { return undefined; } };
-      if (recipe.proof) {
+      if (recipe.proof?.fromUrl) {
+        // Le réseau ouvre la publication : son adresse est la preuve.
+        try {
+          const mark = recipe.proof.fromUrl;
+          await page.waitForURL((u) => u.toString().includes(mark), { timeout: o.proofTimeoutMs ?? 30_000 });
+          return { state: "published", proof: page.url().split("?")[0], screenshot: await shot() };
+        } catch { /* pas de preuve : à vérifier ci-dessous */ }
+      } else if (recipe.proof?.css) {
         try {
           const el = page.locator(recipe.proof.css).first();
           await el.waitFor({ state: "attached", timeout: o.proofTimeoutMs ?? 30_000 });
-          const raw = (await el.getAttribute(recipe.proof.attr)) ?? "";
+          const raw = (await el.getAttribute(recipe.proof.attr ?? "href")) ?? "";
           const proof = raw ? new URL(raw, page.url()).toString() : "";
           if (!proof || (recipe.proof.mustInclude && !proof.includes(recipe.proof.mustInclude))) throw new Error("preuve vide");
           return { state: "published", proof, screenshot: await shot() };
@@ -133,6 +157,7 @@ export async function publishWithBrowser(o: {
 async function find(page: Page, targets: Target[], state: "visible" | "attached" = "visible", timeout = 15_000): Promise<Locator> {
   const loc = (t: Target): Locator => t.css ? page.locator(t.css)
     : t.label ? page.getByLabel(t.label)
+    : t.text ? page.getByText(new RegExp(t.text, "i"))
     : page.getByRole(t.role ?? "button", t.name ? { name: new RegExp(t.name, "i") } : {});
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {

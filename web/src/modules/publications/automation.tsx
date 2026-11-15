@@ -127,7 +127,7 @@ export function RulesCard() {
         <select name="metric" aria-label="Mesure" className={inputCls}>{Object.entries(METRIC).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
         <input name="threshold" type="number" min={1} required placeholder="Seuil, ex. 100" aria-label="Seuil" className={inputCls} />
         <select name="action" value={action} onChange={(e) => setAction(e.target.value)} aria-label="Action" className={inputCls}>{Object.entries(ACTION).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
-        <Button>Ajouter</Button>
+        <Button>Ajouter la règle</Button>
         {(action === "comment" || action === "repost") && <textarea name="text" rows={2} required={action === "comment"} aria-label="Texte" placeholder={action === "comment" ? "Texte du commentaire" : "Texte de la republication (vide = même texte ; obligatoire sur X)"} className={`${inputCls} h-auto py-2 sm:col-span-2 lg:col-span-4`} />}
         {action === "repost" && <label className="flex items-center gap-2 text-sm text-muted">Délai <input name="delay_hours" type="number" min={1} defaultValue={24} className={`${inputCls} w-20`} /> h</label>}
       </form>

@@ -24,12 +24,12 @@ test("activation : réseaux avec recette seulement ; le compte peut alors recevo
   const project = uniq();
   db.prepare("INSERT INTO projects (id, name, crm_key, created_at) VALUES (?, ?, ?, 0)").run(`id-${project}`, project, project);
   const x = createAccount({ project, network: "x", label: "X" }) as any;
-  const yt = createAccount({ project, network: "youtube", label: "YT" }) as any;
+  const yt = createAccount({ project, network: "gbp", label: "Fiche" }) as any;
   assert.equal(accountBelongsToProject(x.id, project), false, "compte API sans repli : pas de session navigateur");
   assert.equal((setBrowserFallback(x.id, true) as any).browser_fallback, 1);
   assert.equal(accountBelongsToProject(x.id, project), true);
-  assert.throws(() => setBrowserFallback(yt.id, true), /Pas de recette navigateur pour youtube/);
-  assert.deepEqual(recipes().map((r) => r.network).sort(), ["facebook", "linkedin", "x"]);
+  assert.throws(() => setBrowserFallback(yt.id, true), /Pas de recette navigateur pour gbp/);
+  assert.deepEqual(recipes().map((r) => r.network).sort(), ["facebook", "instagram", "linkedin", "pinterest", "reddit", "tiktok", "x", "youtube"]);
   assert.equal(recipeFor("x")!.validated, null, "recette non éprouvée tant qu'elle n'a pas été validée sur un vrai compte");
 });
 

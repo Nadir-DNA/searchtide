@@ -2,9 +2,19 @@
 
 Toutes les versions notables sont consignées ici. Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/).
 
-## [Non publié] — SEO complet et publication, étapes 1 et 2
+## [Non publié] — SEO complet et publication, étapes 1, 2 et 3
 
 ### Ajouté
+
+- **Pinterest, Reddit et Google Business Profile** : un fournisseur par réseau (tableaux Pinterest et fiches d'établissement ouverts comme comptes, subreddit réglé par compte), statistiques quand le réseau les donne, guide de création de l'application développeur dans Connexions.
+- **Premier commentaire, fils et hashtags** : suites envoyées une par une après la publication (X, LinkedIn, Facebook, Instagram, Reddit), chacune avec son état ; une partie incertaine arrête le fil sans rien rejouer. Découpe automatique en fil, hashtags retenus par projet et par réseau.
+- **Actions sur seuil** : à N j'aime, commentaires, vues ou interactions, republier, commenter, prévenir par webhook ou inscrire dans À traiter. Une fois par post, jamais rétroactif ; une règle proposée par un agent reste désactivée jusqu'à votre accord.
+- **Assistant « Demander »** : questions en langage naturel sur vos données, avec Claude, ChatGPT, Gemini ou un modèle local Ollama (connecteur Intelligence artificielle). Lecture seule, sources citées.
+- **Articles à écrire** : sujets tirés de Search Console, brief (requêtes voisines, questions, page déjà classée, liens internes, plans des concurrents, longueur), brouillon rédigé par l'IA, envoi en brouillon WordPress.
+- **Visibilité dans les IA** : questions types posées chaque semaine aux IA connectées ; part des réponses qui vous citent, place, concurrents cités, tendance sur 8 semaines, alerte de recul. Onglet « Visibilité IA » du projet.
+- **Navigateur** : moteur de recettes en étapes, preuve par l'adresse du post ; recettes Instagram, TikTok, YouTube, Pinterest et Reddit en plus de X, LinkedIn et Facebook (non éprouvées sur de vrais comptes).
+- **Compte « Agent IA »** : la publication attend votre agent (par exemple Claude dans Chrome, sur votre ordinateur) qui la lit par MCP (`pubs_to_publish`), publie, puis renvoie l'adresse du post (`pub_report_published`).
+- Outils d'agent : `pub_rules`, `pub_rule_propose`, `brief_ideas`, `brief_create`, `ai_visibility`, `pubs_to_publish`, `pub_report_published`.
 
 - **Suivi de mots-clés** : mots-clés suivis par site (position, évolution, courbe, suggestions), diagnostics Search Console (pages qui perdent des clics, titres à réécrire, pages en concurrence), alerte quand un mot-clé suivi recule de 3 places ou plus.
 - **Outils SEO** d'un site : vérificateur de page (balises, indexation, Open Graph, données structurées, robots.txt, sitemap), générateurs de robots.txt et de données structurées. Lecture sûre côté serveur : domaine du site uniquement, aucune adresse interne.

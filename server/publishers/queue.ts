@@ -10,11 +10,12 @@ import { securityEvent } from "../security-events.ts";
 import { mediaFiles, mediaOf, publicMediaReady } from "./media.ts";
 import { publicationBinding, publishWithBrowser } from "../browser/runner.ts";
 import { openBrowserSession, revokeBrowserSession } from "../browser/live.ts";
-import { FIXTURE_RECIPE, recipeFor, recipes, type Recipe } from "../browser/recipes.ts";
+import { FIXTURE_RECIPE, NO_RECIPE, recipeFor, recipes, type Recipe } from "../browser/recipes.ts";
 import { fixturesEnabled } from "../browser/pool.ts";
 import { createApproval, decideApproval } from "../approvals.ts";
 import { definitive, providerFor, type PublishResult } from "./provider.ts";
 import { credentialsFor } from "./tokens.ts";
+import { AGENT_WAITING, reportPublished } from "./agent-mode.ts";
 import "./providers/index.ts";
 
 type Row = Record<string, any>;
@@ -75,7 +76,7 @@ export function createAccount(input: { project?: string; network?: string; label
   if (!NETWORK_LIMITS[network]) throw new Error(`Réseau non pris en charge : ${network || "(vide)"}`);
   if (!label) throw new Error("Nom du compte requis");
   const cap = Math.min(Math.max(Number(input.daily_cap) || 3, 1), 100);
-  const mode = input.mode === "web" ? "web" : "api";
+  const mode = input.mode === "web" ? "web" : input.mode === "agent" ? "agent" : "api";
   let webUrl: string | null = null, fixturePort: number | null = null;
   if (mode === "web") {
     try { const u = new URL(String(input.web_url ?? "")); if (u.protocol !== "http:" && u.protocol !== "https:") throw new Error(); webUrl = u.toString();
@@ -231,12 +232,17 @@ async function runOne(p: Row, now: number): Promise<void> {
     attempt(p.id, auth ? "needs_action" : "failed", `${auth ? "authentification" : "format"} : ${issues.join(" ; ")}`);
     return;
   }
+  if (account.mode === "agent") {
+    setState(p.id, "needs_action", { status: "idea" });
+    attempt(p.id, "needs_action", `${AGENT_WAITING} : collez ensuite l'adresse du post`);
+    return;
+  }
   if (account.mode === "web") {
     const approvalId = String(p.approval_id ?? "");
     if (!approvalId) { setState(p.id, "failed", { status: "idea" }); attempt(p.id, "failed", "approbation absente"); return; }
     const fixture = fixturesEnabled() && Number(account.fixture_port) > 0;
     const recipe = fixture ? FIXTURE_RECIPE : recipeFor(String(account.network));
-    if (!recipe) { setState(p.id, "failed", { status: "idea" }); attempt(p.id, "failed", `format : pas de recette navigateur pour ${account.network}`); return; }
+    if (!recipe) { setState(p.id, "failed", { status: "idea" }); attempt(p.id, "failed", `format : ${NO_RECIPE[String(account.network)] ?? `pas de recette navigateur pour ${account.network}`}`); return; }
     await runBrowser(p, account, recipe, approvalId, "navigateur");
     return;
   }
@@ -304,6 +310,13 @@ async function runBrowser(p: Row, account: Row, recipe: Recipe, approvalId: stri
     setState(p.id, "failed", { status: "idea" });
     attempt(p.id, "failed", `${source} : ${r.kind ?? "échec"} : ${r.message ?? ""}`);
   }
+}
+
+/** Compte « agent » : l'adresse du post (sur le domaine du réseau) fait la preuve ; journalisée comme une tentative. */
+export function markAgentPublished(id: string, url: string, by: string) {
+  const r = reportPublished(id, url, by);
+  attempt(id, "published", `publié par ${by} (adresse du post)`, r.url);
+  return getPublication(id);
 }
 
 /** Activer le repli : seulement pour un réseau qui a une recette. */
@@ -499,6 +512,11 @@ export function registerPublishers(app: Hono) {
     const denied = admin(c); if (denied) return denied;
     const b = await c.req.json().catch(() => ({}));
     try { return c.json(resolveToVerify(c.req.param("id"), String(b.outcome ?? ""), typeof b.url === "string" ? b.url : undefined)); } catch (e) { return c.json({ error: (e as Error).message }, 400); }
+  });
+  app.post("/api/publications/:id/agent-published", async (c) => {
+    const denied = admin(c); if (denied) return denied;
+    const b = await c.req.json().catch(() => ({}));
+    try { return c.json(markAgentPublished(c.req.param("id"), String(b.url ?? ""), "administrateur")); } catch (e) { return c.json({ error: (e as Error).message }, 400); }
   });
   app.post("/api/publications/:id/retry", async (c) => {
     const denied = admin(c); if (denied) return denied;
