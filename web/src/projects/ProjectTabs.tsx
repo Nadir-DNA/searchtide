@@ -11,6 +11,7 @@ import { KpiCatalogPanel } from "../sources";
 import { Button, Card, Delta, EmptyBox, KpiCard, Segmented } from "../ui";
 import { val } from "../projects";
 import { VisibilityView } from "../visibility";
+import { ClientReportCard } from "../client-report";
 
 type Go = (n: Record<string, string | undefined>) => void;
 type Project = { id: string; name: string; sites: string[]; crm_key: string | null; indicators: { id: string; label: string; unit: string | null; source: string; mode: string; value: number | null; previous: number | null; last_error: string | null }[] };
@@ -35,7 +36,7 @@ export function ProjectTabBar({ project, tab, go }: { project: Project; tab: str
 export function ProjectTabBody({ project, tab, days, go, me, onChanged }: { project: Project; tab: string; days: number; go: Go; me: Me; onChanged: () => void }) {
   const { data: sites } = useData<Site[]>("/api/sites");
   const own = (sites ?? []).filter((s) => project.sites.includes(s.domain));
-  if (tab === "reglages") return <ProjectSettings project={project} sites={own} onChanged={onChanged} />;
+  if (tab === "reglages") return <div className="space-y-4"><ProjectSettings project={project} sites={own} onChanged={onChanged} /><ClientReportCard projectId={project.id} /></div>;
   if (tab === "trafic" || tab === "recherche") return (
     <div className="space-y-8">
       {own.map((s) => (
