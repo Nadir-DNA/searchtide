@@ -5,3 +5,6 @@ import "./x.ts";
 import "./meta.ts";
 import "./tiktok.ts";
 import "./youtube.ts";
+import "./pinterest.ts";
+import "./reddit.ts";
+import "./gbp.ts";

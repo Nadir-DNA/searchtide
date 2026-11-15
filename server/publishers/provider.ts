@@ -18,7 +18,8 @@ export type AccountStats = { followers?: number; posts?: number; views?: number 
 export type PostStats = { impressions?: number; likes?: number; comments?: number; shares?: number; views?: number };
 
 export type Media = { id: string; mime: string; size: number; kind: "image" | "video"; bytes(): Buffer; publicUrl(): string };
-export type PostInput = { text: string; title?: string; visibility?: string; media: Media[] };
+/** `target` : cible propre au compte (subreddit pour Reddit), réglée dans l'écran des comptes. */
+export type PostInput = { text: string; title?: string; visibility?: string; media: Media[]; target?: string };
 
 export interface Provider {
   id: string;
@@ -47,6 +48,12 @@ export interface Provider {
   postStats?(urls: string[], accessToken: string, accountId: string): Promise<Record<string, PostStats>>;
   /** Pourquoi les statistiques ne sont pas disponibles, quand `stats` est absent. */
   statsUnavailable?: string;
+  /** Cible à régler sur le compte avant de publier (ex. le subreddit). */
+  target?: { label: string; help: string; pattern: RegExp };
+  /** Réponse sous une publication (premier commentaire, partie suivante d'un fil). Renvoie l'adresse de la réponse. */
+  reply?(parentUrl: string, text: string, accessToken: string, accountId: string): Promise<PublishResult>;
+  /** Les réponses de l'auteur s'affichent en fil sous le post (X) : la suite d'un long texte peut y partir. */
+  threads?: boolean;
 }
 
 const registry = new Map<string, Provider>();

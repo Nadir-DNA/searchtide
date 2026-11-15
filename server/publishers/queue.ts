@@ -32,6 +32,7 @@ for (const sql of [
   "ALTER TABLE pub_accounts ADD COLUMN connection_id TEXT",
   "ALTER TABLE publications ADD COLUMN pending_data TEXT",
   "ALTER TABLE publications ADD COLUMN pending_since INTEGER",
+  "ALTER TABLE pub_accounts ADD COLUMN target TEXT",
 ]) { try { db.exec(sql); } catch { /* colonne déjà présente */ } }
 db.exec(`CREATE TABLE IF NOT EXISTS pub_idempotency (
   key TEXT PRIMARY KEY, url TEXT NOT NULL, at INTEGER NOT NULL
@@ -50,6 +51,9 @@ export const NETWORK_LIMITS: Record<string, { text: number; media: number; needs
   tiktok: { text: 2200, media: 35, needsVisibility: true },
   youtube: { text: 5000, media: 1, needsTitle: true },
   linkedin: { text: 3000, media: 9 },
+  pinterest: { text: 800, media: 1 },
+  reddit: { text: 40_000, media: 0, needsTitle: true },
+  gbp: { text: 1500, media: 1 },
 };
 export const MAX_LATE_MS = 2 * 60 * 60_000;
 /** Au-delà, un traitement côté réseau (vidéo, conteneur) n'est plus suivi : « À vérifier ». */
@@ -111,7 +115,8 @@ export function validatePublication(p: Row, account: Row | undefined): string[] 
   if (!text.trim()) issues.push("Texte requis");
   const textMax = real?.limits.text ?? limit?.text;
   if (textMax && text.length > textMax) issues.push(`Texte trop long pour ${network} : ${text.length} / ${textMax} caractères`);
-  if (limit?.needsTitle && !String(p.title ?? "").trim()) issues.push("Titre requis pour YouTube");
+  if (limit?.needsTitle && !String(p.title ?? "").trim()) issues.push(`Titre requis pour ${network === "reddit" ? "Reddit" : "YouTube"}`);
+  if (real?.target && account && !real.target.pattern.test(String(account.target ?? ""))) issues.push(`${real.label} : réglez « ${real.target.label} » sur le compte « ${account.label} »`);
   if (limit?.needsVisibility && !String(p.visible ?? "").trim()) issues.push("Confidentialité à choisir pour TikTok");
   // Médias : nombre par réseau, formats et plafonds officiels les plus stricts (§16.2).
   // Médias : ceux de la publication, ou ceux annoncés pour une vérification préalable (compositeur multi-comptes).
@@ -127,6 +132,7 @@ export function validatePublication(p: Row, account: Row | undefined): string[] 
   if (network === "youtube" && media.some((m) => !video(m.mime))) issues.push("YouTube : une vidéo est requise");
   if (network === "tiktok" && media.some((m) => !video(m.mime))) issues.push("TikTok : vidéo ou photos compatible requises");
   if (network === "youtube" && media.length === 0) issues.push("YouTube : une vidéo est requise");
+  if (network === "pinterest" && media.length === 0) issues.push("Pinterest : une image est requise");
   if (real) {
     issues.push(...(real.check?.({ text, title: p.title ? String(p.title) : undefined, visibility: p.visible ? String(p.visible) : undefined, media }) ?? []));
     if (real.needsPublicMedia && media.length && !publicMediaReady()) issues.push(`${real.label} télécharge les médias depuis votre instance : définissez PUBLIC_URL en https`);
@@ -166,7 +172,7 @@ export async function publishToNetwork(p: Row, account: Row): Promise<PublishRes
   if (real) {
     const cred = await credentialsFor(account);
     if (!cred.ok) { if (key) db.prepare("DELETE FROM pub_idempotency WHERE key = ?").run(key); return { ok: false, kind: "auth", message: cred.message }; }
-    const r = await real.publish({ text, title: p.title ? String(p.title) : undefined, visibility: p.visible ? String(p.visible) : undefined, media: mediaFiles(String(p.id)) }, cred.token, cred.accountId);
+    const r = await real.publish({ text, title: p.title ? String(p.title) : undefined, visibility: p.visible ? String(p.visible) : undefined, media: mediaFiles(String(p.id)), target: account.target ? String(account.target) : undefined }, cred.token, cred.accountId);
     // Échec certain (rien n'est parti) : l'intention est levée pour qu'une nouvelle tentative soit possible. Un doute ou un traitement en cours la garde.
     if (definitive(r) && key) db.prepare("DELETE FROM pub_idempotency WHERE key = ?").run(key);
     if (r.ok && key) db.prepare("UPDATE pub_idempotency SET url = ?, at = ? WHERE key = ?").run(r.url, Date.now(), key);
@@ -300,6 +306,18 @@ export function setBrowserFallback(accountId: string, on: boolean) {
   if (!a) throw new Error("Compte introuvable");
   if (on && !recipeFor(String(a.network))) throw new Error(`Pas de recette navigateur pour ${a.network} : le repli n'est pas possible`);
   db.prepare("UPDATE pub_accounts SET browser_fallback = ? WHERE id = ?").run(on ? 1 : 0, accountId);
+  return db.prepare("SELECT * FROM pub_accounts WHERE id = ?").get(accountId);
+}
+
+/** Cible propre au compte (subreddit…), vérifiée par le motif du fournisseur. */
+export function setAccountTarget(accountId: string, value: string) {
+  const a = db.prepare("SELECT network FROM pub_accounts WHERE id = ?").get(accountId) as Row | undefined;
+  if (!a) throw new Error("Compte introuvable");
+  const t = providerFor(String(a.network))?.target;
+  if (!t) throw new Error("Ce réseau n'a pas de cible à régler");
+  const v = String(value ?? "").trim().replace(/^\/?r\//i, "");
+  if (!t.pattern.test(v)) throw new Error(`${t.label} invalide`);
+  db.prepare("UPDATE pub_accounts SET target = ? WHERE id = ?").run(v, accountId);
   return db.prepare("SELECT * FROM pub_accounts WHERE id = ?").get(accountId);
 }
 
@@ -444,7 +462,10 @@ export function registerPublishers(app: Hono) {
   app.patch("/api/pub-accounts/:id", async (c) => {
     const denied = admin(c); if (denied) return denied;
     const b = await c.req.json().catch(() => ({}));
-    try { return c.json(setBrowserFallback(c.req.param("id"), !!b.browser_fallback)); } catch (e) { return c.json({ error: (e as Error).message }, 400); }
+    try {
+      if (typeof b.target === "string") return c.json(setAccountTarget(c.req.param("id"), b.target));
+      return c.json(setBrowserFallback(c.req.param("id"), !!b.browser_fallback));
+    } catch (e) { return c.json({ error: (e as Error).message }, 400); }
   });
   app.get("/api/browser/recipes", (c) => admin(c) ?? c.json(recipes()));
   app.delete("/api/pub-accounts/:id", (c) => {

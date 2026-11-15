@@ -40,7 +40,10 @@ export type Stage = (typeof STAGES)[number][0];
 export const stageName = Object.fromEntries(STAGES) as Record<string, string>;
 export const KINDS: Record<string, string> = { note: "Note", stage: "Étape", email: "E-mail", sms: "SMS", call: "Appel" };
 export const PUB_STATUS = [["idea", "Idée"], ["scheduled", "Prévue"], ["published", "Publiée"]] as const;
-export const NETWORKS = ["tiktok", "instagram", "linkedin", "youtube", "x", "facebook", "blog", "newsletter"];
+export const NETWORKS = ["tiktok", "instagram", "linkedin", "youtube", "x", "facebook", "pinterest", "reddit", "gbp", "blog", "newsletter"];
+/** Nom affiché et plafond de texte de chaque réseau publiable (mêmes valeurs que le serveur). */
+export const NET_NAME: Record<string, string> = { x: "X", instagram: "Instagram", facebook: "Facebook", tiktok: "TikTok", youtube: "YouTube", linkedin: "LinkedIn", pinterest: "Pinterest", reddit: "Reddit", gbp: "Google Business Profile" };
+export const NET_LIMIT: Record<string, number> = { x: 280, instagram: 2200, facebook: 63206, tiktok: 2200, youtube: 5000, linkedin: 3000, pinterest: 800, reddit: 40000, gbp: 1500 };
 // Champs de filtre compacts (inputCls impose w-full)
 export const filterCls = inputCls.replace("h-10 w-full", "h-9");
 export const eur = (n: number | null | undefined) => n == null ? "—" : `${fmt(n)} €`;

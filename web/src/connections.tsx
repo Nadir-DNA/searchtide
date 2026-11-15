@@ -337,7 +337,7 @@ type RelayStatus = { enabled: boolean; ok: boolean; mode: "test" | "live" | null
 type PubAccount = { id: string; project: string; network: string; label: string; status: string; connection_id?: string | null };
 type Projet = { id: string; name: string };
 
-type Reseau = { id: string; label: string; configured: boolean; env: string[] };
+type Reseau = { id: string; label: string; configured: boolean; env: string[]; callback?: string; guide?: { url: string; steps: string[]; review?: string } | null };
 
 /** Publication sur les réseaux : chaque compte se branche par OAuth (jeton au coffre), puis l'écran le montre connecté. */
 function PublicationConnect() {
@@ -424,10 +424,26 @@ function PublicationConnect() {
         ))}
       </div>
       {reseaux.some((n) => !n.configured) && (
-        <p className="mt-3 text-sm text-muted">
-          Non configurés : {reseaux.filter((n) => !n.configured).map((n) => `${n.label} (${n.env.join(", ")})`).join(" · ")}.
-          Le retour d'autorisation à déclarer chez chaque réseau est <code>PUBLIC_URL/api/pub-oauth/&lt;réseau&gt;/callback</code>.
-        </p>
+        <div className="mt-4">
+          <p className="text-sm text-muted">Pour activer un réseau, créez son application développeur (gratuite), ajoutez les deux valeurs dans <code>.env</code>, puis redémarrez.</p>
+          <ul className="mt-2 divide-y divide-rule">
+            {reseaux.filter((n) => !n.configured).map((n) => (
+              <li key={n.id}>
+                <details className="py-2 text-sm">
+                  <summary className="cursor-pointer font-medium">{n.label} <span className="font-normal text-muted">· {n.env.join(", ")}</span></summary>
+                  {n.guide && (
+                    <div className="mt-2 space-y-2 pl-4">
+                      <ol className="list-decimal space-y-1 pl-4">{n.guide.steps.map((s) => <li key={s}>{s}</li>)}</ol>
+                      {n.callback && <p>Adresse de retour : <code className="break-all font-mono text-xs">{n.callback}</code> <button type="button" onClick={() => copyText(n.callback!)} className="text-xs underline">Copier</button></p>}
+                      {n.guide.review && <p className="text-warn">{n.guide.review}</p>}
+                      <a href={n.guide.url} target="_blank" rel="noreferrer" className="text-accent underline">Ouvrir la console {n.label}</a>
+                    </div>
+                  )}
+                </details>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
     </Card>
   );

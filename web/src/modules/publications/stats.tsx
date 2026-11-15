@@ -3,6 +3,7 @@ import { useState } from "react";
 import { api } from "../../api";
 import { useData } from "../../App";
 import { Button, Card, Delta, EmptyBox, fmt } from "../../ui";
+import { NET_NAME } from "../shared";
 
 type AccountStat = {
   id: string; label: string; network: string; project: string; real: boolean; supported: boolean; unavailable: string | null;
@@ -11,7 +12,7 @@ type AccountStat = {
 };
 type Top = { id: string; title: string; network: string; url: string | null; day: string; impressions: number | null; likes: number | null; comments: number | null; shares: number | null; views: number | null; engagement: number };
 type Data = { days: number; accounts: AccountStat[]; top: Top[] };
-const NAME: Record<string, string> = { x: "X", instagram: "Instagram", facebook: "Facebook", tiktok: "TikTok", youtube: "YouTube", linkedin: "LinkedIn" };
+const NAME = NET_NAME;
 
 function Line({ series }: { series: { followers: number }[] }) {
   if (series.length < 2) return null;

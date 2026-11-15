@@ -4,16 +4,16 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "../../api";
 import { useData } from "../../App";
 import { Button, inputCls } from "../../ui";
-import { Field, Sheet, today } from "../shared";
+import { Field, NET_LIMIT, NET_NAME, Sheet, today } from "../shared";
 
 type Account = { id: string; project: string; network: string; label: string; status: string; mode: string };
 type Project = { id: string; name: string; crm_key: string | null };
 type Result = { group_id: string; items: { id: string; account_id: string; network: string; state: string; error?: string }[] };
 
-const LIMIT: Record<string, number> = { x: 280, instagram: 2200, facebook: 63206, tiktok: 2200, youtube: 5000, linkedin: 3000 };
+const LIMIT = NET_LIMIT;
 /** Texte visible avant « voir plus » (ordre de grandeur, variable selon l'appareil). */
 const FOLD: Record<string, number> = { linkedin: 210, instagram: 125, facebook: 480 };
-const NAME: Record<string, string> = { x: "X", instagram: "Instagram", facebook: "Facebook", tiktok: "TikTok", youtube: "YouTube", linkedin: "LinkedIn" };
+const NAME = NET_NAME;
 const DAYS = ["dim.", "lun.", "mar.", "mer.", "jeu.", "ven.", "sam."];
 /** Prochaine occurrence du jour et de l'heure, au format attendu par un champ datetime-local. */
 function nextSlot(weekday: number, hour: number) {

@@ -7,7 +7,7 @@ import { ATTEMPT_LABEL, PUB_CHIP, PUB_STATE } from "../shared";
 import { MultiComposer } from "./composer";
 import { SocialStatsCard } from "./stats";
 import { AutomationCard } from "./automation";
-import { type Contact, type Pub, type Summary, type Go, STAGES, type Stage, stageName, KINDS, PUB_STATUS, NETWORKS, filterCls, eur, today, dateFr, Sheet, Field } from "../shared";
+import { type Contact, type Pub, type Summary, type Go, STAGES, type Stage, stageName, KINDS, PUB_STATUS, NETWORKS, NET_LIMIT, NET_NAME, filterCls, eur, today, dateFr, Sheet, Field } from "../shared";
 
 export function PubsCard({ go, title = "Publications de la semaine" }: { go: Go; title?: string }) {
   const { data: s } = useData<Summary>("/api/business");
@@ -145,7 +145,7 @@ function PubSheet({ pub, onClose, onSaved }: { pub: Partial<Pub>; onClose: () =>
   const [busy, setBusy] = useState(false);
   const { data: accounts } = useData<Account[]>("/api/pub-accounts");
   const mine = (accounts ?? []).filter((a) => !project || a.project === project);
-  const limits: Record<string, number> = { x: 280, instagram: 2200, facebook: 63206, tiktok: 2200, youtube: 5000, linkedin: 3000 };
+  const limits = NET_LIMIT;
 
   useEffect(() => {
     if (!id) return;
@@ -300,7 +300,9 @@ function PubSheet({ pub, onClose, onSaved }: { pub: Partial<Pub>; onClose: () =>
   );
 }
 
-type Account = { id: string; project: string; network: string; label: string; status: string; mode: string; web_url: string | null; publications: number; connection_id?: string | null; browser_fallback?: number };
+type Account = { id: string; project: string; network: string; label: string; status: string; mode: string; web_url: string | null; publications: number; connection_id?: string | null; browser_fallback?: number; target?: string | null };
+/** Réseaux dont chaque compte vise une cible à régler (même règle côté serveur). */
+const TARGET: Record<string, { label: string; help: string }> = { reddit: { label: "Subreddit", help: "Nom du subreddit sans « r/ » (ex. entrepreneur). Lisez ses règles : beaucoup refusent les liens ou l'autopromotion." } };
 
 /** Comptes de publication de la phase 1 (fournisseur factice) : aucun réseau réel n'est joint. */
 function AccountsCard() {
@@ -325,6 +327,14 @@ function AccountsCard() {
     try { await api(`/api/pub-accounts/${a.id}`, { method: "PATCH", json: { browser_fallback: !a.browser_fallback } }); reload(); }
     catch (err) { setError((err as Error).message); }
   }
+  async function setTarget(a: Account) {
+    const t = TARGET[a.network];
+    const v = await ask({ title: `${t.label} de « ${a.label} »`, message: t.help, inputLabel: t.label, confirmLabel: "Enregistrer" });
+    if (!v) return;
+    setError("");
+    try { await api(`/api/pub-accounts/${a.id}`, { method: "PATCH", json: { target: v } }); reload(); }
+    catch (err) { setError((err as Error).message); }
+  }
   async function remove(a: Account) {
     if ((await ask({ title: `Retirer le compte « ${a.label} » ?`, message: "Ses publications programmées seront annulées.", confirmLabel: "Retirer" })) === null) return;
     await api(`/api/pub-accounts/${a.id}`, { method: "DELETE" }); reload();
@@ -334,7 +344,7 @@ function AccountsCard() {
       {dialog}
       <form onSubmit={add} className="mb-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_1fr_1.4fr_auto]">
         <input name="project" required aria-label="Projet du compte" placeholder="Projet (clé CRM)" className={inputCls} />
-        <select name="network" required aria-label="Réseau du compte" className={inputCls}>{NETWORKS.map((n) => <option key={n} value={n}>{n}</option>)}</select>
+        <select name="network" required aria-label="Réseau du compte" className={inputCls}>{NETWORKS.filter((n) => NET_NAME[n]).map((n) => <option key={n} value={n}>{NET_NAME[n]}</option>)}</select>
         <input name="label" required aria-label="Nom du compte" placeholder="Nom du compte" className={inputCls} />
         <select name="mode" aria-label="Mode du compte" className={inputCls}><option value="api">API factice</option><option value="web">Navigateur</option></select>
         <input name="web_url" aria-label="Adresse de connexion" placeholder="https://… (navigateur)" className={inputCls} />
@@ -344,8 +354,10 @@ function AccountsCard() {
       {error && <p role="alert" className="mb-2 text-sm text-negative">{error}</p>}
       <Table rows={data ?? []} empty="Aucun compte de publication." cols={[
         { label: "Compte", render: (a) => a.label },
-        { label: "Réseau", render: (a) => a.network },
+        { label: "Réseau", render: (a) => NET_NAME[a.network] ?? a.network },
         { label: "Projet", render: (a) => a.project },
+        { label: "Cible", render: (a) => TARGET[a.network] ? (
+          <button type="button" onClick={() => setTarget(a)} className={a.target ? "text-ink underline" : "font-semibold text-accent hover:underline"}>{a.target ? `r/${a.target}` : `Choisir le ${TARGET[a.network].label.toLowerCase()}`}</button>) : <span className="text-muted">—</span> },
         { label: "Transport", render: (a) => a.mode === "web" ? "Navigateur" : a.connection_id ? "API" : "API factice" },
         { label: "Repli navigateur", render: (a) => a.mode === "web" || !recipes?.some((r) => r.network === a.network) ? <span className="text-muted">—</span> : (
           <label className="flex items-center gap-2"><input type="checkbox" checked={!!a.browser_fallback} onChange={() => toggleFallback(a)} className="size-4 accent-[var(--color-accent)]" aria-label="Repli navigateur" />

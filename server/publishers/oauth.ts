@@ -8,6 +8,7 @@ import { isAdmin } from "../admin.ts";
 import { createConnection, findByFingerprint, setSecrets, markStatus } from "../connections.ts";
 import { createConnectedAccount } from "./queue.ts";
 import { providerFor, providers } from "./provider.ts";
+import { GUIDES } from "./guides.ts";
 
 const origin = (c: any) => (process.env.PUBLIC_URL ?? new URL(c.req.url).origin).replace(/\/$/, "");
 const fail = (msg: string) => `/?view=connections&oauth=${encodeURIComponent(msg)}`;
@@ -46,7 +47,7 @@ export function registerPublisherOAuth(app: Hono) {
 
   // Réseaux disponibles et configurés (noms des variables seulement, jamais leur valeur).
   app.get("/api/pub-oauth/networks", (c) => isAdmin(c)
-    ? c.json(providers().map((p) => ({ id: p.id, label: p.label, configured: p.configured(), env: p.env })))
+    ? c.json(providers().map((p) => ({ id: p.id, label: p.label, configured: p.configured(), env: p.env, guide: GUIDES[p.id] ?? null, callback: redirect(c, p.id) })))
     : c.json({ error: "Réservé à l'administrateur" }, 403));
 
   app.post("/api/pub-oauth/:network/start", async (c) => {
