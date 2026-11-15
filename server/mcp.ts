@@ -1,5 +1,6 @@
 import { checkPage, hostAllowed, pageUrlFor } from "./pagecheck.ts";
 import { indexingStatus, submitIndexnow } from "./indexing.ts";
+import { auditReport, runAudit } from "./audit.ts";
 import { registerSocialTools } from "./publishers/stats.ts";
 import { keywordSuggestions, seoInsights, trackKeyword, trackedKeywords } from "./keywords.ts";
 import { McpServer, WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/server";
@@ -72,11 +73,11 @@ const mapResult = (r: any, fn: (d: any) => any) => {
  * Lecture : la cible doit être dans la portée. Écriture : la cible doit être dans la portée en écriture.
  */
 const SCOPED_READ = new Set([
-  "list_sites", "traffic_stats", "search_stats", "seo_opportunities", "keywords_tracked", "seo_insights", "page_check", "indexing_status", "social_stats", "projects_kpis", "portfolio_overview", "alerts", "today",
+  "list_sites", "traffic_stats", "search_stats", "seo_opportunities", "keywords_tracked", "seo_insights", "page_check", "indexing_status", "social_stats", "seo_audit_issues", "projects_kpis", "portfolio_overview", "alerts", "today",
   "milestones_list", "kpi_catalog", "crm_list_contacts", "crm_get_contact", "pubs_list", "modules_list", "dashboard_catalog", "dashboard_list", "dashboard_get",
 ]);
 const SCOPED_WRITE = new Set([
-  "sync_search_console", "keyword_track", "indexing_submit", "kpi_add", "milestone_save", "indicator_record", "crm_save_contact", "crm_log", "pubs_save", "today_update",
+  "sync_search_console", "keyword_track", "indexing_submit", "seo_audit_run", "kpi_add", "milestone_save", "indicator_record", "crm_save_contact", "crm_log", "pubs_save", "today_update",
   "module_enable_for_project", "module_disable_for_project",
 ]);
 
@@ -179,6 +180,17 @@ function seoTools(server: McpServer) {
   }, async ({ site: d }) => json(indexingStatus(site(d).id)));
 }
 
+function auditTools(server: McpServer, readOnly: boolean) {
+  server.registerTool("seo_audit_issues", {
+    description: "Dernier audit technique d'un site : problèmes regroupés (pages en erreur, titres absents ou en double, noindex, pages lentes, orphelines…), classés par gravité puis par trafic Google des pages touchées, avec un conseil par problème.",
+    inputSchema: z.object({ site: period.site }),
+  }, async ({ site: d }) => json(auditReport(site(d).id)));
+  if (!readOnly) server.registerTool("seo_audit_run", {
+    description: "Lance l'audit technique d'un site (parcours de 200 pages au plus, quelques minutes). Lisez le résultat ensuite avec seo_audit_issues.",
+    inputSchema: z.object({ site: period.site, max_pages: z.number().int().min(10).max(1000).default(200) }),
+  }, async ({ site: d, max_pages }) => { const { id } = await runAudit(site(d), { maxPages: max_pages }); return json({ id, state: "running" }); });
+}
+
 function indexingWriteTools(server: McpServer) {
   server.registerTool("indexing_submit", {
     description: "Signale des pages à Bing, Yandex et aux autres moteurs IndexNow (pas à Google, qui n'a pas d'API d'indexation générale). Sans liste : les pages nouvelles ou modifiées du sitemap. Le fichier de clé IndexNow doit être publié et vérifié.",
@@ -223,7 +235,7 @@ function googleTools(server: McpServer, readOnly: boolean) {
 
 /** Outils des modules livrés ; un module privé apporte les siens par Module.mcp. */
 const BUILTIN_TOOLS: Record<string, (server: McpServer, readOnly: boolean, agent: string) => void> = {
-  analytics: (s, ro) => { analyticsTools(s); seoTools(s); if (!ro) indexingWriteTools(s); },
+  analytics: (s, ro) => { analyticsTools(s); seoTools(s); auditTools(s, ro); if (!ro) indexingWriteTools(s); },
   google: googleTools,
   rdv: (s, ro) => rdvTools(s, ro),
   crm: (s, ro) => registerBusinessTools(only(s, (n) => n.startsWith("crm_")), ro),

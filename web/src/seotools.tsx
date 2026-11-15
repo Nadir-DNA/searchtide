@@ -1,7 +1,7 @@
 // Outils SEO d'un site (plan A2 et A3) : vérificateur de page, générateur de robots.txt, générateur de données structurées.
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { api, type Site } from "./api";
-import { Button, Card, copyText, inputCls } from "./ui";
+import { Button, Card, copyText, fmt, inputCls } from "./ui";
 
 type Check = { id: string; label: string; status: "ok" | "warn" | "bad" | "info"; value: string; advice?: string };
 type Result = { url: string; score: { ok: number; warn: number; bad: number }; checks: Check[] };
@@ -219,9 +219,68 @@ export function IndexingCard({ site, demo }: { site: Site; demo: boolean }) {
   );
 }
 
+
+type AuditGroup = { type: string; severity: "bad" | "warn" | "info"; label: string; advice: string; count: number; clicks: number; pages: { url: string; detail: string | null; clicks: number; impressions: number }[] };
+type Audit = { run: { id: string; state: "running" | "done" | "failed"; pages: number; startedAt: number; finishedAt: number | null; error: string | null } | null; groups: AuditGroup[] };
+
+export function AuditCard({ site, demo }: { site: Site; demo: boolean }) {
+  const [data, setData] = useState<Audit | null>(null);
+  const [error, setError] = useState("");
+  const load = () => api<Audit>(`/api/sites/${site.id}/audit`).then(setData).catch((e) => setError((e as Error).message));
+  useEffect(() => { void load(); }, [site.id]);
+  const running = data?.run?.state === "running";
+  useEffect(() => { if (!running) return; const t = setInterval(() => void load(), 2000); return () => clearInterval(t); }, [running]);
+  const start = async () => {
+    setError("");
+    try { await api(`/api/sites/${site.id}/audit`, { method: "POST", json: {} }); void load(); } catch (e) { setError((e as Error).message); }
+  };
+  const count = (sev: string) => (data?.groups ?? []).filter((g) => g.severity === sev).reduce((n, g) => n + g.count, 0);
+  return (
+    <Card title="Audit technique du site" action={!demo && <Button variant="secondary" disabled={running} onClick={start}>{running ? "Audit en cours…" : data?.run ? "Relancer l'audit" : "Lancer l'audit"}</Button>}>
+      {error && <p role="alert" className="mb-3 text-sm text-negative">{error}</p>}
+      {!data ? <p className="text-sm text-muted">Chargement…</p> : !data.run ? (
+        <p className="text-sm text-muted">Le robot parcourt jusqu'à 200 pages de {site.domain} (accueil, liens internes, sitemap) et relève les problèmes qui freinent le référencement, classés par le trafic Google des pages touchées. Quelques minutes.</p>
+      ) : running ? (
+        <p role="status" className="flex items-center gap-2.5 text-sm"><span aria-hidden className="led led-warn" />{data.run.pages} page(s) explorée(s)…</p>
+      ) : data.run.state === "failed" ? (
+        <p role="alert" className="text-sm text-negative">L'audit a échoué : {data.run.error}</p>
+      ) : (
+        <>
+          <p className="num text-sm" aria-live="polite">
+            <span className="text-muted">{data.run.pages} page{data.run.pages > 1 ? "s" : ""} explorée{data.run.pages > 1 ? "s" : ""} le {new Date(data.run.finishedAt ?? data.run.startedAt).toLocaleString("fr-FR", { dateStyle: "medium", timeStyle: "short" })} · </span>
+            <span className="text-negative">{count("bad")} à corriger</span> · <span className="text-warn">{count("warn")} à améliorer</span> · <span className="text-muted">{count("info")} à surveiller</span>
+          </p>
+          {data.groups.length === 0 ? <p className="mt-3 text-sm text-positive">Aucun problème relevé.</p> : (
+            <ul className="mt-3 divide-y divide-rule">
+              {data.groups.map((g) => (
+                <li key={g.type} className="py-3">
+                  <details>
+                    <summary className="flex cursor-pointer list-none flex-wrap items-center gap-x-3 gap-y-1">
+                      <span aria-hidden className={`led ${g.severity === "bad" ? "led-bad" : g.severity === "warn" ? "led-warn" : "led-off"}`} />
+                      <span className="font-medium">{g.label}</span>
+                      <span className="num text-sm text-muted">{g.count} page{g.count > 1 ? "s" : ""}{g.clicks ? ` · ${fmt(g.clicks)} clics Google en jeu` : ""}</span>
+                      <span className="ml-auto text-xs text-muted underline">Voir les pages</span>
+                    </summary>
+                    <p className="mt-1 pl-[18px] text-sm text-muted">{g.advice}</p>
+                    <ul className="mt-2 space-y-1 pl-[18px] text-sm">
+                      {g.pages.map((p) => <li key={p.url} className="flex flex-wrap gap-x-3"><a href={p.url} target="_blank" rel="noreferrer" className="min-w-0 truncate hover:underline">{p.url.replace(/^https?:\/\/[^/]+/, "") || "/"}</a>
+                        {p.detail && <span className="text-muted">{p.detail}</span>}{p.clicks > 0 && <span className="num text-muted">{fmt(p.clicks)} clics</span>}</li>)}
+                    </ul>
+                  </details>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
+    </Card>
+  );
+}
+
 export function SeoToolsView({ site, demo = false }: { site: Site; demo?: boolean }) {
   return (
     <div className="space-y-4">
+      <AuditCard site={site} demo={demo} />
       <PageChecker site={site} />
       <IndexingCard site={site} demo={demo} />
       <div className="grid gap-4 xl:grid-cols-2">

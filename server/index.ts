@@ -16,6 +16,7 @@ import { missing2faWarning } from "./twofa-warning.ts";
 import { lastDays, overview, searchStats, strikingDistance, trafficStats, type Range } from "./stats.ts";
 import { registerKeywords } from "./keywords.ts";
 import { registerPageCheck } from "./pagecheck.ts";
+import { registerAudit } from "./audit.ts";
 import { registerIndexing, registerIndexingJobs } from "./indexing.ts";
 import { registerBatch } from "./publishers/batch.ts";
 import { registerSocialStats } from "./publishers/stats.ts";
@@ -216,6 +217,7 @@ const KEY_WRITES: [string, RegExp][] = [
   ["POST", /^\/api\/sites\/[^/]+\/sync$/],
   ["POST", /^\/api\/sites\/[^/]+\/keywords$/],
   ["POST", /^\/api\/sites\/[^/]+\/indexing\/refresh$/],
+  ["POST", /^\/api\/sites\/[^/]+\/audit$/],
   ["POST", /^\/api\/sites\/[^/]+\/indexnow\/submit$/],
 ];
 const keyMayWrite = (method: string, path: string) => KEY_WRITES.some(([m, re]) => m === method && re.test(path));
@@ -501,6 +503,7 @@ app.get("/api/sites/:id/search", (c) => {
 });
 registerKeywords(app, getSite, rangeOf);
 registerPageCheck(app, getSite);
+registerAudit(app, getSite);
 registerIndexing(app, getSite);
 registerIndexingJobs();
 app.post("/api/sites/:id/sync", async (c) => {
