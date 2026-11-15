@@ -48,6 +48,6 @@ test("avis sans réponse dans « À traiter » ; la réponse part sur Google pui
 
 test("accès refusé : l'erreur est gardée et affichée, rien n'est inventé", async () => {
   const f = (async () => new Response("{}", { status: 403 })) as typeof fetch;
-  assert.match(String((await collectLocation(account(), { creds, fetch: f })).error), /API Business Profile/);
+  assert.match(String((await collectLocation(account(), { creds, fetch: f }) as { error?: string }).error), /API Business Profile/);
   assert.match(String(locationsReport({ project: "boul" })[0].error), /refusé/);
 });

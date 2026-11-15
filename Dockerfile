@@ -10,7 +10,7 @@ FROM node:22-alpine
 # Pour l'inclure : docker build --build-arg WITH_BROWSER=1 … (ou docker-compose.browser.yml). Voir docs/exploitation.md.
 ARG WITH_BROWSER=0
 WORKDIR /app
-RUN if [ "$WITH_BROWSER" = "1" ]; then apk add --no-cache chromium font-noto; fi
+RUN if [ "$WITH_BROWSER" = "1" ]; then apk add --no-cache chromium font-noto ffmpeg; fi
 ENV NODE_ENV=production DATABASE_PATH=/data/searchtide.db PORT=3030
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/web/dist ./web/dist

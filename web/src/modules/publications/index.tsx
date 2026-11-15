@@ -7,6 +7,7 @@ import { ATTEMPT_LABEL, PUB_CHIP, PUB_STATE } from "../shared";
 import { MultiComposer } from "./composer";
 import { SocialStatsCard } from "./stats";
 import { GbpCard } from "./gbp";
+import { VisualsCard } from "./visuals";
 import { AutomationCard, RulesCard } from "./automation";
 import { type Contact, type Pub, type Summary, type Go, STAGES, type Stage, stageName, KINDS, PUB_STATUS, NETWORKS, NET_LIMIT, NET_NAME, filterCls, eur, today, dateFr, Sheet, Field } from "../shared";
 
@@ -98,6 +99,7 @@ export function PubsView({ q, go }: { q: Record<string, string>; go: Go }) {
           <div className="mt-4"><AccountsCard /></div>
           <div className="mt-4"><AutomationCard /></div>
           <div className="mt-4"><RulesCard /></div>
+          <div className="mt-4"><VisualsCard /></div>
         </>
       )}
       {edit && <PubSheet pub={edit} onClose={() => setEdit(null)} onSaved={reload} />}
