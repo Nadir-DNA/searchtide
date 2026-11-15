@@ -119,6 +119,7 @@ const configs = {
     .refine((c) => c.metric !== "event" || c.event, "Nom de l'événement requis"),
   manual: z.object({ role: z.enum(["revenue", "contacts"]).optional() }),
   pagespeed: z.object({ url: z.string().url(), metric: z.enum(["performance", "seo", "lcp", "cls"]), strategy: z.enum(["mobile", "desktop"]).default("mobile"), env: envName.optional(), connection_id: z.string().optional() }),
+  ga4: z.object({ connection_id: z.string().optional(), metric: z.enum(["sessions", "active_users", "key_events", "organic_sessions", "revenue"]) }),
   play: z.object({ env: envName.optional(), connection_id: z.string().optional(), package: z.string().regex(/^[a-z][a-z0-9_.]+$/), metric: z.enum(["daily_installs", "active_installs", "rating"]) }),
   // KPI calculé : premier terme, puis chaque terme appliqué par son opération, le tout multiplié par scale (100 pour un %)
   formula: z.object({ terms: z.array(z.object({ indicator: z.string().min(1), op: z.enum(["+", "-", "*", "/"]) })).min(2).max(6), scale: z.number().finite().positive().optional() }),
@@ -128,7 +129,7 @@ const indicatorFields = z.object({
   label: z.string().trim().min(1).max(100),
   unit: z.string().trim().max(10).nullish().transform((v) => v || null),
   mode: z.enum(["daily", "total"]),
-  source: z.enum(["pg", "supabase", "stripe", "http", "site", "manual", "pagespeed", "play", "formula"]),
+  source: z.enum(["pg", "supabase", "stripe", "http", "site", "manual", "pagespeed", "play", "ga4", "formula"]),
   config: z.record(z.string(), z.unknown()).default({}),
   position: z.number().int().default(0),
   goal: z.number().finite().positive().nullish().transform((v) => v ?? null),
@@ -225,12 +226,13 @@ export async function measure(ind: Row, d = localDay()) {
     case "site": return siteSeries(configs.site.parse(ind.config), { from: d, to: d })[d] ?? 0;
     case "pagespeed": return pagespeedValue(configs.pagespeed.parse(ind.config));
     case "play": return playValue(configs.play.parse(ind.config), at);
+    case "ga4": { const c = configs.ga4.parse(ind.config); return collectVia("ga4", c.connection_id, c.metric, {}, at); }
     case "formula": { const v = formulaSeries(configs.formula.parse(ind.config), ind.project_id, { from: d, to: d })[d]; if (v == null) throw new Error("Pas de valeur calculable ce jour-là"); return v; }
     default: throw new Error("Indicateur saisi à la main : rien à relever");
   }
 }
 const canBackfill = (ind: Row) => ind.mode === "daily" && (ind.source === "stripe" ? ind.config.metric === "revenue" || ind.config.metric === "new_customers"
-  : ind.source === "play" || ind.source === "supabase" || (ind.source === "pg" && ind.config.sql.includes("$1")));
+  : ind.source === "play" || ind.source === "ga4" || ind.source === "supabase" || (ind.source === "pg" && ind.config.sql.includes("$1")));
 
 const upsert = db.prepare("INSERT INTO metrics (indicator_id, day, value) VALUES (?, ?, ?) ON CONFLICT DO UPDATE SET value = excluded.value");
 export function record(id: string, d: string, value: number) { upsert.run(id, d, value); }

@@ -13,6 +13,7 @@ import "./pagespeed.ts";
 import "./jsonapi.ts";
 import "./wordpress.ts";
 import "./ai.ts";
+import "./ga4.ts";
 
 export { register, get, all, publicManifest, runTest, runCollect, realCtx } from "./registry.ts";
 export * from "./types.ts";

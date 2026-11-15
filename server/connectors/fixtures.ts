@@ -47,6 +47,11 @@ export const FIXTURES: Record<string, Fixture> = {
       return json({ code: "rest_no_route" }, 404);
     },
   },
+  ga4: {
+    cfg: { config: { property_id: "123456789" }, secrets: { json: GOOGLE_JSON } },
+    respond: (url) => url.startsWith("https://oauth2.googleapis.com/token") ? json({ access_token: "ya29.GA4", expires_in: 3600 })
+      : url.includes("analyticsdata.googleapis.com/v1beta/properties/123456789:runReport") ? json({ rows: [{ metricValues: [{ value: "321" }] }] }) : json({}, 404),
+  },
   ai: {
     cfg: { config: { provider: "anthropic", model: "" }, secrets: { api_key: "sk-ant-FIXTUREabcdefghij0123456789" } },
     respond: (url) => url.includes("/v1/models/claude-opus-5-5") ? json({ type: "model", id: "claude-opus-5-5", display_name: "Claude Opus 5.5", created_at: "2026-10-01T00:00:00Z" }) : json({ type: "error", error: { type: "not_found_error", message: "inconnu" } }, 404),
