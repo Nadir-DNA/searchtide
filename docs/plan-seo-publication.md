@@ -78,9 +78,35 @@ Une seule connexion facultative « Données SEO » (fournisseur payé à l'usage
 | D10 | **Webhooks sortants** | Événements (publiée, échec, à vérifier) envoyés vers n8n, un CMS ou une CI. | Gratuit | S |
 | D11 | **Visuels et vidéos** | Carrousels générés en HTML aux couleurs du projet puis capturés en images (Chromium), vidéos courtes assemblées avec ffmpeg, textes rédigés par l'IA de l'utilisateur via MCP. Découpage d'une vidéo longue en extraits : plus tard. | Gratuit (IA en option) | L |
 
-**Outils MCP** : `pub_variants`, `social_stats`, `pub_repeat`, `rss_feeds`, `best_slots`, `visual_generate`.
+| D12 | **Repli par le navigateur intégré** | Quand l'API ne peut pas publier, le post part par le navigateur intégré, avec la session de l'utilisateur déjà connecté au réseau. Détail ci-dessous. | Gratuit | L |
 
-**À garder** : les états, l'idempotence, « À vérifier » et les approbations de la file actuelle s'appliquent à tous les nouveaux réseaux et à D4, D5, D7.
+**Outils MCP** : `pub_variants`, `social_stats`, `pub_repeat`, `rss_feeds`, `best_slots`, `visual_generate`, et `pub_publish`, qui choisit lui-même la voie (API ou navigateur).
+
+**À garder** : les états, l'idempotence, « À vérifier » et les approbations de la file actuelle s'appliquent à tous les nouveaux réseaux et à D4, D5, D7, D12.
+
+### D12 — Repli par le navigateur intégré
+
+**Objectif** : l'utilisateur, ou ses agents IA, publie sur tous les réseaux où il est connecté, même sans application développeur ou quand l'API refuse.
+
+**Ce qui existe déjà** : le mode « navigateur » d'un compte de publication. Il comprend des recettes déclaratives (champs repérés par leur étiquette, jamais par coordonnées), une approbation liée au contenu exact, un arrêt sur page de connexion, de double authentification ou de CAPTCHA, et une preuve obligatoire. Seule une recette de test existe : aucune recette réelle par réseau.
+
+**À construire** :
+
+1. **Choix automatique de la voie, compte par compte** : l'API si l'application développeur est configurée et le jeton valide, sinon le navigateur.
+2. **Repli seulement sur un échec certain, avant tout envoi** : API non configurée, jeton expiré, type de contenu non pris en charge par l'API, accès refusé. Si l'API a peut-être publié (délai dépassé, réponse incomplète), la publication passe en « À vérifier » et ne repart jamais par le navigateur, sinon elle risque d'être publiée deux fois.
+3. **Recettes réelles** pour les six réseaux actuels (LinkedIn, X, Facebook, Instagram, TikTok, YouTube), puis pour chaque réseau du D1. Chaque recette est versionnée, testée sur un vrai compte et signalée « à mettre à jour » dès qu'un réseau change son interface.
+4. **Agents** : `pub_publish` prend la même voie. Une publication par navigateur demandée par une clé d'agent exige toujours une approbation de l'administrateur.
+5. **Reconnexion** : si la session a expiré, la publication passe en « Action requise » et l'utilisateur se reconnecte à la main dans « Connexions navigateur ».
+6. **Visibilité** : le journal de chaque publication indique la voie utilisée (API ou navigateur) et la capture de la preuve.
+
+**Garde-fous** (inchangés) : pas de contournement de CAPTCHA ni de double authentification, pas de masquage du navigateur, pas de rafale (plafond quotidien par compte).
+
+**Risques à afficher à l'utilisateur** :
+
+- **Conditions d'utilisation.** La plupart des réseaux interdisent ou restreignent l'automatisation en dehors de leur API officielle. Le repli s'active donc compte par compte, par une case à cocher qui explique le risque de restriction du compte.
+- **Fragilité.** Une recette casse quand le réseau change son interface. La publication passe alors en « Échec » ou « À vérifier », jamais en « Publié » sans preuve.
+
+**Variante sans recette** : un agent externe qui pilote le navigateur de l'utilisateur sur son ordinateur (par exemple Claude dans Chrome) lit les brouillons de Searchtide par MCP, publie, puis renvoie l'adresse du post. Searchtide n'a alors aucune recette à maintenir, mais l'ordinateur doit être allumé et l'utilisateur garde la main sur chaque envoi.
 
 ---
 
@@ -95,7 +121,7 @@ Une seule connexion facultative « Données SEO » (fournisseur payé à l'usage
 Tout peut sortir dans une seule mise à jour, mais livrer par étapes réduit le risque. Ordre conseillé, du plus utile et gratuit vers le plus coûteux :
 
 1. A4, A5, A2, A3 (mots-clés, indexation, vérificateurs) et D2, D3 (variantes, statistiques sociales).
-2. A1 (audit technique), B1 (plan d'action), B4 WordPress, D4, D5, D8, D9, D10.
+2. D12 (repli navigateur, recettes des six réseaux actuels), A1 (audit technique), B1 (plan d'action), B4 WordPress, D4, D5, D8, D9, D10.
 3. D1 (réseaux prioritaires), D6, D7, B2, B3, B5.
 4. A6 à A10, D11, puis le lot C si une source payante est retenue.
 
