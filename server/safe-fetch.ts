@@ -38,11 +38,13 @@ export function checkUrl(raw: string): URL {
   return u;
 }
 
-function once(u: URL, maxBytes: number, timeoutMs: number): Promise<SafeResponse & { location?: string }> {
+function once(u: URL, maxBytes: number, timeoutMs: number, send?: { method: string; body?: string; headers?: Record<string, string> }): Promise<SafeResponse & { location?: string }> {
   const lib = u.protocol === "https:" ? https : http;
   const started = Date.now();
   return new Promise((resolve, reject) => {
-    const req = lib.request(u, { method: "GET", lookup: guardedLookup, timeout: timeoutMs, headers: { "user-agent": UA, accept: "text/html,application/xhtml+xml,application/xml,text/plain;q=0.9,*/*;q=0.5" } }, (res) => {
+    const headers = { "user-agent": UA, accept: "text/html,application/xhtml+xml,application/xml,text/plain;q=0.9,*/*;q=0.5", ...(send?.headers ?? {}),
+      ...(send?.body !== undefined ? { "content-length": String(Buffer.byteLength(send.body)) } : {}) };
+    const req = lib.request(u, { method: send?.method ?? "GET", lookup: guardedLookup, timeout: timeoutMs, headers }, (res) => {
       const chunks: Buffer[] = [];
       let bytes = 0, truncated = false;
       res.on("data", (c: Buffer) => {
@@ -62,7 +64,7 @@ function once(u: URL, maxBytes: number, timeoutMs: number): Promise<SafeResponse
     });
     req.on("timeout", () => req.destroy(new SafeFetchError(`Délai dépassé (${Math.round(timeoutMs / 1000)} s)`)));
     req.on("error", reject);
-    req.end();
+    req.end(send?.body);
   });
 }
 
@@ -81,4 +83,10 @@ export async function safeGet(raw: string, o: { maxBytes?: number; timeoutMs?: n
     return { ...r, redirects: hops };
   }
   throw new SafeFetchError("Trop de redirections");
+}
+
+/** Envoi (webhook, API d'un CMS) vers une adresse publique : même filtre d'adresses, aucune redirection suivie. */
+export async function safeSend(raw: string, o: { method?: string; body?: string; headers?: Record<string, string>; timeoutMs?: number; maxBytes?: number }) {
+  const u = checkUrl(raw);
+  return once(u, o.maxBytes ?? 1_000_000, o.timeoutMs ?? 10_000, { method: o.method ?? "POST", body: o.body, headers: o.headers });
 }

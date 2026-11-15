@@ -178,9 +178,16 @@ export async function publishToNetwork(p: Row, account: Row): Promise<PublishRes
   return { ok: true, url };
 }
 
-const attempt = (id: string, state: string, detail?: string, evidence?: string) =>
+/** Écouteurs des changements d'état (webhooks sortants, publications récurrentes). Une erreur d'écouteur ne bloque jamais la file. */
+type PubListener = (e: { id: string; state: string; detail?: string; url?: string }) => void;
+const listeners: PubListener[] = [];
+export const onPublicationEvent = (fn: PubListener) => { listeners.push(fn); };
+
+const attempt = (id: string, state: string, detail?: string, evidence?: string) => {
   db.prepare("INSERT INTO pub_attempts (publication_id, ts, state, detail, evidence_url) VALUES (?, ?, ?, ?, ?)")
     .run(id, Date.now(), state, detail?.slice(0, 500) ?? null, evidence ?? null);
+  for (const fn of listeners) { try { fn({ id, state, detail, url: evidence }); } catch { /* écouteur en échec : la file continue */ } }
+};
 
 const setState = (id: string, state: PubState, extra: Row = {}) => {
   const cols = ["state = ?", "updated_at = ?"], args: (string | number | null)[] = [state, Date.now()];

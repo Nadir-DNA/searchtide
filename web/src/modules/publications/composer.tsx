@@ -14,6 +14,15 @@ const LIMIT: Record<string, number> = { x: 280, instagram: 2200, facebook: 63206
 /** Texte visible avant « voir plus » (ordre de grandeur, variable selon l'appareil). */
 const FOLD: Record<string, number> = { linkedin: 210, instagram: 125, facebook: 480 };
 const NAME: Record<string, string> = { x: "X", instagram: "Instagram", facebook: "Facebook", tiktok: "TikTok", youtube: "YouTube", linkedin: "LinkedIn" };
+const DAYS = ["dim.", "lun.", "mar.", "mer.", "jeu.", "ven.", "sam."];
+/** Prochaine occurrence du jour et de l'heure, au format attendu par un champ datetime-local. */
+function nextSlot(weekday: number, hour: number) {
+  const d = new Date(); d.setMinutes(0, 0, 0); d.setHours(hour);
+  let add = (weekday - d.getDay() + 7) % 7; if (add === 0 && d.getTime() <= Date.now()) add = 7;
+  d.setDate(d.getDate() + add);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:00`;
+}
 const STATE: Record<string, string> = { draft: "Brouillon", scheduled: "Programmée", running: "En cours", published: "Publiée", failed: "Échec", needs_action: "Action requise", to_verify: "À vérifier" };
 
 function Counter({ n, max }: { n: number; max?: number }) {
@@ -51,6 +60,8 @@ export function MultiComposer({ onClose, onSaved }: { onClose: () => void; onSav
   const [error, setError] = useState("");
   const [result, setResult] = useState<Result | null>(null);
   const [files, setFiles] = useState<File[]>([]);
+  const [repeat, setRepeat] = useState("");
+  const { data: slots } = useData<{ enough: boolean; measured: number; slots: { weekday: number; hour: number; engagement: number }[] }>("/api/publications/best-slots");
 
   const projectName = (key: string) => projects?.find((p) => p.id === key || p.crm_key === key)?.name ?? key;
   const projectKeys = useMemo(() => [...new Set((accounts ?? []).map((a) => a.project))], [accounts]);
@@ -91,6 +102,7 @@ export function MultiComposer({ onClose, onSaved }: { onClose: () => void; onSav
           } catch (e) { it.error = (e as Error).message; }
         }
       }
+      if (Number(repeat) > 0) for (const it of r.items) await api(`/api/publications/${it.id}/repeat`, { method: "POST", json: { days: Number(repeat) } }).catch(() => {});
       setResult({ ...r, items: [...r.items] }); onSaved();
     } catch (e) { setError((e as Error).message); }
     setBusy(false);
@@ -168,6 +180,15 @@ export function MultiComposer({ onClose, onSaved }: { onClose: () => void; onSav
             <Field label="Programmer pour"><input aria-label="Date et heure de programmation" type="datetime-local" value={at} onChange={(e) => setAt(e.target.value)} className={inputCls} /></Field>
             <Button type="button" variant="secondary" disabled={busy || !title.trim() || !selected.length || !at || blocking} onClick={() => send("at")}>Programmer</Button>
           </span>
+        </div>
+        <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
+          <Field label="Répéter tous les … jours (facultatif)"><input type="number" min={1} max={365} value={repeat} onChange={(e) => setRepeat(e.target.value)} placeholder="ex. 30" className={`${inputCls} w-32`} /></Field>
+          {slots?.enough ? (
+            <div className="text-sm"><span className="mb-1.5 block text-muted">Vos meilleurs créneaux</span>
+              <span className="flex flex-wrap gap-2">{slots.slots.map((s) => (
+                <button key={`${s.weekday}-${s.hour}`} type="button" onClick={() => setAt(nextSlot(s.weekday, s.hour))} className="inline-flex min-h-9 items-center rounded-full border border-control px-3 hover:bg-raised">
+                  {DAYS[s.weekday]} {s.hour} h <span className="ml-1.5 text-xs text-muted">~{s.engagement} interactions</span></button>))}</span></div>
+          ) : slots && <p className="text-xs text-muted">Créneaux conseillés à partir de 5 publications mesurées ({slots.measured} pour l'instant).</p>}
         </div>
         {blocking && <p className="text-xs text-muted">Corrigez les points en rouge pour publier ; les brouillons restent possibles.</p>}
       </div>
