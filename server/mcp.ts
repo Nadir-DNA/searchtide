@@ -1,4 +1,5 @@
 import { checkPage, hostAllowed, pageUrlFor } from "./pagecheck.ts";
+import { indexingStatus, submitIndexnow } from "./indexing.ts";
 import { keywordSuggestions, seoInsights, trackKeyword, trackedKeywords } from "./keywords.ts";
 import { McpServer, WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/server";
 import { z } from "zod";
@@ -70,11 +71,11 @@ const mapResult = (r: any, fn: (d: any) => any) => {
  * Lecture : la cible doit être dans la portée. Écriture : la cible doit être dans la portée en écriture.
  */
 const SCOPED_READ = new Set([
-  "list_sites", "traffic_stats", "search_stats", "seo_opportunities", "keywords_tracked", "seo_insights", "page_check", "projects_kpis", "portfolio_overview", "alerts", "today",
+  "list_sites", "traffic_stats", "search_stats", "seo_opportunities", "keywords_tracked", "seo_insights", "page_check", "indexing_status", "projects_kpis", "portfolio_overview", "alerts", "today",
   "milestones_list", "kpi_catalog", "crm_list_contacts", "crm_get_contact", "pubs_list", "modules_list", "dashboard_catalog", "dashboard_list", "dashboard_get",
 ]);
 const SCOPED_WRITE = new Set([
-  "sync_search_console", "keyword_track", "kpi_add", "milestone_save", "indicator_record", "crm_save_contact", "crm_log", "pubs_save", "today_update",
+  "sync_search_console", "keyword_track", "indexing_submit", "kpi_add", "milestone_save", "indicator_record", "crm_save_contact", "crm_log", "pubs_save", "today_update",
   "module_enable_for_project", "module_disable_for_project",
 ]);
 
@@ -170,6 +171,17 @@ function seoTools(server: McpServer) {
     if (!hostAllowed(s.domain)(new URL(target).hostname)) throw new Error(`Adresse hors du site ${s.domain}`);
     return json(await checkPage(target, hostAllowed(s.domain)));
   });
+  server.registerTool("indexing_status", {
+    description: "État d'indexation d'un site : pages connues, indexées ou non chez Google (avec la raison donnée par Google), pages en attente de signalement IndexNow.",
+    inputSchema: z.object({ site: period.site }),
+  }, async ({ site: d }) => json(indexingStatus(site(d).id)));
+}
+
+function indexingWriteTools(server: McpServer) {
+  server.registerTool("indexing_submit", {
+    description: "Signale des pages à Bing, Yandex et aux autres moteurs IndexNow (pas à Google, qui n'a pas d'API d'indexation générale). Sans liste : les pages nouvelles ou modifiées du sitemap. Le fichier de clé IndexNow doit être publié et vérifié.",
+    inputSchema: z.object({ site: period.site, urls: z.array(z.string().max(2000)).max(1000).optional() }),
+  }, async ({ site: d, urls }) => json(await submitIndexnow(site(d), urls)));
 }
 
 function googleTools(server: McpServer, readOnly: boolean) {
@@ -209,7 +221,7 @@ function googleTools(server: McpServer, readOnly: boolean) {
 
 /** Outils des modules livrés ; un module privé apporte les siens par Module.mcp. */
 const BUILTIN_TOOLS: Record<string, (server: McpServer, readOnly: boolean, agent: string) => void> = {
-  analytics: (s) => { analyticsTools(s); seoTools(s); },
+  analytics: (s, ro) => { analyticsTools(s); seoTools(s); if (!ro) indexingWriteTools(s); },
   google: googleTools,
   rdv: (s, ro) => rdvTools(s, ro),
   crm: (s, ro) => registerBusinessTools(only(s, (n) => n.startsWith("crm_")), ro),

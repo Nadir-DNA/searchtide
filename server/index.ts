@@ -16,6 +16,7 @@ import { missing2faWarning } from "./twofa-warning.ts";
 import { lastDays, overview, searchStats, strikingDistance, trafficStats, type Range } from "./stats.ts";
 import { registerKeywords } from "./keywords.ts";
 import { registerPageCheck } from "./pagecheck.ts";
+import { registerIndexing, registerIndexingJobs } from "./indexing.ts";
 import { convertGoogleEnv, gscConfigured, listProperties, setSiteGscProperty, syncAll, syncSite } from "./gsc.ts";
 import { handleMcp, mcpAccess } from "./mcp.ts";
 import { registerBusiness } from "./business.ts";
@@ -212,6 +213,8 @@ const KEY_WRITES: [string, RegExp][] = [
   ["POST", /^\/api\/indicators\/[^/]+\/values$/],
   ["POST", /^\/api\/sites\/[^/]+\/sync$/],
   ["POST", /^\/api\/sites\/[^/]+\/keywords$/],
+  ["POST", /^\/api\/sites\/[^/]+\/indexing\/refresh$/],
+  ["POST", /^\/api\/sites\/[^/]+\/indexnow\/submit$/],
 ];
 const keyMayWrite = (method: string, path: string) => KEY_WRITES.some(([m, re]) => m === method && re.test(path));
 
@@ -496,6 +499,8 @@ app.get("/api/sites/:id/search", (c) => {
 });
 registerKeywords(app, getSite, rangeOf);
 registerPageCheck(app, getSite);
+registerIndexing(app, getSite);
+registerIndexingJobs();
 app.post("/api/sites/:id/sync", async (c) => {
   const s = getSite(c.req.param("id"));
   if (!s) return c.json({ error: "Site introuvable" }, 404);

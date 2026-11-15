@@ -530,7 +530,7 @@ function SiteView({ site, me, days, tab, go, onChange }: {
       <div className="mb-5 -mt-1 overflow-x-auto">
         <Segmented label="Sections du site" value={tab as (typeof tabs)[number][0]} onChange={(v) => go({ tab: v === "traffic" ? undefined : v })} options={tabs} />
       </div>
-      {tab === "outils" ? <SeoToolsView site={site} />
+      {tab === "outils" ? <SeoToolsView site={site} demo={me.demo} />
         : tab === "search" ? <SearchView site={site} me={me} days={days} onChange={onChange} onSetup={() => go({ tab: "setup" })} />
         : tab === "setup" ? <SetupView site={site} me={me} onChange={onChange} go={go} />
         : <TrafficView site={site} days={days} onSetup={() => go({ tab: "setup" })} />}

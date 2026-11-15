@@ -1,5 +1,5 @@
 // Outils SEO d'un site (plan A2 et A3) : vérificateur de page, générateur de robots.txt, générateur de données structurées.
-import { useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { api, type Site } from "./api";
 import { Button, Card, copyText, inputCls } from "./ui";
 
@@ -151,10 +151,79 @@ export function SchemaGenerator({ domain }: { domain: string }) {
   );
 }
 
-export function SeoToolsView({ site }: { site: Site }) {
+
+type Indexing = {
+  total: number; indexed: number; notIndexed: number; unknown: number; submitted: number; pending: number;
+  problems: { url: string; verdict: string | null; coverage: string | null; last_crawl: string | null; error: string | null }[];
+  indexnow: { key: string; file: string; verified: boolean; lastSubmit: number | null; lastResult: string | null } | null;
+};
+const short = (u: string) => u.replace(/^https?:\/\/[^/]+/, "") || "/";
+
+export function IndexingCard({ site, demo }: { site: Site; demo: boolean }) {
+  const [data, setData] = useState<Indexing | null>(null);
+  const [msg, setMsg] = useState<{ tone: "ok" | "warn" | "err"; text: string } | null>(null);
+  const [busy, setBusy] = useState("");
+  const load = () => api<Indexing>(`/api/sites/${site.id}/indexing`).then(setData).catch((e) => setMsg({ tone: "err", text: (e as Error).message }));
+  useEffect(() => { void load(); }, [site.id]);
+  const act = async (name: string, path: string, done: (r: any) => string) => {
+    setBusy(name); setMsg(null);
+    try { const r = await api<any>(path, { method: "POST", json: {} }); setMsg({ tone: r.ok === false || r.found?.error ? "warn" : "ok", text: done(r) }); }
+    catch (e) { setMsg({ tone: "err", text: (e as Error).message }); }
+    setBusy(""); void load();
+  };
+  const tiles: [string, number | undefined][] = [["Pages connues", data?.total], ["Indexées chez Google", data?.indexed], ["Non indexées", data?.notIndexed], ["Pas encore vérifiées", data?.unknown], ["À signaler (IndexNow)", data?.pending]];
+  return (
+    <Card title="Indexation" action={!demo && <Button variant="secondary" disabled={!!busy} onClick={() => act("refresh", `/api/sites/${site.id}/indexing/refresh`,
+      (r) => `${r.found.added} page(s) ajoutée(s)${r.found.error ? ` · sitemap : ${r.found.error}` : ""}${r.google ? ` · ${r.google.inspected} vérifiée(s) chez Google` : ""}`)}>{busy === "refresh" ? "Actualisation…" : "Actualiser"}</Button>}>
+      <div className="overflow-hidden rounded-xl border border-border"><div className="-mr-px -mb-px grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
+        {tiles.map(([label, n]) => <div key={label} className="border-r border-b border-border px-4 py-3"><div className="label-caps truncate">{label}</div><div className="kpi mt-2 text-[26px] font-medium">{n ?? "—"}</div></div>)}
+      </div></div>
+      {msg && <p role="status" className={`mt-3 text-sm ${msg.tone === "ok" ? "text-positive" : msg.tone === "warn" ? "text-warn" : "text-negative"}`}>{msg.text}</p>}
+      {!site.gsc_property && <p className="mt-3 text-sm text-muted">Reliez ce site à Search Console pour lire son état d'indexation chez Google. Le signalement IndexNow fonctionne sans.</p>}
+      <p className="mt-3 text-xs text-muted">Google n'a pas d'API d'indexation ouverte à tous : Searchtide lit son état (quelques dizaines de pages par jour) et signale vos pages aux moteurs IndexNow (Bing, Yandex…). Pour Google, déclarez votre sitemap dans Search Console.</p>
+
+      {data && data.problems.length > 0 && (
+        <section className="mt-5" aria-labelledby="idx-pb">
+          <h3 id="idx-pb" className="mb-2 font-medium">Pages non indexées</h3>
+          <ul className="divide-y divide-rule">{data.problems.map((p) => (
+            <li key={p.url} className="grid gap-x-4 gap-y-0.5 py-2 text-sm sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+              <span className="flex min-w-0 items-center gap-2.5"><span aria-hidden className={`led ${p.error ? "led-off" : "led-warn"}`} /><span className="truncate">{short(p.url)}</span></span>
+              <span className="text-muted">{p.error ?? p.coverage ?? p.verdict}{p.last_crawl ? ` · exploré le ${new Date(p.last_crawl).toLocaleDateString("fr-FR")}` : ""}</span>
+            </li>
+          ))}</ul>
+        </section>
+      )}
+
+      <section className="mt-6 border-t border-rule pt-5" aria-labelledby="idx-now">
+        <h3 id="idx-now" className="font-medium">IndexNow : prévenir Bing et les autres moteurs</h3>
+        {!data?.indexnow ? (
+          <div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-muted">
+            <span>Une clé à publier sur le site, puis les pages nouvelles ou modifiées sont signalées chaque jour.</span>
+            {!demo && <Button variant="secondary" disabled={!!busy} onClick={() => act("verify", `/api/sites/${site.id}/indexnow/verify`, () => "Clé créée : publiez le fichier ci-dessous, puis vérifiez.")}>Activer IndexNow</Button>}
+          </div>
+        ) : !data.indexnow.verified ? (
+          <div className="mt-2 text-sm">
+            <p className="text-muted">Publiez à la racine du site un fichier nommé <code className="font-mono break-all text-ink">{data.indexnow.file}</code> qui contient seulement la clé, pour qu'il réponde à <code className="font-mono break-all text-ink">https://{site.domain}/{data.indexnow.file}</code>.</p>
+            <CopyBlock text={data.indexnow.key} label="Contenu du fichier" />
+            {!demo && <Button className="mt-3" variant="secondary" disabled={!!busy} onClick={() => act("verify", `/api/sites/${site.id}/indexnow/verify`, (r) => r.message)}>{busy === "verify" ? "Vérification…" : "Vérifier le fichier"}</Button>}
+          </div>
+        ) : (
+          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+            <span className="flex items-center gap-2 text-positive"><span aria-hidden className="led led-ok" />Clé vérifiée</span>
+            <span className="text-muted">{data.indexnow.lastSubmit ? `Dernier envoi le ${new Date(data.indexnow.lastSubmit).toLocaleString("fr-FR", { dateStyle: "medium", timeStyle: "short" })} : ${data.indexnow.lastResult}` : "Aucun envoi pour l'instant"}</span>
+            {!demo && <Button variant="secondary" disabled={!!busy || !data.pending} onClick={() => act("submit", `/api/sites/${site.id}/indexnow/submit`, (r) => `${r.submitted} page(s) signalée(s) : ${r.message}`)}>{busy === "submit" ? "Envoi…" : `Signaler ${data.pending} page(s)`}</Button>}
+          </div>
+        )}
+      </section>
+    </Card>
+  );
+}
+
+export function SeoToolsView({ site, demo = false }: { site: Site; demo?: boolean }) {
   return (
     <div className="space-y-4">
       <PageChecker site={site} />
+      <IndexingCard site={site} demo={demo} />
       <div className="grid gap-4 xl:grid-cols-2">
         <RobotsGenerator domain={site.domain} />
         <SchemaGenerator domain={site.domain} />
