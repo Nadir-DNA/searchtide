@@ -50,6 +50,7 @@ export function MultiComposer({ onClose, onSaved }: { onClose: () => void; onSav
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<Result | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
 
   const projectName = (key: string) => projects?.find((p) => p.id === key || p.crm_key === key)?.name ?? key;
   const projectKeys = useMemo(() => [...new Set((accounts ?? []).map((a) => a.project))], [accounts]);
@@ -59,11 +60,12 @@ export function MultiComposer({ onClose, onSaved }: { onClose: () => void; onSav
   const items = selected.map((a) => ({ account_id: a.id, text: textOf(a.id), visible: visible[a.id] || null }));
 
   // Vérification serveur (règles exactes de chaque réseau), sans rien créer.
-  const key = JSON.stringify([title, items]);
+  const media = files.map((f) => ({ mime: f.type || "application/octet-stream", size: f.size }));
+  const key = JSON.stringify([title, items, media]);
   useEffect(() => {
     if (!items.length) { setIssues({}); return; }
     const t = setTimeout(() => {
-      api<{ account_id: string; issues: string[] }[]>("/api/publications/batch/check", { method: "POST", json: { title, items } })
+      api<{ account_id: string; issues: string[] }[]>("/api/publications/batch/check", { method: "POST", json: { title, items, media } })
         .then((r) => setIssues(Object.fromEntries(r.map((x) => [x.account_id, x.issues])))).catch(() => {});
     }, 300);
     return () => clearTimeout(t);
@@ -73,8 +75,23 @@ export function MultiComposer({ onClose, onSaved }: { onClose: () => void; onSav
   async function send(when: "now" | "at" | null) {
     setBusy(true); setError(""); setResult(null);
     try {
-      const r = await api<Result>("/api/publications/batch", { method: "POST", json: { title, day: when === "at" && at ? at.slice(0, 10) : day, items, when, at: when === "at" ? new Date(at).toISOString() : undefined } });
-      setResult(r); onSaved();
+      // Avec des médias : brouillons d'abord, fichiers joints à chacun, puis programmation compte par compte.
+      const r = await api<Result>("/api/publications/batch", { method: "POST", json: { title, day: when === "at" && at ? at.slice(0, 10) : day, items, when: files.length ? null : when, at: when === "at" ? new Date(at).toISOString() : undefined } });
+      if (files.length) {
+        for (const it of r.items) {
+          try {
+            for (const f of files) {
+              const res = await fetch(`/api/publications/${it.id}/media?name=${encodeURIComponent(f.name)}`, { method: "POST", headers: { "content-type": f.type || "application/octet-stream" }, body: f });
+              if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "Média refusé");
+            }
+            if (when) {
+              const q = await api<{ state: string }>(`/api/publications/${it.id}/queue`, { method: "POST", json: when === "now" ? { now: true } : { at: new Date(at).toISOString() } });
+              it.state = q.state;
+            }
+          } catch (e) { it.error = (e as Error).message; }
+        }
+      }
+      setResult({ ...r, items: [...r.items] }); onSaved();
     } catch (e) { setError((e as Error).message); }
     setBusy(false);
   }
@@ -88,6 +105,11 @@ export function MultiComposer({ onClose, onSaved }: { onClose: () => void; onSav
           <Field label="Date"><input type="date" value={day} onChange={(e) => setDay(e.target.value)} className={inputCls} /></Field>
         </div>
         <Field label="Texte commun"><textarea rows={4} value={base} onChange={(e) => setBase(e.target.value)} className={`${inputCls} h-auto py-2`} placeholder="Écrivez une fois, ajustez ensuite par réseau…" /></Field>
+
+        <Field label="Médias (joints à chaque compte) · JPEG, PNG, WebP, GIF, MP4, MOV, WebM, 25 Mo maximum">
+          <input type="file" multiple accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/quicktime,video/webm" onChange={(e) => setFiles([...(e.currentTarget.files ?? [])])} className="block text-sm" />
+          {files.length > 0 && <span className="mt-1 block text-xs text-muted">{files.map((f) => `${f.name} (${Math.round(f.size / 1024)} Ko)`).join(" · ")}</span>}
+        </Field>
 
         <fieldset>
           <legend className="label-caps mb-2">Comptes</legend>
@@ -122,7 +144,6 @@ export function MultiComposer({ onClose, onSaved }: { onClose: () => void; onSav
                       <option value="">— choisir —</option><option value="public">Publique</option><option value="unlisted">Non répertoriée</option><option value="private">Privée</option></select></label>}
                 </div>
                 {pb.length > 0 && <ul role="alert" className="mt-2 space-y-0.5 text-sm text-negative">{pb.map((x) => <li key={x}>{x}</li>)}</ul>}
-                {(a.network === "youtube" || a.network === "tiktok" || a.network === "instagram") && <p className="mt-2 text-xs text-muted">Le média s'ajoute ensuite dans la publication créée pour ce compte.</p>}
               </div>
               <Preview network={a.network} label={a.label} text={t} />
             </section>

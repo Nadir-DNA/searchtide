@@ -95,3 +95,13 @@ test("compte sans connexion réelle ou réseau sans statistiques : ignoré, avec
   assert.match(v.accounts.find((a) => a.network === "linkedin")!.unavailable ?? "", /LinkedIn/);
   assert.match(v.accounts.find((a) => a.label === "Factice")!.unavailable ?? "", /sans connexion réelle/);
 });
+
+test("Instagram : publications retrouvées par leur adresse publique, sur plusieurs pages", async () => {
+  route((u) => u.includes("after=p2")
+    ? { data: [{ permalink: "https://www.instagram.com/p/BBB/", like_count: 9, comments_count: 1 }] }
+    : { data: [{ permalink: "https://www.instagram.com/p/AAA/", like_count: 40, comments_count: 6 }], paging: { next: "https://graph.facebook.com/next?after=p2" } });
+  const s = await providerFor("instagram")!.postStats!(["https://www.instagram.com/p/AAA", "https://www.instagram.com/p/BBB/?utm=x"], "t", "ig1");
+  assert.deepEqual(s, { "https://www.instagram.com/p/AAA": { likes: 40, comments: 6 }, "https://www.instagram.com/p/BBB/?utm=x": { likes: 9, comments: 1 } });
+  assert.equal(providerFor("tiktok")!.stats, undefined, "TikTok sans TIKTOK_STATS : pas de relevé");
+  assert.match(providerFor("tiktok")!.statsUnavailable ?? "", /TIKTOK_STATS=1/);
+});

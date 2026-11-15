@@ -131,6 +131,24 @@ export const instagram: Provider = {
     if (!r.ok) throw new Error(`Instagram : statistiques refusées (${r.status})`);
     return { followers: n(j.followers_count), posts: n(j.media_count) };
   },
+  // Publications : les 100 dernières du compte, retrouvées par leur adresse publique (gardée comme preuve).
+  async postStats(urls, token, ig) {
+    const norm = (u: string) => u.replace(/[?#].*$/, "").replace(/\/$/, "");
+    const wanted = new Map(urls.map((u) => [norm(u), u]));
+    const out: Record<string, { likes?: number; comments?: number }> = {};
+    let next: string | null = `${GRAPH}/${ig}/media?${new URLSearchParams({ fields: "permalink,like_count,comments_count", limit: "50", access_token: token })}`;
+    for (let page = 0; next && page < 2 && wanted.size; page++) {
+      const r: Response = await f(next);
+      const j = await json(r);
+      if (!r.ok) throw new Error(`Instagram : statistiques des publications refusées (${r.status})`);
+      for (const m of j.data ?? []) {
+        const u = m.permalink ? wanted.get(norm(String(m.permalink))) : undefined;
+        if (u) { out[u] = { likes: n(m.like_count), comments: n(m.comments_count) }; wanted.delete(norm(String(m.permalink))); }
+      }
+      next = j.paging?.next ?? null;
+    }
+    return out;
+  },
   async exchange(code, redirectUri) {
     const list = (await pages(await userToken(code, redirectUri), "id,name,access_token,instagram_business_account{id,username}")).filter((p) => p.instagram_business_account?.id);
     if (!list.length) throw new Error("Aucun compte Instagram professionnel relié à une Page de ce compte");

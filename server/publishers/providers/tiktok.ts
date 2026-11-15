@@ -3,9 +3,11 @@
 // D'après Postiz (tiktok.provider.ts), Copyright (C) 2025 Nevo David, https://github.com/gitroomhq/postiz-app ;
 // réécrit : envoi en un seul morceau (médias de 25 Mo au plus), suivi d'état par `poll`.
 import { registerProvider, type Provider, type PublishResult, type Tokens } from "../provider.ts";
-import { f, fail, json, pending } from "./http.ts";
+import { chunks, f, fail, json, n, pending } from "./http.ts";
 
 const API = "https://open.tiktokapis.com/v2";
+/** Statistiques : autorisations user.info.stats et video.list, à activer dans l'application TikTok avant de mettre TIKTOK_STATS=1. */
+const STATS = process.env.TIKTOK_STATS === "1";
 const env = () => ({ id: process.env.TIKTOK_CLIENT_KEY ?? "", secret: process.env.TIKTOK_CLIENT_SECRET ?? "" });
 const bearer = (t: string) => ({ Authorization: `Bearer ${t}`, "Content-Type": "application/json; charset=UTF-8" });
 /** Confidentialité de Searchtide → niveau TikTok. */
@@ -32,13 +34,13 @@ function tiktokError(status: number, e: any): PublishResult {
 export const tiktok: Provider = {
   id: "tiktok", label: "TikTok", env: ["TIKTOK_CLIENT_KEY", "TIKTOK_CLIENT_SECRET"],
   limits: { text: 2200, media: 1 },
-  statsUnavailable: "TikTok demande une autorisation supplémentaire (user.info.stats) que la connexion actuelle ne comprend pas",
+  statsUnavailable: STATS ? undefined : "TikTok demande des autorisations supplémentaires : ajoutez user.info.stats et video.list à votre application TikTok, définissez TIKTOK_STATS=1, puis reconnectez le compte",
   configured: () => !!env().id && !!env().secret,
   check: ({ media, visibility }) => [
     ...(media.length !== 1 || !media[0].mime.startsWith("video/") ? ["TikTok : une seule vidéo (les photos viendront plus tard)"] : []),
     ...(visibility && !PRIVACY[visibility] ? [`TikTok : confidentialité inconnue (${visibility})`] : []),
   ],
-  authUrl: (redirectUri, state) => `https://www.tiktok.com/v2/auth/authorize/?${new URLSearchParams({ client_key: env().id, scope: "user.info.basic,video.publish", response_type: "code", redirect_uri: redirectUri, state })}`,
+  authUrl: (redirectUri, state) => `https://www.tiktok.com/v2/auth/authorize/?${new URLSearchParams({ client_key: env().id, scope: STATS ? "user.info.basic,video.publish,user.info.stats,video.list" : "user.info.basic,video.publish", response_type: "code", redirect_uri: redirectUri, state })}`,
   async exchange(code, redirectUri) {
     const t = await token({ grant_type: "authorization_code", code, redirect_uri: redirectUri });
     const r = await f(`${API}/user/info/?fields=open_id,display_name,username`, { headers: { Authorization: `Bearer ${t.accessToken}` } });
@@ -88,4 +90,26 @@ export const tiktok: Provider = {
   },
 };
 
+if (STATS) {
+  tiktok.stats = async (t) => {
+    const r = await f(`${API}/user/info/?fields=follower_count,video_count,likes_count`, { headers: { Authorization: `Bearer ${t}` } });
+    const j = await json(r);
+    if (!r.ok || (j.error?.code && j.error.code !== "ok")) throw new Error(`TikTok : statistiques refusées (${r.status}${j.error?.code ? ` ${j.error.code}` : ""})`);
+    const u = j.data?.user ?? {};
+    return { followers: n(u.follower_count), posts: n(u.video_count) };
+  };
+  tiktok.postStats = async (urls, t) => {
+    const ids = new Map(urls.flatMap((u) => { const m = /\/video\/(\d+)/.exec(u); return m ? [[m[1], u] as [string, string]] : []; }));
+    const out: Record<string, { views?: number; likes?: number; comments?: number; shares?: number }> = {};
+    for (const part of chunks([...ids.keys()], 20)) {
+      const r = await f(`${API}/video/query/?fields=id,view_count,like_count,comment_count,share_count`, {
+        method: "POST", headers: { Authorization: `Bearer ${t}`, "Content-Type": "application/json" }, body: JSON.stringify({ filters: { video_ids: part } }),
+      });
+      const j = await json(r);
+      if (!r.ok) throw new Error(`TikTok : statistiques des vidéos refusées (${r.status})`);
+      for (const v of j.data?.videos ?? []) out[ids.get(String(v.id))!] = { views: n(v.view_count), likes: n(v.like_count), comments: n(v.comment_count), shares: n(v.share_count) };
+    }
+    return out;
+  };
+}
 registerProvider(tiktok);

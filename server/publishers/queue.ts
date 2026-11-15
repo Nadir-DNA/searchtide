@@ -112,7 +112,8 @@ export function validatePublication(p: Row, account: Row | undefined): string[] 
   if (limit?.needsTitle && !String(p.title ?? "").trim()) issues.push("Titre requis pour YouTube");
   if (limit?.needsVisibility && !String(p.visible ?? "").trim()) issues.push("Confidentialité à choisir pour TikTok");
   // Médias : nombre par réseau, formats et plafonds officiels les plus stricts (§16.2).
-  const media = p.id ? mediaOf(String(p.id)) as { mime: string; size: number }[] : [];
+  // Médias : ceux de la publication, ou ceux annoncés pour une vérification préalable (compositeur multi-comptes).
+  const media = Array.isArray(p.media) ? p.media as { mime: string; size: number }[] : p.id ? mediaOf(String(p.id)) as { mime: string; size: number }[] : [];
   const mediaMax = real?.limits.media ?? limit?.media;
   if (mediaMax !== undefined && media.length > mediaMax) issues.push(real && !mediaMax ? `${network} : les médias ne sont pas encore pris en charge pour un compte réel` : `Trop de médias pour ${network} : ${media.length} / ${mediaMax}`);
   const video = (m: string) => m.startsWith("video/");

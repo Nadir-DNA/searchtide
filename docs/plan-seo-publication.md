@@ -119,7 +119,8 @@ Une seule connexion facultative « Données SEO » (fournisseur payé à l'usage
 ## Avancement
 
 - **Étape 1 livrée** (branche `claude/youthful-lovelace-rotjbr`) : A2, A3, A4, A5, D2, D3. Les appels aux API de Google, IndexNow et des réseaux sont testés avec des réponses simulées ; à valider sur de vrais comptes.
-- Écarts : D2 ne joint pas encore les médias depuis le compositeur (ils s'ajoutent ensuite dans chaque publication) ; D3 ne couvre pas LinkedIn (profil personnel) ni TikTok (autorisation `user.info.stats` non demandée), ni les publications Instagram (identifiant du média non gardé).
+- Compléments : médias joints à chaque compte depuis le compositeur ; statistiques des publications Instagram (retrouvées par leur adresse) ; TikTok activable avec `TIKTOK_STATS=1` après ajout des autorisations `user.info.stats` et `video.list` à l'application TikTok.
+- Limite restante : LinkedIn ne fournit ni abonnés ni statistiques de posts pour un profil personnel avec l'autorisation de publication (il faudrait l'API Community Management, réservée aux pages d'entreprise et soumise à validation).
 
 ## Ordre de livraison proposé
 

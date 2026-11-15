@@ -18,10 +18,11 @@ migrate("2026-11-15-publication-groupe", "ALTER TABLE publications ADD COLUMN gr
 const accountOf = (id: string) => db.prepare("SELECT * FROM pub_accounts WHERE id = ?").get(id) as Row | undefined;
 
 /** Ce que chaque réseau refuserait, sans rien créer : sert à l'aperçu. */
-export function checkBatch(input: Pick<BatchInput, "title" | "items">) {
+export function checkBatch(input: Pick<BatchInput, "title" | "items"> & { media?: { mime: string; size: number }[] }) {
+  const media = Array.isArray(input.media) ? input.media.slice(0, 20).map((m) => ({ mime: String(m.mime), size: Number(m.size) || 0 })) : [];
   return (input.items ?? []).map((it) => {
     const account = accountOf(String(it.account_id));
-    const draft = { title: it.title ?? input.title, text: it.text, network: account?.network, project: account?.project, visible: it.visible ?? null };
+    const draft = { title: it.title ?? input.title, text: it.text, network: account?.network, project: account?.project, visible: it.visible ?? null, media };
     return { account_id: it.account_id, network: account?.network ?? null, issues: validatePublication(draft, account) };
   });
 }

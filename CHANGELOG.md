@@ -9,8 +9,8 @@ Toutes les versions notables sont consignées ici. Format inspiré de [Keep a Ch
 - **Suivi de mots-clés** : mots-clés suivis par site (position, évolution, courbe, suggestions), diagnostics Search Console (pages qui perdent des clics, titres à réécrire, pages en concurrence), alerte quand un mot-clé suivi recule de 3 places ou plus.
 - **Outils SEO** d'un site : vérificateur de page (balises, indexation, Open Graph, données structurées, robots.txt, sitemap), générateurs de robots.txt et de données structurées. Lecture sûre côté serveur : domaine du site uniquement, aucune adresse interne.
 - **Indexation** : état de chaque page chez Google (API d'inspection d'URL, par lots) et signalement IndexNow des pages nouvelles ou modifiées (Bing, Yandex…), tâche quotidienne.
-- **Publier sur plusieurs comptes** : une version par réseau, compteur, aperçu, règles de chaque réseau vérifiées avant l'envoi.
-- **Statistiques des réseaux** : abonnés par compte (X, YouTube, Facebook, Instagram) et chiffres des publications (X, YouTube, Facebook), relevés chaque jour ; abonnés et engagement sur le mur et la page projet. LinkedIn et TikTok : non fournis avec les autorisations actuelles, l'écran le dit.
+- **Publier sur plusieurs comptes** : une version par réseau, compteur, aperçu, médias joints à chaque compte, règles de chaque réseau vérifiées avant l'envoi (médias compris).
+- **Statistiques des réseaux** : abonnés par compte (X, YouTube, Facebook, Instagram, TikTok avec `TIKTOK_STATS=1`) et chiffres des publications (X, YouTube, Facebook, Instagram, TikTok), relevés chaque jour ; abonnés et engagement sur le mur et la page projet. LinkedIn : non fourni pour un profil personnel, l'écran le dit.
 - Outils MCP : `keywords_tracked`, `keyword_track`, `seo_insights`, `page_check`, `indexing_status`, `indexing_submit`, `social_stats` (portée par projet).
 
 ## [0.5.0] — 2026-11-13

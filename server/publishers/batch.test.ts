@@ -48,3 +48,13 @@ test("un compte refusé n'empêche pas les autres ; doublon, liste vide et compt
   await assert.rejects(createBatch({ title: "V", day: TODAY, items: [] }), /au moins un compte/);
   await assert.rejects(createBatch({ title: "I", day: TODAY, items: [{ account_id: "nope", text: "a" }] }), /introuvable/);
 });
+
+test("aperçu avec médias annoncés : la vidéo choisie satisfait YouTube avant même d'être envoyée", () => {
+  const project = uniq();
+  db.prepare("INSERT INTO projects (id, name, crm_key, created_at) VALUES (?, ?, ?, 0)").run(`id-${project}`, project, project);
+  const yt = (createAccount({ project, network: "youtube", label: "Chaîne" }) as any).id as string;
+  const sans = checkBatch({ title: "Vidéo", items: [{ account_id: yt, text: "Description" }] });
+  assert.match(sans[0].issues.join(), /vidéo est requise/);
+  const avec = checkBatch({ title: "Vidéo", items: [{ account_id: yt, text: "Description" }], media: [{ mime: "video/mp4", size: 1_000_000 }] } as any);
+  assert.doesNotMatch(avec[0].issues.join(), /vidéo est requise/);
+});
