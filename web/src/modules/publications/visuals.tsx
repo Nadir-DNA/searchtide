@@ -16,20 +16,20 @@ const parse = (raw: string): Slide[] => raw.split(/\n\s*\n|\n(?=[^\n]*\|)/).map(
   const [title, ...rest] = b.split("\n"); return { title: title.trim(), text: rest.join("\n").trim() || undefined };
 });
 
-export function VisualsCard() {
+export function VisualsCard({ project }: { project?: { id: string; name: string; crm_key: string | null; color?: string | null } } = {}) {
   const { data, reload } = useData<Info>("/api/visuals");
-  const { data: pubs } = useData<Pub[]>(`/api/publications?from=${new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10)}&to=${new Date(Date.now() + 90 * 864e5).toISOString().slice(0, 10)}`);
+  const { data: pubs } = useData<Pub[]>(`/api/publications?from=${new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10)}&to=${new Date(Date.now() + 90 * 864e5).toISOString().slice(0, 10)}${project ? `&project=${encodeURIComponent(project.id)}` : ""}`);
   const [text, setText] = useState("");
   const [topic, setTopic] = useState("");
   const [format, setFormat] = useState("carre");
   const [mode, setMode] = useState("clair");
-  const [color, setColor] = useState("#ff7a52");
-  const [footer, setFooter] = useState("");
+  const [color, setColor] = useState(project?.color ?? "#ff7a52");
+  const [footer, setFooter] = useState(project?.name ?? "");
   const [busy, setBusy] = useState("");
   const [msg, setMsg] = useState("");
   const slides = parse(text);
   const act = async (k: string, fn: () => Promise<unknown>) => { setBusy(k); setMsg(""); try { await fn(); } catch (e) { setMsg((e as Error).message); } setBusy(""); };
-  const make = (video: boolean) => act(video ? "video" : "images", async () => { await api("/api/visuals", { method: "POST", json: { slides, format, mode, color, footer, video } }); reload(); });
+  const make = (video: boolean) => act(video ? "video" : "images", async () => { await api("/api/visuals", { method: "POST", json: { slides, format, mode, color, footer, video, project: project?.id } }); reload(); });
   const write = () => act("ai", async () => { const s = await api<Slide[]>("/api/visuals/slides", { method: "POST", json: { topic, count: 5 } }); setText(s.map((x) => `${x.title}${x.text ? `\n${x.text}` : ""}`).join("\n\n")); });
   const drafts = (pubs ?? []).filter((p) => !["scheduled", "running", "processing", "published"].includes(String(p.state ?? "draft")));
   return (

@@ -174,9 +174,14 @@ export function importContacts(items: unknown[], defaults: Row = {}) {
   return { added, skipped, invalid };
 }
 
+/** Un projet est désigné par son identifiant ou sa clé CRM : les deux valeurs, pour filtrer quelle que soit celle enregistrée. */
+export function projectKeysOf(v: string): string[] {
+  const p = db.prepare("SELECT id, crm_key FROM projects WHERE id = ? OR crm_key = ?").get(v, v) as Row | undefined;
+  return p ? [...new Set([String(p.id), String(p.crm_key ?? p.id)])] : [v];
+}
 export function listPublications(f: { from?: string; to?: string; project?: string }) {
   const where = ["day BETWEEN ? AND ?"], args = [f.from ?? "0000-01-01", f.to ?? "9999-12-31"];
-  if (f.project) { where.push("project = ?"); args.push(f.project); }
+  if (f.project) { const k = projectKeysOf(f.project); where.push(`project IN (${k.map(() => "?").join(", ")})`); args.push(...k); }
   // Visites amenées : pages vues portant le code de campagne de la publication
   return db.prepare(`SELECT p.*, (SELECT COUNT(*) FROM events e WHERE e.utm_campaign = p.campaign AND e.type = 'pageview') AS visits
     FROM publications p WHERE ${where.join(" AND ")} ORDER BY day, created_at`).all(...args);

@@ -77,7 +77,8 @@ registerModule({
 
 registerModule({
   id: "publications", name: "Publications", scope: "projet", category: "commercial",
-  description: "Calendrier éditorial ; les publications publiées s'affichent sur les courbes.",
+  description: "Calendrier éditorial et comptes de réseaux du projet ; les publications publiées s'affichent sur les courbes.",
+  tabs: [{ id: "publications", label: "Publications" }],
   widgets: {
     publications: { label: "Publications de la semaine", description: "Calendrier éditorial de la semaine en cours.", size: "half", options: {} },
   },

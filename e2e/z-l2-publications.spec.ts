@@ -18,7 +18,7 @@ test("L2 : compte, brouillon, publication immédiate avec preuve, texte trop lon
   await page.reload();
 
   // 1. Un compte de publication factice pour ce projet.
-  await page.getByLabel("Projet du compte").fill(project);
+  await page.getByLabel("Projet du compte").selectOption(project);
   await page.getByLabel("Réseau du compte").selectOption("x");
   await page.getByLabel("Nom du compte").fill("Compte e2e");
   await page.getByRole("button", { name: "Ajouter", exact: true }).click();
@@ -28,7 +28,7 @@ test("L2 : compte, brouillon, publication immédiate avec preuve, texte trop lon
   await page.getByRole("button", { name: "Nouvelle publication" }).click();
   let dialog = page.getByRole("dialog");
   await dialog.getByLabel("Titre *").fill("Annonce L2");
-  await dialog.getByLabel("Projet").fill(project);
+  await dialog.getByLabel("Projet", { exact: true }).selectOption(project);
   await dialog.getByLabel("Réseau").fill("x");
   await dialog.getByLabel(/^Texte/).fill("Bonjour depuis Searchtide");
   await dialog.getByLabel("Compte de publication").selectOption({ label: "Compte e2e (x)" });
@@ -45,7 +45,7 @@ test("L2 : compte, brouillon, publication immédiate avec preuve, texte trop lon
   await page.getByRole("button", { name: "Nouvelle publication" }).click();
   dialog = page.getByRole("dialog");
   await dialog.getByLabel("Titre *").fill("Trop long");
-  await dialog.getByLabel("Projet").fill(project);
+  await dialog.getByLabel("Projet", { exact: true }).selectOption(project);
   await dialog.getByLabel("Réseau").fill("x");
   await dialog.getByLabel(/^Texte/).fill("a".repeat(281));
   await dialog.getByLabel("Compte de publication").selectOption({ label: "Compte e2e (x)" });

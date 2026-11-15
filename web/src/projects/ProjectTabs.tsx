@@ -1,5 +1,5 @@
 // Onglets d'un projet (spec §5.6) : Vue, Trafic, un onglet par module actif sur le projet, Réglages du projet.
-import { useEffect, useState } from "react";
+import { lazy, useEffect, useState } from "react";
 import { api, type Site } from "../api";
 import { useData } from "../App";
 import { Drawer, useCatalog } from "../connections";
@@ -11,6 +11,7 @@ import { KpiCatalogPanel } from "../sources";
 import { Button, Card, Delta, EmptyBox, KpiCard, Segmented } from "../ui";
 import { val } from "../projects";
 import { VisibilityView } from "../visibility";
+const PubsView = lazy(() => import("../modules/publications").then((m) => ({ default: m.PubsView })));
 import { ClientReportCard } from "../client-report";
 
 type Go = (n: Record<string, string | undefined>) => void;
@@ -20,7 +21,8 @@ const TAB_SOURCES: Record<string, string[]> = { revenus: ["stripe"], produit: ["
 
 export function useProjectTabs(projectId: string, hasSites: boolean): [string, string][] {
   const { modules, active } = useModules();
-  const own = modules.filter((m) => !m.core && m.scope === "projet" && active(m.id, projectId)).flatMap((m) => m.tabs ?? []);
+  // Publications : un calendrier et des comptes par projet, onglet présent dans chaque projet dès que le module est actif sur l'instance.
+  const own = modules.filter((m) => !m.core && m.scope === "projet" && (active(m.id, projectId) || (m.id === "publications" && m.enabled))).flatMap((m) => m.tabs ?? []);
   return [["vue", "Vue"], ...(hasSites ? [["trafic", "Trafic"] as [string, string]] : []), ...own.map((t) => [t.id, t.label] as [string, string]), ["ia", "Visibilité IA"], ["reglages", "Réglages"]];
 }
 
@@ -50,6 +52,7 @@ export function ProjectTabBody({ project, tab, days, go, me, onChanged }: { proj
     </div>
   );
   if (tab === "ia") return <VisibilityView projectId={project.id} />;
+  if (tab === "publications") return <PubsView q={Object.fromEntries(new URLSearchParams(location.search))} go={go} project={project} />;
   if (tab === "contacts") return <CrmView tab="" go={go} q={{ project: project.crm_key ?? "" }} />;
   const inds = project.indicators.filter((i) => TAB_SOURCES[tab]?.includes(i.source));
   return inds.length ? (

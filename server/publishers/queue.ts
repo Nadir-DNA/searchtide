@@ -15,6 +15,7 @@ import { fixturesEnabled } from "../browser/pool.ts";
 import { createApproval, decideApproval } from "../approvals.ts";
 import { definitive, providerFor, type PublishResult } from "./provider.ts";
 import { credentialsFor } from "./tokens.ts";
+import { projectKeysOf } from "../business.ts";
 import { AGENT_WAITING, reportPublished } from "./agent-mode.ts";
 import "./providers/index.ts";
 
@@ -64,8 +65,9 @@ const nowIso = () => new Date().toISOString();
 
 /** Un compte de publication, par projet et par réseau. Phase 1 : factice, aucun secret. */
 export function listAccounts(project?: string) {
+  const keys = project ? projectKeysOf(project) : [];
   return db.prepare(`SELECT a.*, (SELECT COUNT(*) FROM publications p WHERE p.account_id = a.id) AS publications
-    FROM pub_accounts a ${project ? "WHERE a.project = ?" : ""} ORDER BY a.project, a.network`).all(...(project ? [project] : [])) as Row[];
+    FROM pub_accounts a ${keys.length ? `WHERE a.project IN (${keys.map(() => "?").join(", ")})` : ""} ORDER BY a.project, a.network`).all(...keys) as Row[];
 }
 export function createAccount(input: { project?: string; network?: string; label?: string; daily_cap?: number; mode?: string; web_url?: string }) {
   const project = String(input.project ?? "").trim();
@@ -113,7 +115,7 @@ export function validatePublication(p: Row, account: Row | undefined): string[] 
   if (!account) issues.push("Compte de publication requis");
   else {
     if (account.network !== network) issues.push(`Le compte « ${account.label} » publie sur ${account.network}, pas sur ${network}`);
-    if (account.project !== p.project) issues.push("Le compte n'appartient pas au projet de la publication");
+    if (account.project !== p.project && !projectKeysOf(String(account.project)).includes(String(p.project ?? ""))) issues.push("Le compte n'appartient pas au projet de la publication");
     if (account.status !== "connected") issues.push(`Compte ${account.status === "expired" ? "à reconnecter" : "indisponible"}`);
   }
   const text = String(p.text ?? "");

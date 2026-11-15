@@ -51,7 +51,8 @@ function Preview({ network, label, text }: { network: string; label: string; tex
   );
 }
 
-export function MultiComposer({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+/** `project` : identifiant et clé du projet ouvert ; ses comptes sont proposés d'emblée. */
+export function MultiComposer({ onClose, onSaved, project: fixed }: { onClose: () => void; onSaved: () => void; project?: string[] }) {
   const { data: accounts } = useData<Account[]>("/api/pub-accounts");
   const { data: projects } = useData<Project[]>("/api/projects?days=1");
   const [project, setProject] = useState("");
@@ -75,7 +76,7 @@ export function MultiComposer({ onClose, onSaved }: { onClose: () => void; onSav
 
   const projectName = (key: string) => projects?.find((p) => p.id === key || p.crm_key === key)?.name ?? key;
   const projectKeys = useMemo(() => [...new Set((accounts ?? []).map((a) => a.project))], [accounts]);
-  const shown = (accounts ?? []).filter((a) => !project || a.project === project);
+  const shown = (accounts ?? []).filter((a) => fixed ? fixed.includes(a.project) : !project || a.project === project);
   const selected = shown.filter((a) => picked.includes(a.id));
   const textOf = (id: string) => own[id] ?? base;
   const items = selected.map((a) => ({ account_id: a.id, text: textOf(a.id), visible: visible[a.id] || null,
@@ -148,7 +149,7 @@ export function MultiComposer({ onClose, onSaved }: { onClose: () => void; onSav
 
         <fieldset>
           <legend className="label-caps mb-2">Comptes</legend>
-          {projectKeys.length > 1 && (
+          {!fixed && projectKeys.length > 1 && (
             <select aria-label="Projet" value={project} onChange={(e) => { setProject(e.target.value); setPicked([]); }} className={`${inputCls} mb-3 w-auto`}>
               <option value="">Tous les projets</option>{projectKeys.map((k) => <option key={k} value={k}>{projectName(k)}</option>)}
             </select>

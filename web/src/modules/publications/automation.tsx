@@ -4,14 +4,16 @@ import { api } from "../../api";
 import { useData } from "../../App";
 import { Button, Card, copyText, inputCls, useAsk } from "../../ui";
 
-type Account = { id: string; label: string; network: string };
+type Account = { id: string; label: string; network: string; project: string };
 type Feed = { id: string; url: string; accounts: string; mode: string; template: string; checked_at: number | null; error: string | null };
 type Hook = { id: string; url: string; events: string; last_status: number | null; last_error: string | null; last_at: number | null };
 const EVENTS: [string, string][] = [["published", "Publiée"], ["failed", "Échec"], ["to_verify", "À vérifier"], ["needs_action", "Action requise"], ["threshold", "Seuil atteint"]];
 
-export function AutomationCard() {
+/** `project` : identifiant et clé du projet affiché ; seuls ses comptes (et les flux qui les visent) sont montrés. */
+export function AutomationCard({ project }: { project?: string[] } = {}) {
   const { ask, dialog } = useAsk();
-  const { data: accounts } = useData<Account[]>("/api/pub-accounts");
+  const { data: all } = useData<Account[]>("/api/pub-accounts");
+  const accounts = all?.filter((a) => !project || project.includes(a.project));
   const { data: feeds, reload: reloadFeeds } = useData<Feed[]>("/api/rss-feeds");
   const { data: hooks, reload: reloadHooks } = useData<Hook[]>("/api/webhooks");
   const [picked, setPicked] = useState<string[]>([]);
@@ -58,7 +60,7 @@ export function AutomationCard() {
               <Button disabled={!picked.length}>Ajouter le flux</Button>
             </div>
           </form>
-          <ul className="mt-4 divide-y divide-rule">{(feeds ?? []).map((f) => (
+          <ul className="mt-4 divide-y divide-rule">{(feeds ?? []).filter((f) => !project || (JSON.parse(f.accounts) as string[]).some((id) => accounts?.some((a) => a.id === id))).map((f) => (
             <li key={f.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 text-sm">
               <span aria-hidden className={`led ${f.error ? "led-bad" : f.checked_at ? "led-ok" : "led-off"}`} />
               <span className="min-w-0 flex-1 truncate">{f.url}</span>
@@ -103,10 +105,12 @@ const METRIC: Record<string, string> = { likes: "j'aime", comments: "commentaire
 const ACTION: Record<string, string> = { repost: "Republier", comment: "Ajouter un commentaire", webhook: "Prévenir par webhook", todo: "L'inscrire dans À traiter" };
 
 /** Actions sur seuil (plan D7) : quand un post atteint un chiffre, un geste sur ce post. Jamais de like ni d'abonnement automatique. */
-export function RulesCard() {
+export function RulesCard({ project }: { project?: string[] } = {}) {
   const { ask, dialog } = useAsk();
-  const { data: accounts } = useData<Account[]>("/api/pub-accounts");
-  const { data: rules, reload } = useData<Rule[]>("/api/pub-rules");
+  const { data: all } = useData<Account[]>("/api/pub-accounts");
+  const accounts = all?.filter((a) => !project || project.includes(a.project));
+  const { data: allRules, reload } = useData<Rule[]>("/api/pub-rules");
+  const rules = allRules?.filter((r) => !project || accounts?.some((a) => a.id === r.account_id));
   const [action, setAction] = useState("todo");
   const [error, setError] = useState("");
   async function add(e: FormEvent<HTMLFormElement>) {

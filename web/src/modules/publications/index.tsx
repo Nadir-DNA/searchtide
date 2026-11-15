@@ -38,12 +38,22 @@ function StatusPill({ s, state }: { s: Pub["status"]; state?: string | null }) {
 }
 
 // ── Calendrier des publications ──
-export function PubsView({ q, go }: { q: Record<string, string>; go: Go }) {
+type ProjectRef = { id: string; name: string; crm_key: string | null; color?: string | null };
+/** Clé enregistrée sur les publications et comptes d'un projet (clé CRM si elle existe, comme le reste du module). */
+export const projectKey = (p: ProjectRef) => p.crm_key ?? p.id;
+const keysOf = (p: ProjectRef) => [p.id, p.crm_key].filter(Boolean) as string[];
+
+/** Calendrier et comptes d'un projet. Dans la page d'un projet, `project` est fixé ; sur la page Publications, un sélecteur le choisit. */
+export function PubsView({ q, go, project: fixed }: { q: Record<string, string>; go: Go; project?: ProjectRef }) {
+  const { data: projects } = useData<ProjectRef[]>("/api/projects?days=1");
+  const current = fixed ?? projects?.find((p) => q.project && keysOf(p).includes(q.project));
+  const scope = current ? projectKey(current) : undefined;
+  const nameOf = (key: string | null) => projects?.find((p) => key && keysOf(p).includes(key));
   const month = /^\d{4}-\d{2}$/.test(q.month ?? "") ? q.month : today().slice(0, 7);
   const first = new Date(month + "-01T00:00:00Z");
   const start = new Date(first.getTime() - ((first.getUTCDay() + 6) % 7) * 86400000);
   const days = Array.from({ length: 42 }, (_, i) => new Date(start.getTime() + i * 86400000).toISOString().slice(0, 10));
-  const { data, error, reload } = useData<Pub[]>(`/api/publications?from=${days[0]}&to=${days[41]}${q.project ? `&project=${q.project}` : ""}`);
+  const { data, error, reload } = useData<Pub[]>(`/api/publications?from=${days[0]}&to=${days[41]}${scope ? `&project=${encodeURIComponent(scope)}` : ""}`);
   const [edit, setEdit] = useState<Partial<Pub> | null>(null);
   const [multi, setMulti] = useState(false);
   const shift = (n: number) => { const d = new Date(first); d.setUTCMonth(d.getUTCMonth() + n); go({ month: d.toISOString().slice(0, 7) }); };
@@ -51,14 +61,30 @@ export function PubsView({ q, go }: { q: Record<string, string>; go: Go }) {
   const counts = { published: data?.filter((p) => p.day.startsWith(month) && p.status === "published").length ?? 0, planned: data?.filter((p) => p.day.startsWith(month) && p.status !== "published").length ?? 0 };
   return (
     <>
-      <Header title="Publications" sub={`${dateFr(month + "-01", { month: "long", year: "numeric" })} · ${counts.published} publiées, ${counts.planned} prévues`}>
+      {(() => {
+        const sub = `${dateFr(month + "-01", { month: "long", year: "numeric" })} · ${counts.published} publiées, ${counts.planned} prévues`;
+        const buttons = <>
         <Button variant="secondary" onClick={() => shift(-1)} aria-label="Mois précédent">←</Button>
         <Button variant="secondary" onClick={() => go({ month: undefined })}>Aujourd'hui</Button>
         <Button variant="secondary" onClick={() => shift(1)} aria-label="Mois suivant">→</Button>
         <Button variant="secondary" onClick={() => setMulti(true)}>Plusieurs comptes</Button>
-        <Button onClick={() => setEdit({ day: today(), status: "scheduled" })}>Nouvelle publication</Button>
-      </Header>
-      {multi && <MultiComposer onClose={() => setMulti(false)} onSaved={reload} />}
+        <Button onClick={() => setEdit({ day: today(), status: "scheduled", project: scope ?? null })}>Nouvelle publication</Button>
+        </>;
+        // Dans la page d'un projet, son en-tête existe déjà : une barre d'outils suffit.
+        return fixed ? <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><p className="text-sm text-muted">{sub}</p><div className="flex flex-wrap gap-2">{buttons}</div></div>
+          : <Header title={current ? `Publications · ${current.name}` : "Publications"} sub={sub}>{buttons}</Header>;
+      })()}
+      {!fixed && (projects?.length ?? 0) > 1 && (
+        <div className="no-scrollbar -mt-2 mb-4 flex gap-2 overflow-x-auto" role="group" aria-label="Projet affiché">
+          {[{ key: "", label: "Tous les projets", color: null as string | null | undefined }, ...(projects ?? []).map((p) => ({ key: projectKey(p), label: p.name, color: p.color }))].map((o) => {
+            const on = (o.key || undefined) === scope;
+            return <button key={o.key || "tous"} type="button" aria-pressed={on} onClick={() => go({ project: o.key || undefined })}
+              className={`inline-flex min-h-9 shrink-0 items-center gap-2 rounded-full border px-3 text-sm ${on ? "border-accent bg-raised font-medium" : "border-control text-muted hover:text-ink"}`}>
+              {o.color && <span aria-hidden className="size-2 rounded-full" style={{ background: o.color }} />}{o.label}</button>;
+          })}
+        </div>
+      )}
+      {multi && <MultiComposer onClose={() => setMulti(false)} onSaved={reload} project={current ? keysOf(current) : undefined} />}
       {error ? <ErrorLine error={error} retry={reload} /> : !data ? <KpiSkeleton /> : (
         <>
           <div className="hidden overflow-hidden rounded-2xl border border-border bg-surface md:block">
@@ -74,6 +100,7 @@ export function PubsView({ q, go }: { q: Record<string, string>; go: Go }) {
                     {byDay[d]?.map((p) => (
                       <button key={p.id} onClick={() => setEdit(p)} title={p.title}
                         className={`block w-full truncate rounded-lg px-2 py-1 text-left text-xs ${PUB_CHIP[p.state ?? (p.status === "published" ? "published" : "draft")] ?? "bg-raised"}`}>
+                        {!scope && nameOf(p.project) && <span aria-hidden className="mr-1 inline-block size-1.5 rounded-full align-middle" style={{ background: nameOf(p.project)?.color ?? "currentColor" }} />}
                         {p.network && <span className="opacity-70">{p.network} · </span>}{p.title}{p.state && !["published", "draft", "scheduled"].includes(p.state) && <span className="ml-1 font-medium">· {PUB_STATE[p.state]?.[0] ?? p.state}</span>}
                       </button>
                     ))}
@@ -87,22 +114,22 @@ export function PubsView({ q, go }: { q: Record<string, string>; go: Go }) {
               <ul className="divide-y divide-rule">
                 {data.filter((p) => p.day.startsWith(month)).map((p) => (
                   <li key={p.id}><button onClick={() => setEdit(p)} className="flex h-12 w-full items-center gap-3 text-left text-sm">
-                    <span className="num w-14 shrink-0 text-muted">{dateFr(p.day)}</span><span className="min-w-0 flex-1 truncate">{p.title}</span><StatusPill s={p.status} state={p.state} />
+                    <span className="num w-14 shrink-0 text-muted">{dateFr(p.day)}</span><span className="min-w-0 flex-1 truncate">{p.title}{!scope && nameOf(p.project) ? <span className="text-muted"> · {nameOf(p.project)!.name}</span> : null}</span><StatusPill s={p.status} state={p.state} />
                   </button></li>
                 ))}
               </ul>
             ) : <EmptyBox>Rien de prévu ce mois-ci. <button type="button" onClick={() => setEdit({ day: today(), status: "scheduled" })} className="text-ink underline">Planifier une publication</button></EmptyBox>}
           </Card>
           <p className="mt-3 hidden text-xs text-muted md:block">Double-cliquez sur un jour pour y ajouter une publication.</p>
-          <div className="mt-4"><SocialStatsCard project={q.project} /></div>
-          <div className="mt-4"><GbpCard project={q.project} /></div>
-          <div className="mt-4"><AccountsCard /></div>
-          <div className="mt-4"><AutomationCard /></div>
-          <div className="mt-4"><RulesCard /></div>
-          <div className="mt-4"><VisualsCard /></div>
+          <div className="mt-4"><AccountsCard project={current} projects={projects ?? []} /></div>
+          <div className="mt-4"><SocialStatsCard project={scope} /></div>
+          <div className="mt-4"><GbpCard project={scope} /></div>
+          <div className="mt-4"><AutomationCard project={current ? keysOf(current) : undefined} /></div>
+          <div className="mt-4"><RulesCard project={current ? keysOf(current) : undefined} /></div>
+          <div className="mt-4"><VisualsCard project={current} /></div>
         </>
       )}
-      {edit && <PubSheet pub={edit} onClose={() => setEdit(null)} onSaved={reload} />}
+      {edit && <PubSheet pub={edit} projects={projects ?? []} onClose={() => setEdit(null)} onSaved={reload} />}
     </>
   );
 }
@@ -133,7 +160,7 @@ function TrackingLink({ pub }: { pub: Partial<Pub> }) {
   );
 }
 
-function PubSheet({ pub, onClose, onSaved }: { pub: Partial<Pub>; onClose: () => void; onSaved: () => void }) {
+function PubSheet({ pub, projects, onClose, onSaved }: { pub: Partial<Pub>; projects: ProjectRef[]; onClose: () => void; onSaved: () => void }) {
   const { ask, dialog } = useAsk();
   const [error, setError] = useState("");
   const [id, setId] = useState(pub.id ?? null);
@@ -149,7 +176,9 @@ function PubSheet({ pub, onClose, onSaved }: { pub: Partial<Pub>; onClose: () =>
   const [media, setMedia] = useState<{ id: string; name: string; mime: string; size: number }[]>([]);
   const [busy, setBusy] = useState(false);
   const { data: accounts } = useData<Account[]>("/api/pub-accounts");
-  const mine = (accounts ?? []).filter((a) => !project || a.project === project);
+  // Le compte peut porter l'identifiant du projet (connexion OAuth) ou sa clé CRM : les deux comptent.
+  const sameProject = (a: string) => { const p = projects.find((x) => keysOf(x).includes(project)); return a === project || (!!p && keysOf(p).includes(a)); };
+  const mine = (accounts ?? []).filter((a) => !project || sameProject(a.project));
   const limits = NET_LIMIT;
 
   useEffect(() => {
@@ -248,7 +277,11 @@ function PubSheet({ pub, onClose, onSaved }: { pub: Partial<Pub>; onClose: () =>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Date *"><input name="day" type="date" required defaultValue={pub.day} className={inputCls} /></Field>
           <Field label="Statut"><select name="status" defaultValue={pub.status} className={inputCls}>{PUB_STATUS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></Field>
-          <Field label="Projet"><input name="project" value={project} onChange={(e) => setProject(e.target.value)} className={inputCls} placeholder="monprojet, monapp…" /></Field>
+          <Field label="Projet"><select name="project" aria-label="Projet" value={project} onChange={(e) => { setProject(e.target.value); setAccount(""); }} className={inputCls}>
+            <option value="">— aucun —</option>
+            {projects.map((p) => <option key={p.id} value={projectKey(p)}>{p.name}</option>)}
+            {project && !projects.some((p) => keysOf(p).includes(project)) && <option value={project}>{project}</option>}
+          </select></Field>
           <Field label="Réseau"><input name="network" list="reseaux" value={network} onChange={(e) => setNetwork(e.target.value)} className={inputCls} /></Field>
         </div>
         <datalist id="reseaux">{NETWORKS.map((n) => <option key={n} value={n} />)}</datalist>
@@ -366,9 +399,21 @@ type Account = { id: string; project: string; network: string; label: string; st
 const TARGET: Record<string, { label: string; help: string }> = { reddit: { label: "Subreddit", help: "Nom du subreddit sans « r/ » (ex. entrepreneur). Lisez ses règles : beaucoup refusent les liens ou l'autopromotion." } };
 
 /** Comptes de publication de la phase 1 (fournisseur factice) : aucun réseau réel n'est joint. */
-function AccountsCard() {
+type Network = { id: string; label: string; configured: boolean };
+
+/** Comptes de réseaux : ceux du projet choisi (ou de tous), connexion d'un réseau directement pour ce projet. */
+function AccountsCard({ project, projects }: { project?: ProjectRef; projects: ProjectRef[] }) {
   const { ask, dialog } = useAsk();
-  const { data, reload } = useData<Account[]>("/api/pub-accounts");
+  const { data, reload } = useData<Account[]>(`/api/pub-accounts${project ? `?project=${encodeURIComponent(project.id)}` : ""}`);
+  const { data: networks } = useData<Network[]>("/api/pub-oauth/networks");
+  const [chosen, setChosen] = useState("");
+  const connectFor = project?.id ?? chosen;
+  async function connect(n: Network) {
+    setError("");
+    try { const r = await api<{ url: string }>(`/api/pub-oauth/${n.id}/start`, { method: "POST", json: { project: connectFor } }); window.location.href = r.url; }
+    catch (err) { setError((err as Error).message); }
+  }
+  const nameOf = (key: string) => projects.find((p) => p.id === key || p.crm_key === key)?.name ?? key;
   const { data: recipes } = useData<{ network: string; validated: string | null }[]>("/api/browser/recipes");
   const { data: mods } = useData<{ id: string; enabled: boolean }[]>("/api/modules");
   const queueOff = mods?.some((m) => m.id === "publications" && !m.enabled);
@@ -401,10 +446,21 @@ function AccountsCard() {
     await api(`/api/pub-accounts/${a.id}`, { method: "DELETE" }); reload();
   }
   return (
-    <Card title="Comptes de publication" action={<span className="text-xs text-muted">Comptes réels : connectez-les dans Connexions. Ici : comptes de test et comptes navigateur.</span>}>
+    <Card title={project ? `Comptes de réseaux · ${project.name}` : "Comptes de réseaux"}>
       {dialog}
+      <div className="mb-5">
+        <p className="mb-2 text-sm text-muted">{project ? "Connectez les comptes de ce projet : chaque publication du projet part sur ses comptes." : "Choisissez le projet, puis connectez ses comptes."}</p>
+        <div className="flex flex-wrap items-center gap-2">
+          {!project && <select aria-label="Projet à connecter" value={chosen} onChange={(e) => setChosen(e.target.value)} className={`${inputCls} w-auto`}>
+            <option value="">Projet…</option>{projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>}
+          {(networks ?? []).filter((n) => n.configured).map((n) => <Button key={n.id} variant="secondary" disabled={!connectFor} onClick={() => connect(n)}>Connecter {n.label}</Button>)}
+          {networks && !networks.some((n) => n.configured) && <span className="text-sm text-muted">Aucun réseau configuré : Plus → Connexions donne la marche à suivre pour chacun.</span>}
+        </div>
+      </div>
+      <p className="mb-2 text-xs text-muted">Sans application développeur : ajoutez un compte « Navigateur » ou « Agent IA » (publication par votre session ou votre agent), ou un compte de test.</p>
       <form onSubmit={add} className="mb-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_1fr_1.4fr_auto]">
-        <input name="project" required aria-label="Projet du compte" placeholder="Projet (clé CRM)" className={inputCls} />
+        {project ? <input type="hidden" name="project" value={projectKey(project)} />
+          : <select name="project" required aria-label="Projet du compte" className={inputCls}><option value="">Projet…</option>{projects.map((p) => <option key={p.id} value={projectKey(p)}>{p.name}</option>)}</select>}
         <select name="network" required aria-label="Réseau du compte" className={inputCls}>{NETWORKS.filter((n) => NET_NAME[n]).map((n) => <option key={n} value={n}>{NET_NAME[n]}</option>)}</select>
         <input name="label" required aria-label="Nom du compte" placeholder="Nom du compte" className={inputCls} />
         <select name="mode" aria-label="Mode du compte" className={inputCls}><option value="api">API factice</option><option value="web">Navigateur</option><option value="agent">Agent IA (votre ordinateur)</option></select>
@@ -413,10 +469,10 @@ function AccountsCard() {
       </form>
       {queueOff && <p role="status" className="mb-2 text-sm text-negative">Le module Publications est désactivé : la file ne tourne pas, rien ne partira tant qu'il ne sera pas réactivé.</p>}
       {error && <p role="alert" className="mb-2 text-sm text-negative">{error}</p>}
-      <Table rows={data ?? []} empty="Aucun compte de publication." cols={[
+      <Table rows={data ?? []} empty={project ? "Aucun compte pour ce projet : connectez-en un ci-dessus." : "Aucun compte de publication."} cols={[
         { label: "Compte", render: (a) => a.label },
         { label: "Réseau", render: (a) => NET_NAME[a.network] ?? a.network },
-        { label: "Projet", render: (a) => a.project },
+        ...(project ? [] : [{ label: "Projet", render: (a: Account) => nameOf(a.project) }]),
         { label: "Cible", render: (a) => TARGET[a.network] ? (
           <button type="button" onClick={() => setTarget(a)} className={a.target ? "text-ink underline" : "font-semibold text-accent hover:underline"}>{a.target ? `r/${a.target}` : `Choisir le ${TARGET[a.network].label.toLowerCase()}`}</button>) : <span className="text-muted">—</span> },
         { label: "Transport", render: (a) => a.mode === "web" ? "Navigateur" : a.mode === "agent" ? "Agent IA" : a.connection_id ? "API" : "API factice" },

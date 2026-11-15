@@ -2,6 +2,14 @@
 
 Toutes les versions notables sont consignées ici. Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/).
 
+## [0.6.1] — 2026-11-17
+
+### Corrigé
+
+- **Un calendrier et des comptes par projet** : onglet « Publications » dans chaque projet (calendrier, comptes de réseaux à connecter pour ce projet, statistiques, fiches Google, automatisations, règles et visuels du projet) ; sélecteur de projet en haut de la page Publications, pastille de couleur du projet dans la vue « Tous les projets ».
+- Le projet d'une publication et d'un compte se choisit dans une liste (plus de clé à taper) ; une nouvelle publication créée depuis un projet hérite de ce projet et ne propose que ses comptes.
+- Un compte connecté par OAuth (enregistré avec l'identifiant du projet) était refusé pour une publication enregistrée avec la clé CRM du même projet : les deux désignent désormais le même projet partout (filtres, vérification avant envoi).
+
 ## [0.6.0] — 2026-11-17 — SEO complet, publication façon Postiz, assistant, équipe
 
 ### Ajouté
