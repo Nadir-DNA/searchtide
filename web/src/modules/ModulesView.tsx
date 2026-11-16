@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import { Header, useData } from "../App";
-import { Drawer, useCatalog } from "../connections";
+import { Drawer, PublicationConnect, StripeConnect, useCatalog } from "../connections";
 import { useModules, type ModuleInfo } from ".";
 import { Button, Card, Pill } from "../ui";
 
@@ -14,6 +14,7 @@ export function ModulesView({ open, go }: { open?: string; go: Go }) {
   const { catalog, reload: reloadCatalog } = useCatalog();
   const { data: projects } = useData<{ id: string; name: string }[]>("/api/projects?days=1");
   const [drawer, setDrawer] = useState<string | null>(null);
+  const [filter, setFilter] = useState<"all" | "actifs" | "reconnect" | "none">("all");
   const [error, setError] = useState("");
   const admin = !!catalog?.admin;
   const manifest = (id: string) => catalog?.connectors.find((c) => c.id === id);
@@ -30,14 +31,29 @@ export function ModulesView({ open, go }: { open?: string; go: Go }) {
   const setInstance = (m: ModuleInfo, on: boolean) => run(() => api(`/api/modules/${m.id}`, { method: "POST", json: { enabled: on } }));
   const setProject = (m: ModuleInfo, pid: string, on: boolean) => run(() => api(`/api/projects/${pid}/modules/${m.id}`, { method: "PUT", json: { enabled: on } }));
   const m = drawer ? manifest(drawer) : null;
+  const shown = modules.filter((mod) => filter === "all"
+    || (filter === "actifs" && mod.enabled)
+    || (filter === "reconnect" && mod.status === "a-reconnecter")
+    || (filter === "none" && !mod.enabled));
 
   return (
     <>
-      <Header title="Modules" sub="Chaque module apporte ses chiffres, ses onglets, ses blocs et ses outils pour les agents. Désactivé, tout disparaît ; ses données sont gardées." />
-      <div className="mb-4 flex justify-end"><button onClick={() => go({ view: "connections", open: undefined })} className="text-sm text-muted hover:text-ink">Gérer les connexions →</button></div>
+      <Header title="Intégrations" sub="Activez un module et connectez ses services au même endroit. Désactivé, tout disparaît ; ses données sont gardées." />
+      {catalog?.admin && !catalog.demo && (
+        <>
+          <StripeConnect onUseKey={() => setDrawer("stripe")} />
+          <PublicationConnect />
+        </>
+      )}
       {error && <p role="alert" className="mb-4 rounded-xl bg-negative-bg px-4 py-3 text-sm text-negative">{error}</p>}
+      <div role="group" aria-label="Filtrer les modules" className="mb-5 flex flex-wrap gap-2">
+        {([["all", "Tous"], ["actifs", "Actifs"], ["reconnect", "À reconnecter"], ["none", "Non connectés"]] as const).map(([k, l]) => (
+          <button key={k} type="button" aria-pressed={filter === k} onClick={() => setFilter(k)}
+            className={`h-9 rounded-full border px-4 text-sm ${filter === k ? "border-control bg-active text-ink" : "border-border text-muted hover:text-ink"}`}>{l}</button>
+        ))}
+      </div>
       <div className="grid gap-4 lg:grid-cols-2">
-        {modules.map((mod) => (
+        {shown.map((mod) => (
           <Card key={mod.id} className={open === mod.id ? "ring-1 ring-accent" : ""}>
             <div id={`module-${mod.id}`} className="flex flex-wrap items-start gap-3">
               <div className="min-w-0 flex-1">
@@ -49,7 +65,7 @@ export function ModulesView({ open, go }: { open?: string; go: Go }) {
             {!mod.core && (
               <div className="mt-4 flex flex-wrap items-center gap-2">
                 {mod.connectors.map((c) => (
-                  <Button key={c.id} variant="secondary" disabled={!admin} onClick={() => setDrawer(c.id)}>{c.connected ? `${manifest(c.id)?.name ?? c.id} : gérer` : `Connecter ${manifest(c.id)?.name ?? c.id}`}</Button>
+                  <Button key={c.id} variant="secondary" disabled={!admin} onClick={() => setDrawer(c.id)}>{c.connected ? `Gérer ${manifest(c.id)?.name ?? c.id}` : `Connecter ${manifest(c.id)?.name ?? c.id}`}</Button>
                 ))}
                 {admin && <Button variant={mod.enabled ? "secondary" : "accent"} onClick={() => setInstance(mod, !mod.enabled)}>{mod.enabled ? "Désactiver" : "Activer"}</Button>}
               </div>

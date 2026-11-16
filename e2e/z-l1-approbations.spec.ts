@@ -38,6 +38,11 @@ test("L1 interface : clé limitée → demande → approbation admin → exécut
   const approval = await asked.json();
   expect((await page.request.patch(`/api/indicators/${ind.id}`, { headers: k, data: { config: { role: "contacts" } } })).status()).toBe(403);
 
+  // La demande en attente remonte dans À traiter et mène à l'onglet Approbations.
+  await page.goto("/?view=today");
+  await page.getByRole("button", { name: /approbation.*attend/ }).click();
+  await expect(page.getByRole("button", { name: "Approbations", exact: true })).toHaveAttribute("aria-pressed", "true");
+
   // 2. L'administrateur voit la demande lisible et approuve dans l'écran dédié.
   await page.goto("/?view=approvals");
   const card = page.getByTestId(`approval-${approval.id}`);

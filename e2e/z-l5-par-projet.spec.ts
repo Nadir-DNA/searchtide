@@ -24,16 +24,16 @@ test("chaque projet a son calendrier et ses comptes", async ({ page }) => {
   await page.goto(`/?view=project&id=${a.id}&tab=publications`);
   await expect(page.getByText(`Post Alpha ${u}`).first()).toBeVisible();
   await expect(page.getByText(`Post Beta ${u}`)).toHaveCount(0);
+  await page.getByRole("button", { name: "Comptes", exact: true }).click();
   await expect(page.getByRole("cell", { name: `Compte Alpha ${u}` }).first()).toBeVisible();
   await expect(page.getByRole("cell", { name: `Compte Beta ${u}` })).toHaveCount(0);
 
   // Nouvelle publication depuis le projet : projet prérempli, seuls ses comptes proposés.
   await page.getByRole("button", { name: "Nouvelle publication" }).click();
   const dialog = page.getByRole("dialog");
-  await expect(dialog.getByLabel("Projet", { exact: true })).toHaveValue(`alpha-${u}`);
-  const options = await dialog.getByLabel("Compte de publication").locator("option").allTextContents();
-  expect(options.some((o) => o.includes(`Compte Alpha ${u}`))).toBe(true);
-  expect(options.some((o) => o.includes(`Compte Beta ${u}`))).toBe(false);
+  await expect(dialog.getByRole("combobox", { name: "Projet", exact: true })).toHaveValue(a.id);
+  await expect(dialog.getByRole("checkbox", { name: new RegExp(`Compte Alpha ${u}`) })).toBeVisible();
+  await expect(dialog.getByRole("checkbox", { name: new RegExp(`Compte Beta ${u}`) })).toHaveCount(0);
   await dialog.getByRole("button", { name: "Fermer" }).click();
 
   // Page Publications : le sélecteur filtre sur un projet.

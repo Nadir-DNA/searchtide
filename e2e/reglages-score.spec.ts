@@ -12,7 +12,7 @@ const noHScroll = (page: Page) => page.evaluate(() => document.documentElement.s
 test("poids du score : valeurs par défaut, aperçu recalculé en direct, enregistrement conservé après rechargement, rétablissement, refus des valeurs hors de 0 à 100", async ({ page }) => {
   await login(page);
   await page.request.post("/api/projects", { data: { name: "Projet pour le score" } });
-  await page.goto("/?view=settings");
+  await page.goto("/?view=settings&tab=projets");
   const card = page.locator("section", { has: page.getByRole("heading", { name: "Score de santé des projets" }) });
   await expect(card).toBeVisible();
   const field = (name: string) => card.getByLabel(name, { exact: true });
@@ -50,7 +50,7 @@ test.describe("375 px", () => {
   test.use({ viewport: { width: 375, height: 812 } });
   test("CA23 : les réglages du score tiennent sans défilement horizontal", async ({ page }) => {
     await login(page);
-    await page.goto("/?view=settings");
+    await page.goto("/?view=settings&tab=projets");
     await expect(page.getByRole("heading", { name: "Score de santé des projets" })).toBeVisible();
     expect(await noHScroll(page)).toBe(true);
   });

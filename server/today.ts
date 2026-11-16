@@ -43,9 +43,10 @@ function builtinActions(moduleId: string, p: Row, today: string): Omit<TodayItem
     return rows.map((x) => ({ key: itemKey("google", "opportunite", p.id, x.query), project_id: p.id, metric: "Clics Google",
       text: `${p.name} · faire monter « ${x.query} » (position ${nf(x.position, 1)}, ${nf(x.impressions)} impressions)`, to: { site: x.domain, tab: "search" } }));
   }
-  if (moduleId === "crm" && p.crm_key) {
-    const n = (db.prepare("SELECT COUNT(*) AS n FROM contacts WHERE project = ? AND next_at <= ? AND opt_out = 0 AND stage NOT IN ('won', 'lost')").get(p.crm_key, today) as Row).n as number;
-    return n ? [{ key: itemKey("crm", "relances", p.id), project_id: p.id, metric: "Contacts gagnés", text: `${p.name} · ${plural(n, "relance")} à faire`, to: { view: "crm", tab: "todo", project: p.crm_key } }] : [];
+  if (moduleId === "crm") {
+    const keys = [String(p.id), String(p.crm_key ?? p.id)];
+    const n = (db.prepare("SELECT COUNT(*) AS n FROM contacts WHERE project IN (?, ?) AND next_at <= ? AND opt_out = 0 AND stage NOT IN ('won', 'lost')").get(...keys, today) as Row).n as number;
+    return n ? [{ key: itemKey("crm", "relances", p.id), project_id: p.id, metric: "Contacts gagnés", text: `${p.name} · ${plural(n, "relance")} à faire`, to: { view: "crm", tab: "todo", project: p.id } }] : [];
   }
   return [];
 }
@@ -110,7 +111,7 @@ function collectItems(now: Date): TodayItem[] {
   for (const p of projects) items.push(...seoActions(p));
   // Relances des contacts rattachés à aucun projet connu
   if (isEnabled("crm")) {
-    const keys = projects.filter((p) => p.crm_key && enabledFor(p.id, "crm")).map((p) => p.crm_key);
+    const keys = projects.flatMap((p) => enabledFor(p.id, "crm") ? [String(p.id), String(p.crm_key ?? p.id)] : []);
     const n = (db.prepare(`SELECT COUNT(*) AS n FROM contacts WHERE next_at <= ? AND opt_out = 0 AND stage NOT IN ('won', 'lost')
       AND (project IS NULL OR project NOT IN (${keys.map(() => "?").join(",") || "''"}))`).get(today, ...keys) as Row).n as number;
     if (n) items.push({ key: itemKey("crm", "relances", "tous"), kind: "action", tone: "info", project_id: null, text: `${plural(n, "relance")} à faire`, to: { view: "crm", tab: "todo" } });
@@ -171,6 +172,8 @@ export function today(now = new Date()): TodayItem[] {
     return !!s && (s.state === "ignored" || (s.state === "snoozed" && s.until > day) || (s.state === "done" && s.until >= day));
   };
   const items = collectItems(now);
+  const pending = (db.prepare("SELECT COUNT(*) AS n FROM approvals WHERE state = 'pending' AND expires_at > ?").get(now.getTime()) as Row).n as number;
+  if (pending) items.push({ key: "approbations:en-attente", kind: "alerte", tone: "warn", project_id: null, text: `${pending} approbation${pending > 1 ? "s" : ""} attend${pending > 1 ? "ent" : ""} votre décision`, to: { view: "agents", tab: "approbations" } });
   const live = new Set(items.map((i) => i.key));
   for (const [k, s] of states) if (s.state === "ignored" && k.startsWith("alerte:") && !live.has(k)) { db.prepare("DELETE FROM today_items WHERE key = ?").run(k); states.delete(k); }
   return items.filter((i) => !hidden(i.key))

@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "re
 import { api } from "../../api";
 import { ErrorLine, Header, KpiSkeleton, useData } from "../../App";
 import { Button, Card, EmptyBox, Pill, Segmented, Table, fmt, inputCls, useAsk } from "../../ui";
-import { type Contact, type Pub, type Summary, type Go, STAGES, type Stage, stageName, KINDS, PUB_STATUS, NETWORKS, filterCls, eur, today, dateFr, Sheet, Field } from "../shared";
+import { type Contact, type Pub, type Summary, type Go, STAGES, type Stage, stageName, KINDS, PUB_STATUS, NETWORKS, filterCls, eur, today, dateFr, Sheet, Field, type ProjectRef, keysOf } from "../shared";
 
 // ── Résumé en tête de la vue d'ensemble ──
 export function PipelineCard({ go, title = "Pipeline commercial" }: { go: Go; title?: string }) {
@@ -40,6 +40,8 @@ export function CrmView({ tab, go, q }: { tab: string; go: Go; q: Record<string,
   const [version, setVersion] = useState(0);
   const refresh = () => setVersion((v) => v + 1);
   const { data: s } = useData<Summary>(`/api/business?v=${version}`);
+  const { data: projects } = useData<ProjectRef[]>("/api/projects?days=1");
+  const projectName = (v: string) => projects?.find((p) => keysOf(p).includes(v))?.name ?? v;
   const filters = { project: q.project, source: q.source, q: q.q };
   const setFilter = (k: string, v: string) => go({ [k]: v || undefined });
   const tabs = [["pipeline", "Pipeline"], ["list", "Liste"], ["todo", `À relancer${s?.todo ? ` · ${s.todo}` : ""}`], ["emails", "E-mails"]] as const;
@@ -56,7 +58,7 @@ export function CrmView({ tab, go, q }: { tab: string; go: Go; q: Record<string,
           className={`${filterCls} w-52`} aria-label="Rechercher un contact" />
         <select aria-label="Projet" className={`${filterCls} w-auto`} value={q.project ?? ""} onChange={(e) => setFilter("project", e.target.value)}>
           <option value="">Tous les projets</option>
-          {s?.projects.filter((p) => p.project).map((p) => <option key={p.project} value={p.project}>{p.project} ({p.n})</option>)}
+          {s?.projects.filter((p) => p.project).map((p) => <option key={p.project} value={p.project}>{projectName(p.project)} ({p.n})</option>)}
         </select>
         <select aria-label="Source" className={`${filterCls} w-auto`} value={q.source ?? ""} onChange={(e) => setFilter("source", e.target.value)}>
           <option value="">Toutes les sources</option>
@@ -65,8 +67,8 @@ export function CrmView({ tab, go, q }: { tab: string; go: Go; q: Record<string,
       </div>
       {current === "emails" ? <EmailsView /> : current === "pipeline" ? <Pipeline key={version + JSON.stringify(filters)} filters={filters} onOpen={setOpen} onMoved={refresh} />
         : <ContactList key={version + current + JSON.stringify(filters)} filters={filters} todo={current === "todo"} onOpen={setOpen} />}
-      {open && <ContactSheet id={open} projects={s?.projects.map((p) => p.project).filter(Boolean) ?? []} onClose={() => setOpen(null)} onSaved={refresh} />}
-      {importing && <ImportDialog onClose={() => setImporting(false)} onDone={refresh} />}
+      {open && <ContactSheet id={open} projects={projects ?? []} onClose={() => setOpen(null)} onSaved={refresh} />}
+      {importing && <ImportDialog projects={projects ?? []} onClose={() => setImporting(false)} onDone={refresh} />}
     </>
   );
 }
@@ -150,7 +152,7 @@ function ContactList({ filters, todo, onOpen }: { filters: Record<string, string
   );
 }
 
-function ContactSheet({ id, projects, onClose, onSaved }: { id: string; projects: string[]; onClose: () => void; onSaved: () => void }) {
+function ContactSheet({ id, projects, onClose, onSaved }: { id: string; projects: ProjectRef[]; onClose: () => void; onSaved: () => void }) {
   const { ask, dialog } = useAsk();
   const isNew = id === "new";
   const [c, setC] = useState<Contact | null>(isNew ? null : null);
@@ -200,7 +202,11 @@ function ContactSheet({ id, projects, onClose, onSaved }: { id: string; projects
           <Field label="E-mail"><input name="email" type="email" defaultValue={v.email ?? ""} className={inputCls} /></Field>
           <Field label="Ville"><input name="city" defaultValue={v.city ?? ""} className={inputCls} /></Field>
           <Field label="Secteur"><input name="sector" defaultValue={v.sector ?? ""} className={inputCls} /></Field>
-          <Field label="Projet"><input name="project" list="projets" defaultValue={v.project ?? ""} className={inputCls} placeholder="monprojet, autreprojet…" /></Field>
+          <Field label="Projet"><select name="project" defaultValue={v.project ?? ""} className={inputCls}>
+            <option value="">— aucun —</option>
+            {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            {v.project && !projects.some((p) => keysOf(p).includes(v.project!)) && <option value={v.project}>{v.project}</option>}
+          </select></Field>
           <Field label="Source"><input name="source" defaultValue={v.source ?? ""} className={inputCls} placeholder="site, recommandation…" /></Field>
           <Field label="Étape">
             <select name="stage" defaultValue={v.stage} className={inputCls}>{STAGES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
@@ -212,7 +218,6 @@ function ContactSheet({ id, projects, onClose, onSaved }: { id: string; projects
           <Field label="Site web"><input name="site_url" defaultValue={v.site_url ?? ""} className={inputCls} /></Field>
           <Field label="Étiquettes (séparées par des virgules)"><input name="tags" defaultValue={v.tags.join(", ")} className={inputCls} /></Field>
         </div>
-        <datalist id="projets">{projects.map((p) => <option key={p} value={p} />)}</datalist>
         <label className="mt-4 flex items-center gap-2 text-sm"><input type="checkbox" name="opt_out" defaultChecked={v.opt_out} className="size-4 accent-[var(--color-accent)]" />A demandé à ne plus être contacté</label>
         {error && <p role="alert" className="mt-3 text-sm text-negative">{error}</p>}
         <div className="mt-5 flex items-center justify-between gap-3">
@@ -436,7 +441,7 @@ export function mapRow(r: Record<string, any>) {
   };
 }
 
-function ImportDialog({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+function ImportDialog({ projects, onClose, onDone }: { projects: ProjectRef[]; onClose: () => void; onDone: () => void }) {
   const [rows, setRows] = useState<Record<string, any>[] | null>(null);
   const [project, setProject] = useState("");
   const [result, setResult] = useState<{ added: number; skipped: number; invalid: number } | null>(null);
@@ -465,7 +470,9 @@ function ImportDialog({ onClose, onDone }: { onClose: () => void; onDone: () => 
           <>
             <p className="mt-4 text-sm">{fmt(rows.length)} lignes lues. Aperçu :</p>
             <ul className="mt-2 space-y-1 text-sm text-muted">{sample.map((r, i) => <li key={i} className="truncate">{r.name || "(sans nom)"} · {[r.phone, r.city, r.sector].filter(Boolean).join(" · ")}</li>)}</ul>
-            <Field label="Projet à attribuer (facultatif)" className="mt-4"><input value={project} onChange={(e) => setProject(e.target.value)} className={inputCls} placeholder="monprojet, sitevitrine…" /></Field>
+            <Field label="Projet à attribuer (facultatif)" className="mt-4"><select value={project} onChange={(e) => setProject(e.target.value)} className={inputCls}>
+              <option value="">— aucun —</option>{projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select></Field>
             {!result && <Button className="mt-4" onClick={send}>Importer {fmt(rows.length)} contacts</Button>}
           </>
         )}

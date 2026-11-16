@@ -34,7 +34,7 @@ export function VisibilityView({ projectId }: { projectId: string }) {
       <Card title="Visibilité dans les IA" action={data.connected > 0 && data.prompts.length > 0 && <Button variant="secondary" disabled={busy} onClick={run}>{busy ? "Questions en cours…" : "Poser les questions maintenant"}</Button>}>
         <p className="mb-3 text-sm text-muted">Chaque semaine, vos questions types sont posées à chaque IA connectée. On relève si votre projet est cité, à quelle place et qui l'est à côté. Les réponses varient d'une fois à l'autre : lisez la tendance. Les modèles répondent de mémoire, sans recherche web.</p>
         {error && <p role="alert" className="mb-3 text-sm text-negative">{error}</p>}
-        {!data.connected ? <EmptyBox>Aucune IA connectée : ajoutez vos clés Claude, ChatGPT ou Gemini dans Connexions → Intelligence artificielle (une connexion par IA à suivre). Coût : quelques centimes par semaine pour 20 questions.</EmptyBox>
+        {!data.connected ? <EmptyBox>Aucune IA connectée : ajoutez vos clés Claude, ChatGPT ou Gemini dans Outils → Intégrations → Intelligence artificielle (une connexion par IA à suivre). Coût : quelques centimes par semaine pour 20 questions.</EmptyBox>
           : !data.models.length ? <EmptyBox>Pas encore de mesure : ajoutez des questions ci-dessous, puis posez-les.</EmptyBox> : (
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{data.models.map((m) => (
             <div key={m.provider + m.model} className="rounded-xl border border-border bg-raised p-4">

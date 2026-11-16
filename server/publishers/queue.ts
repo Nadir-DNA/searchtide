@@ -473,7 +473,14 @@ export async function retryPublication(id: string, when = Date.now()) {
   return getPublication(id);
 }
 
+/** C3 : les comptes de publication créés avant la refonte désignent leur projet par l'ancienne clé. */
+export function migrateAccountProjects() {
+  db.exec(`UPDATE pub_accounts SET project = (SELECT id FROM projects WHERE projects.crm_key = pub_accounts.project OR projects.name = pub_accounts.project ORDER BY projects.created_at LIMIT 1)
+    WHERE project IS NOT NULL AND EXISTS (SELECT 1 FROM projects WHERE projects.crm_key = pub_accounts.project OR projects.name = pub_accounts.project)`);
+}
+
 export function registerPublishers(app: Hono) {
+  migrateAccountProjects();
   const admin = (c: any) => isAdmin(c) ? null : c.json({ error: "Réservé à l'administrateur" }, 403);
   app.get("/api/pub-accounts", (c) => admin(c) ?? c.json(listAccounts(c.req.query("project") || undefined)));
   app.post("/api/pub-accounts", async (c) => {

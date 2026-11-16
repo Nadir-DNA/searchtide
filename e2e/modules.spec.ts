@@ -35,9 +35,9 @@ test("barre du haut : chaque projet est un onglet, un projet épinglé passe en 
   // Rubriques et menu « Plus »
   const rubriques = page.getByRole("navigation", { name: "Rubriques" });
   await expect(rubriques.getByRole("button", { name: /À traiter/ })).toBeVisible();
-  await page.getByRole("button", { name: "Plus", exact: true }).click();
+  await page.getByRole("button", { name: "Outils", exact: true }).click();
   const items = await page.getByRole("menuitem").allTextContents();
-  expect(items.map((x) => x.trim())).toEqual(["Modules et connexions", "Agents IA", "Approbations", "Navigateur intégré", "Démarrage"]);
+  expect(items.map((x) => x.trim())).toEqual(["Intégrations", "Agents IA", "Navigateur intégré", "Démarrage"]);
 });
 
 test("projet complet sans quitter la page du projet : domaine, Stripe activé depuis le projet, KPI ajouté", async ({ page }) => {
