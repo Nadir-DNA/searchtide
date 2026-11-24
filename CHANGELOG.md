@@ -2,6 +2,22 @@
 
 Toutes les versions notables sont consignées ici. Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/).
 
+## [0.6.2] — 2026-11-24
+
+### Ajouté
+
+- **Export et import complets, en format ouvert** (Réglages → Exporter / importer) :
+  - un seul fichier `.tar.gz` (données en JSON et CSV, médias des publications, manifeste avec empreintes), lisible par n'importe quel outil et indépendant du `SECRET` de l'instance ;
+  - les jetons des connexions sont inclus seulement s'ils sont protégés par une phrase de passe choisie à l'export ;
+  - l'import analyse le fichier avant toute écriture, puis propose « remplacer » ou « ajouter ce qui manque » ;
+  - l'import prend un instantané de l'état actuel et écrit tout dans une seule transaction ; un retour en arrière se fait en un clic.
+- **Export hebdomadaire automatique** dans le dossier des sauvegardes (4 gardés).
+- **Commandes de secours** `scripts/exporter.mjs` et `scripts/importer.mjs`, incluses dans l'image Docker, pour exporter ou réimporter quand l'interface ne démarre plus.
+
+### Corrigé
+
+- Les médias des publications (images, vidéos, visuels) ne figuraient dans aucune sauvegarde : ils sont dans l'export.
+
 ## [0.6.1] — 2026-11-17
 
 ### Corrigé

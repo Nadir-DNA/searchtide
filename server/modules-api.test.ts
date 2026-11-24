@@ -87,7 +87,7 @@ test("api : état des tâches de fond", async () => {
   const t = tempDb(); seed(t.path, SEED); const s = await startServer(t.path);
   try {
     const jobs = await (await fetch(`${s.base}/api/jobs`, { headers: { authorization: `Bearer ${KEY}` } })).json() as any[];
-    assert.deepEqual(jobs.map((j) => j.id).sort(), ["alerts", "audit-technique", "automatisations", "backup", "backup-verify", "fiches-google", "gsc-sync", "indexation", "indicators", "offsite-backup", "publications-queue", "publications-suites", "regles-seuil", "sequences", "social-stats", "visibilite-ia", "weekly-report"]);
+    assert.deepEqual(jobs.map((j) => j.id).sort(), ["alerts", "audit-technique", "automatisations", "backup", "backup-verify", "export-hebdo", "fiches-google", "gsc-sync", "indexation", "indicators", "offsite-backup", "publications-queue", "publications-suites", "regles-seuil", "sequences", "social-stats", "visibilite-ia", "weekly-report"]);
   } finally { s.stop(); t.done(); }
 });
 

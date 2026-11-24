@@ -4,6 +4,7 @@ import { api } from "./api";
 import { ErrorLine, Header, KpiSkeleton, useData } from "./App";
 import { Button, Card, EmptyBox, Pill, Segmented, inputCls, Status } from "./ui";
 import { TeamCard } from "./team";
+import { PortableCard } from "./portable";
 
 type Ops = {
   ntfy: string | null; ntfyVia: "connexion" | "env" | null; mail: boolean;
@@ -287,12 +288,13 @@ export function SettingsView({ go, tab = "general" }: { go?: (n: Record<string, 
       <Header title="Réglages" sub="Surveillance, sauvegardes, notifications et sécurité" />
       <div className="mb-5 -mt-1 overflow-x-auto">
         <Segmented label="Sections des réglages" value={tab} onChange={setTab} options={[
-          ["general", "Général"], ["projets", "Projets"], ["equipe", "Équipe"], ["alertes", "Alertes"], ["securite", "Sécurité"], ["diagnostic", "Diagnostic"],
+          ["general", "Général"], ["projets", "Projets"], ["equipe", "Équipe"], ["donnees", "Données"], ["alertes", "Alertes"], ["securite", "Sécurité"], ["diagnostic", "Diagnostic"],
         ] as const} />
       </div>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {tab === "projets" && <div className="min-w-0 lg:col-span-2"><HealthWeights /></div>}
         {tab === "equipe" && <div className="min-w-0 lg:col-span-2"><TeamCard /></div>}
+        {tab === "donnees" && <div className="min-w-0 lg:col-span-2"><PortableCard /></div>}
         {tab === "alertes" && <>
           <Card title="Surveillance" action={<span className="text-xs text-muted">Toutes les 5 min, depuis Cloudflare</span>}>
           {o.veille ? (
@@ -332,6 +334,7 @@ export function SettingsView({ go, tab = "general" }: { go?: (n: Record<string, 
             Chaque nuit : une copie locale dans le volume de l'instance ({o.backups.dir}, 14 jours)
             {o.offsiteConfigured ? " et une copie compressée chez Cloudflare (30 jours)." : "."}
           </p>
+          <p className="mt-2 text-sm">Pour garder une copie hors du serveur, changer de machine ou d'outil : <button type="button" onClick={() => setTab("donnees")} className="font-semibold text-accent underline">exporter toutes vos données</button>.</p>
           {!o.offsiteConfigured && <p className="mt-1 text-xs text-muted">La copie externe n'est pas configurée (BACKUP_URL et BACKUP_TOKEN).</p>}
           {o.offsiteConfigured && <p className="mt-2 text-sm text-muted">Dernière copie externe : {o.backups.offsite ? `${when(o.backups.offsite.at)} · ${Math.round(o.backups.offsite.bytes / 1024)} Ko` : "aucune pour l'instant"}</p>}
           <p className="mt-1 text-sm text-muted">Copies locales : {o.backups.local.length ? o.backups.local.join(", ") : "aucune pour l'instant"}</p>

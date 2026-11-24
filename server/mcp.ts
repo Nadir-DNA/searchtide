@@ -259,7 +259,7 @@ const BUILTIN_TOOLS: Record<string, (server: McpServer, readOnly: boolean, agent
 };
 
 function build(readOnly = false, agent = "Clé principale", scope: McpScopeIds | null = null) {
-  const server = new McpServer({ name: "searchtide", version: "0.6.1" }, { instructions: INSTRUCTIONS });
+  const server = new McpServer({ name: "searchtide", version: "0.6.2" }, { instructions: INSTRUCTIONS });
   if (scope) scopeServer(server, scopeDetails(scope));
   instrument(server, agent);
 
@@ -296,7 +296,7 @@ export type CatalogTool = { name: string; description: string; schema: Record<st
  */
 export function readOnlyCatalog(agent = "Assistant"): CatalogTool[] {
   const tools: CatalogTool[] = [];
-  const server = new McpServer({ name: "searchtide", version: "0.6.1" }, { instructions: INSTRUCTIONS });
+  const server = new McpServer({ name: "searchtide", version: "0.6.2" }, { instructions: INSTRUCTIONS });
   const register = server.registerTool.bind(server) as (...a: any[]) => any;
   (server as any).registerTool = (name: string, config: { description?: string; inputSchema?: z.ZodType }, cb: (...a: any[]) => any) => {
     const schema = config.inputSchema ? z.toJSONSchema(config.inputSchema, { io: "input" }) as Record<string, unknown> : { type: "object", properties: {} };

@@ -16,6 +16,9 @@ COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/web/dist ./web/dist
 COPY package.json ./
 COPY server ./server
+# Commandes de secours (export, import, restauration de sauvegarde), utilisables même si l'interface ne démarre plus :
+#   docker compose exec searchtide node scripts/exporter.mjs /data/backups/export.tar.gz
+COPY scripts/exporter.mjs scripts/importer.mjs scripts/restore-backup.mjs scripts/backup-verify.mjs ./scripts/
 # Exécution non root (utilisateur `node`, uid 1000) : le volume de données lui appartient.
 RUN mkdir -p /data && chown node:node /data
 USER node
